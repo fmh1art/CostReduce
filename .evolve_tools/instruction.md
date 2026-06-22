@@ -2,21 +2,19 @@
 
 ## Where these tools are installed in the benchmark workspace
 
-The evolved tools from this directory have already been pre-installed into the task workspace. Use them directly; do **not** waste time searching for, cloning, or reinstalling these tools.
+The evolved tools from this directory have already been pre-installed into the task workspace as **bind mounts**. Each top-level entry of the host `.evolve_tools/` directory (e.g. `quick_map/`, `batch_read/`, ...) is mounted directly under `/app/.preinstalled_tools/` inside the container, so the task repo at `/app/` is **not** polluted. Use them directly; do **not** waste time searching for, cloning, or reinstalling these tools.
 
 Robust path selection pattern:
 
 ```bash
-if [ -d ./.pre_install_tools ]; then
-  TOOLS=./.pre_install_tools
-elif [ -d /app/.pre_install_tools ]; then
-  TOOLS=/app/.pre_install_tools
-elif [ -d /workspace/.pre_install_tools ]; then
-  TOOLS=/workspace/.pre_install_tools
-elif [ -d /workspace/quick_map ]; then
-  TOOLS=/workspace
+if [ -d /app/.preinstalled_tools/quick_map ]; then
+  TOOLS=/app/.preinstalled_tools
+elif [ -d /workspace/.preinstalled_tools/quick_map ]; then
+  TOOLS=/workspace/.preinstalled_tools
+elif [ -d ./.preinstalled_tools/quick_map ]; then
+  TOOLS=./.preinstalled_tools
 else
-  TOOLS=.
+  TOOLS=/app/.preinstalled_tools
 fi
 
 "$TOOLS/quick_map/main.sh" . 3

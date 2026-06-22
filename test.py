@@ -1,0 +1,1 @@
+print("""\"On branch main\\nUntracked files:\\n  (use \\\"git add \\u003cfile\\u003e...\\\" to include in what will be committed)\\n\\t.preinstalled_tools/\\n\\nnothing added to commit but untracked files present (use \\\"git add\\\" to track)\\n* main\\n\"""")
