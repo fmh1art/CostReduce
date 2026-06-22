@@ -9,6 +9,10 @@ Robust path selection pattern:
 ```bash
 if [ -d ./.pre_install_tools ]; then
   TOOLS=./.pre_install_tools
+elif [ -d /app/.pre_install_tools ]; then
+  TOOLS=/app/.pre_install_tools
+elif [ -d /workspace/.pre_install_tools ]; then
+  TOOLS=/workspace/.pre_install_tools
 elif [ -d /workspace/quick_map ]; then
   TOOLS=/workspace
 else
