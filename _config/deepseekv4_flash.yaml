@@ -1,0 +1,9 @@
+llm_name: deepseek-v4-flash
+key: sk-f13eaacffa984f0db934afdb5d4f5d67
+openai_base_url: https://api.deepseek.com
+temperature: 0.01
+
+price_yuan_per_million_token:
+  input_token: 1
+  output_token: 2
+  cached_token: 0.02

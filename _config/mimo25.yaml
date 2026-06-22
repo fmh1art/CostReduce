@@ -1,0 +1,9 @@
+llm_name: mimo-v2.5-pro
+key: sk-c9bb0kdfpbjcq9pbovudukaw2xbh1wwd1izl17wj001dvtlq
+openai_base_url: https://api.xiaomimimo.com/v1
+cache_server_url: http://127.0.0.1:18731
+
+price_yuan_per_million_token:
+  input_token: 7
+  output_token: 21
+  cached_token: 2.8
