@@ -22,6 +22,30 @@ mapfile -t PROXY_ENV < <(proxy_env_args)
 # 生成传给 SWE-Atlas verifier 的 LLM judge 配置，使用 OpenAI-compatible Claude 接口评分。
 mapfile -t VERIFIER_ENV < <(verifier_env_args)
 
+# 可选：通过 EVOLVE_SKIP_FILE 跳过指定 case id（默认从 EVOLVE_SCRIPTS_DIR
+# 下的 evolve_used_case_id.txt 自动读取，可显式覆盖或置空禁用）。
+mapfile -t SKIP_ARGS < <(evolve_skip_exclude_args)
+
+# 可选：若设置了 EVOLVE_SCRIPTS_DIR，则把其下所有文件 bind mount 到容器
+# workspace 的辅助脚本目录（默认 /app/.preinstalled_scripts）。Harbor 的 Trial 层
+# 会自动追加 /logs/{agent,verifier,artifacts} 三个默认 bind mount，因此这里强制
+# EVOLVE_SCRIPTS_INCLUDE_DEFAULT_LOG_MOUNTS=0，避免重复挂载触发冲突。
+EVOLVE_MOUNTS_ARGS=()
+EVOLVE_PROMPT_ARGS=()
+EVOLVE_PROMPT_TEMPLATE=""
+if [[ -n "${EVOLVE_SCRIPTS_DIR:-}" ]]; then
+  EVOLVE_MOUNTS_JSON="$(EVOLVE_SCRIPTS_INCLUDE_DEFAULT_LOG_MOUNTS=0 evolve_scripts_mounts_json)"
+  if [[ -n "${EVOLVE_MOUNTS_JSON}" ]]; then
+    EVOLVE_MOUNTS_ARGS=(--mounts "${EVOLVE_MOUNTS_JSON}")
+  fi
+  EVOLVE_PROMPT_TEMPLATE="$(evolve_scripts_prompt_template)"
+  if [[ -n "${EVOLVE_PROMPT_TEMPLATE}" ]]; then
+    # 退出时清理临时模板文件。
+    trap '[[ -n "${EVOLVE_PROMPT_TEMPLATE:-}" && -f "${EVOLVE_PROMPT_TEMPLATE}" ]] && rm -f "${EVOLVE_PROMPT_TEMPLATE}"' EXIT
+    EVOLVE_PROMPT_ARGS=(--ak "prompt_template_path=${EVOLVE_PROMPT_TEMPLATE}")
+  fi
+fi
+
 # 依次评测 SWE_ATLAS_SPLITS 指定的 split；默认只跑 qa，便于先做 1 个 case 的 smoke test。
 for split in ${SWE_ATLAS_SPLITS//,/ }; do
   # 使用 Harbor 在当前 split 上运行 mini-swe-agent，并加载该 split 专用的 mswea 配置。
@@ -38,6 +62,9 @@ for split in ${SWE_ATLAS_SPLITS//,/ }; do
     --job-name "$RUN_ID" \
     --ak "config_file=$ROOT_DIR/benchmark/SWE-Atlas/run_config/${split}/mswea_${split}_config.yaml" \
     --yes \
+    "${EVOLVE_MOUNTS_ARGS[@]}" \
+    "${EVOLVE_PROMPT_ARGS[@]}" \
+    "${SKIP_ARGS[@]}" \
     "${AGENT_ENV[@]}" \
     "${PROXY_ENV[@]}" \
     "${VERIFIER_ENV[@]}"

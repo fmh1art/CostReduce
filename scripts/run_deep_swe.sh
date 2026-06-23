@@ -16,21 +16,22 @@ mkdir -p "$RESULTS_DIR/deep-swe"
 # 生成传给 mini-swe-agent 容器/进程的 OpenAI-compatible 环境变量参数。
 mapfile -t AGENT_ENV < <(agent_env_args)
 
-# 可选：通过 EVOLVE_SKIP_FILE 跳过指定 case id（默认从 EVOLVE_TOOLS_DIR
+# 可选：通过 EVOLVE_SKIP_FILE 跳过指定 case id（默认从 EVOLVE_SCRIPTS_DIR
 # 下的 evolve_used_case_id.txt 自动读取，可显式覆盖或置空禁用）。
 mapfile -t SKIP_ARGS < <(evolve_skip_exclude_args)
 
-# 可选：若设置了 EVOLVE_TOOLS_DIR，则把其下所有文件 bind mount 到容器 workspace
-# 根目录（默认 /app）。未设置时保持空，沿用 Pier 默认 mounts 与默认 code agent。
+# 可选：若设置了 EVOLVE_SCRIPTS_DIR，则把其下所有文件 bind mount 到容器
+# workspace 的辅助脚本目录（默认 /app/.preinstalled_scripts）。未设置时保持空，
+# 沿用 Pier 默认 mounts 与默认 code agent。
 EVOLVE_MOUNTS_ARGS=()
 EVOLVE_PROMPT_ARGS=()
 EVOLVE_PROMPT_TEMPLATE=""
-if [[ -n "${EVOLVE_TOOLS_DIR:-}" ]]; then
-  EVOLVE_MOUNTS_JSON="$(evolve_tools_mounts_json)"
+if [[ -n "${EVOLVE_SCRIPTS_DIR:-}" ]]; then
+  EVOLVE_MOUNTS_JSON="$(evolve_scripts_mounts_json)"
   if [[ -n "${EVOLVE_MOUNTS_JSON}" ]]; then
     EVOLVE_MOUNTS_ARGS=(--mounts-json "${EVOLVE_MOUNTS_JSON}")
   fi
-  EVOLVE_PROMPT_TEMPLATE="$(evolve_tools_prompt_template)"
+  EVOLVE_PROMPT_TEMPLATE="$(evolve_scripts_prompt_template)"
   if [[ -n "${EVOLVE_PROMPT_TEMPLATE}" ]]; then
     # 退出时清理临时模板文件。
     trap '[[ -n "${EVOLVE_PROMPT_TEMPLATE:-}" && -f "${EVOLVE_PROMPT_TEMPLATE}" ]] && rm -f "${EVOLVE_PROMPT_TEMPLATE}"' EXIT

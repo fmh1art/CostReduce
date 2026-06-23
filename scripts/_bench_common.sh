@@ -16,16 +16,20 @@ VERIFIER_MODEL="${VERIFIER_MODEL:-claude-opus-4-5-20251101}"
 HARBOR_ENV="${HARBOR_ENV:-docker}"
 UV_BIN="${UV_BIN:-uv}"
 
-# 可选：要 bind mount 到容器 workspace 根目录的工具目录。
+# 可选：要 bind mount 到容器 workspace 根目录的辅助 bash 脚本目录。
 # 不设或为空时，沿用 Pier 默认行为（不附加任何额外挂载，使用默认的 code agent）。
-EVOLVE_TOOLS_DIR="${EVOLVE_TOOLS_DIR:-}"
-# 容器内 workspace 根目录下用于盛放 evolve tools 的子目录。
+EVOLVE_SCRIPTS_DIR="${EVOLVE_SCRIPTS_DIR:-}"
+# 容器内 workspace 根目录下用于盛放 evolve 辅助 bash 脚本的子目录。
 # 单独放进一个隐藏子目录，避免与任务自带的 monorepo 顶层条目混在一起、误导 agent。
-EVOLVE_TOOLS_TARGET="${EVOLVE_TOOLS_TARGET:-/app/.preinstalled_tools}"
-# 是否以只读方式挂载 evolve tools。默认只读，避免容器内污染 host 上的工具目录。
-EVOLVE_TOOLS_READONLY="${EVOLVE_TOOLS_READONLY:-1}"
+EVOLVE_SCRIPTS_TARGET="${EVOLVE_SCRIPTS_TARGET:-/app/.preinstalled_scripts}"
+# 是否以只读方式挂载 evolve 辅助 bash 脚本。默认只读，避免容器内污染 host 上的脚本目录。
+EVOLVE_SCRIPTS_READONLY="${EVOLVE_SCRIPTS_READONLY:-1}"
+# 是否在生成的 mounts JSON 中显式带上 logs/{agent,verifier,artifacts} 三个默认 bind mount。
+# - 1（默认，Pier）：显式带上，因为 Pier 显式传 --mounts-json 会覆盖默认 mount。
+# - 0（Harbor 等）：跳过，由调度器（Trial 层）自行追加，否则会重复挂载。
+EVOLVE_SCRIPTS_INCLUDE_DEFAULT_LOG_MOUNTS="${EVOLVE_SCRIPTS_INCLUDE_DEFAULT_LOG_MOUNTS:-1}"
 # 可选：跳过执行的 case id 列表文件，每行一个 task name（支持 glob）。
-# 设为 "auto"（默认）时：若 EVOLVE_TOOLS_DIR 非空且目录下存在
+# 设为 "auto"（默认）时：若 EVOLVE_SCRIPTS_DIR 非空且目录下存在
 # evolve_used_case_id.txt 则使用之；否则不跳过任何 case。也可显式设置成具体路径
 # 或空字符串以禁用。
 EVOLVE_SKIP_FILE="${EVOLVE_SKIP_FILE-auto}"
@@ -96,63 +100,69 @@ verifier_env_args() {
     --ve "no_proxy=localhost,127.0.0.1,::1"
 }
 
-evolve_tools_mounts_json() {
-  # 根据 EVOLVE_TOOLS_DIR / EVOLVE_TOOLS_TARGET 生成 Pier --mounts-json 参数。
+evolve_scripts_mounts_json() {
+  # 根据 EVOLVE_SCRIPTS_DIR / EVOLVE_SCRIPTS_TARGET 生成 Pier --mounts-json 参数。
   #
   # 入参（来自环境变量）：
-  #   EVOLVE_TOOLS_DIR       host 上要 bind mount 进容器的工具目录。空则不生成。
-  #   EVOLVE_TOOLS_TARGET    容器内挂载根目录，默认 /app。
-  #   EVOLVE_TOOLS_READONLY  1=只读（默认），0=读写。
+  #   EVOLVE_SCRIPTS_DIR       host 上要 bind mount 进容器的辅助 bash 脚本目录。空则不生成。
+  #   EVOLVE_SCRIPTS_TARGET    容器内挂载根目录，默认 /app/.preinstalled_scripts。
+  #   EVOLVE_SCRIPTS_READONLY  1=只读（默认），0=读写。
   #
   # 输出：
-  #   stdout 打印一行 JSON 字符串。EVOLVE_TOOLS_DIR 为空时打印空串。
+  #   stdout 打印一行 JSON 字符串。EVOLVE_SCRIPTS_DIR 为空时打印空串。
   #
   # 说明：因为显式传 --mounts-json 会覆盖 Pier 默认的 logs/agent、logs/verifier、
   # logs/artifacts 三个 bind mount，所以这里同时把这三个默认 mount 加回去，
   # 否则 agent/verifier 日志和 artifact 都会丢失。
-  local tools_dir="${EVOLVE_TOOLS_DIR:-}"
-  if [[ -z "${tools_dir}" ]]; then
+  local scripts_dir="${EVOLVE_SCRIPTS_DIR:-}"
+  if [[ -z "${scripts_dir}" ]]; then
     printf ''
     return 0
   fi
-  if [[ ! -d "${tools_dir}" ]]; then
-    echo "[evolve_tools_mounts_json] EVOLVE_TOOLS_DIR='${tools_dir}' is not a directory" >&2
+  if [[ ! -d "${scripts_dir}" ]]; then
+    echo "[evolve_scripts_mounts_json] EVOLVE_SCRIPTS_DIR='${scripts_dir}' is not a directory" >&2
     return 1
   fi
 
-  EVOLVE_TOOLS_DIR_ABS="$(cd "${tools_dir}" && pwd)" \
-  EVOLVE_TOOLS_TARGET="${EVOLVE_TOOLS_TARGET}" \
-  EVOLVE_TOOLS_READONLY="${EVOLVE_TOOLS_READONLY}" \
+  EVOLVE_SCRIPTS_DIR_ABS="$(cd "${scripts_dir}" && pwd)" \
+  EVOLVE_SCRIPTS_TARGET="${EVOLVE_SCRIPTS_TARGET}" \
+  EVOLVE_SCRIPTS_READONLY="${EVOLVE_SCRIPTS_READONLY}" \
+  EVOLVE_SCRIPTS_INCLUDE_DEFAULT_LOG_MOUNTS="${EVOLVE_SCRIPTS_INCLUDE_DEFAULT_LOG_MOUNTS}" \
   python - <<'PY'
 import json
 import os
 from pathlib import Path
 
-tools_dir = Path(os.environ["EVOLVE_TOOLS_DIR_ABS"])
-target_root = os.environ.get("EVOLVE_TOOLS_TARGET", "/app").rstrip("/") or "/"
-read_only = os.environ.get("EVOLVE_TOOLS_READONLY", "1") not in ("0", "", "false", "False")
+scripts_dir = Path(os.environ["EVOLVE_SCRIPTS_DIR_ABS"])
+target_root = os.environ.get("EVOLVE_SCRIPTS_TARGET", "/app/.preinstalled_scripts").rstrip("/") or "/"
+read_only = os.environ.get("EVOLVE_SCRIPTS_READONLY", "1") not in ("0", "", "false", "False")
+include_default_logs = os.environ.get("EVOLVE_SCRIPTS_INCLUDE_DEFAULT_LOG_MOUNTS", "1") not in ("0", "", "false", "False")
 
 # 占位符，使用 Pier docker compose env 中 DockerEnvironmentEnvVars 注入的变量，
 # 让 docker compose 在容器启动时把 logs 目录绑回宿主机。
-mounts = [
-    {
-        "type": "bind",
-        "source": "${HOST_VERIFIER_LOGS_PATH}",
-        "target": "${ENV_VERIFIER_LOGS_PATH}",
-    },
-    {
-        "type": "bind",
-        "source": "${HOST_AGENT_LOGS_PATH}",
-        "target": "${ENV_AGENT_LOGS_PATH}",
-    },
-    {
-        "type": "bind",
-        "source": "${HOST_ARTIFACTS_PATH}",
-        "target": "${ENV_ARTIFACTS_PATH}",
-    },
-]
+# Harbor 的 Trial 层会自动在 user mounts 之前追加这三个默认 bind mount，
+# 因此 Harbor 调用方应将 EVOLVE_SCRIPTS_INCLUDE_DEFAULT_LOG_MOUNTS=0，避免重复挂载。
+mounts = []
+if include_default_logs:
+    mounts.extend([
+        {
+            "type": "bind",
+            "source": "${HOST_VERIFIER_LOGS_PATH}",
+            "target": "${ENV_VERIFIER_LOGS_PATH}",
+        },
+        {
+            "type": "bind",
+            "source": "${HOST_AGENT_LOGS_PATH}",
+            "target": "${ENV_AGENT_LOGS_PATH}",
+        },
+        {
+            "type": "bind",
+            "source": "${HOST_ARTIFACTS_PATH}",
+            "target": "${ENV_ARTIFACTS_PATH}",
+        },
+    ])
 
-for entry in sorted(tools_dir.iterdir()):
+for entry in sorted(scripts_dir.iterdir()):
     target = f"{target_root}/{entry.name}" if target_root != "/" else f"/{entry.name}"
     mount = {
         "type": "bind",
@@ -167,8 +177,8 @@ print(json.dumps(mounts))
 PY
 }
 
-evolve_tools_prompt_template() {
-  # 根据 EVOLVE_TOOLS_DIR 找到 instruction.md，并生成可供 Pier
+evolve_scripts_prompt_template() {
+  # 根据 EVOLVE_SCRIPTS_DIR 找到 instruction.md，并生成可供 Pier
   # --ak prompt_template_path=... 使用的 Jinja2 模板文件。
   #
   # 模板内容 = instruction.md 全文 + 分隔符 + "{{ instruction }}"。
@@ -176,17 +186,17 @@ evolve_tools_prompt_template() {
   # 渲染后再传给底层 agent（如 mini-swe-agent --task=...）。
   #
   # 入参（环境变量）：
-  #   EVOLVE_TOOLS_DIR  host 上工具目录；空则不生成。
+  #   EVOLVE_SCRIPTS_DIR  host 上辅助 bash 脚本目录；空则不生成。
   #
   # 输出：
-  #   stdout 打印临时模板文件路径；EVOLVE_TOOLS_DIR 为空或不存在 instruction.md 时打印空串。
+  #   stdout 打印临时模板文件路径；EVOLVE_SCRIPTS_DIR 为空或不存在 instruction.md 时打印空串。
   #
   # 注意：调用方需要在退出时清理该临时文件（用 trap 删除）。
-  local tools_dir="${EVOLVE_TOOLS_DIR:-}"
-  if [[ -z "${tools_dir}" ]]; then
+  local scripts_dir="${EVOLVE_SCRIPTS_DIR:-}"
+  if [[ -z "${scripts_dir}" ]]; then
     return 0
   fi
-  local instr="${tools_dir%/}/instruction.md"
+  local instr="${scripts_dir%/}/instruction.md"
   if [[ ! -f "${instr}" ]]; then
     return 0
   fi
@@ -205,7 +215,7 @@ evolve_skip_exclude_args() {
   #
   # 解析规则：
   #   - EVOLVE_SKIP_FILE="auto"（默认）：
-  #       若 EVOLVE_TOOLS_DIR 非空且其下存在 evolve_used_case_id.txt，则使用之；
+  #       若 EVOLVE_SCRIPTS_DIR 非空且其下存在 evolve_used_case_id.txt，则使用之；
   #       否则不输出任何参数。
   #   - EVOLVE_SKIP_FILE=""：禁用。
   #   - EVOLVE_SKIP_FILE=<path>：强制使用该文件，若不存在则报错。
@@ -214,9 +224,9 @@ evolve_skip_exclude_args() {
   # 忽略空行和以 # 开头的注释行；前后空白会被 strip。
   local skip_file="${EVOLVE_SKIP_FILE-auto}"
   if [[ "${skip_file}" == "auto" ]]; then
-    if [[ -n "${EVOLVE_TOOLS_DIR:-}" ]] \
-      && [[ -f "${EVOLVE_TOOLS_DIR%/}/evolve_used_case_id.txt" ]]; then
-      skip_file="${EVOLVE_TOOLS_DIR%/}/evolve_used_case_id.txt"
+    if [[ -n "${EVOLVE_SCRIPTS_DIR:-}" ]] \
+      && [[ -f "${EVOLVE_SCRIPTS_DIR%/}/evolve_used_case_id.txt" ]]; then
+      skip_file="${EVOLVE_SCRIPTS_DIR%/}/evolve_used_case_id.txt"
     else
       return 0
     fi
@@ -237,4 +247,40 @@ evolve_skip_exclude_args() {
     [[ "${line}" == \#* ]] && continue
     printf '%s\n%s\n' '-x' "${line}"
   done < "${skip_file}"
+}
+
+evolve_skip_file_resolved() {
+  # 与 evolve_skip_exclude_args 共用同一套解析规则，但只输出最终解析到的 skip 文件路径。
+  # 适用于将 skip 文件直接传给非 pier/harbor 类（如 DataMind 的 --skip-case-id-txt）的入口。
+  # 解析失败或禁用时不输出任何内容（成功返回）。
+  local skip_file="${EVOLVE_SKIP_FILE-auto}"
+  if [[ "${skip_file}" == "auto" ]]; then
+    if [[ -n "${EVOLVE_SCRIPTS_DIR:-}" ]] \
+      && [[ -f "${EVOLVE_SCRIPTS_DIR%/}/evolve_used_case_id.txt" ]]; then
+      skip_file="${EVOLVE_SCRIPTS_DIR%/}/evolve_used_case_id.txt"
+    else
+      return 0
+    fi
+  fi
+  if [[ -z "${skip_file}" ]]; then
+    return 0
+  fi
+  if [[ ! -f "${skip_file}" ]]; then
+    echo "[evolve_skip_file_resolved] EVOLVE_SKIP_FILE='${skip_file}' not found" >&2
+    return 1
+  fi
+  printf '%s\n' "${skip_file}"
+}
+
+evolve_instruction_md_path() {
+  # 输出 EVOLVE_SCRIPTS_DIR 下 instruction.md 的绝对路径；不存在则不输出。
+  local scripts_dir="${EVOLVE_SCRIPTS_DIR:-}"
+  if [[ -z "${scripts_dir}" ]]; then
+    return 0
+  fi
+  local instr="${scripts_dir%/}/instruction.md"
+  if [[ ! -f "${instr}" ]]; then
+    return 0
+  fi
+  printf '%s\n' "${instr}"
 }
