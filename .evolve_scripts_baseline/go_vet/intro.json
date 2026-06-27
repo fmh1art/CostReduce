@@ -1,0 +1,19 @@
+{
+  "name": "go_vet",
+  "description": "Run go vet on a Go project to check for common errors and suspicious constructs. Supports package paths (e.g. ./..., ./pkg/...), build tags, and output limiting to prevent token overflow.",
+  "when_to_use": "Use after modifying Go source files to check for common issues before running tests. Replaces 'cd <project> && go vet ./... 2>&1 | head -30' with a single script call.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {"name": "project_root", "type": "string", "required": true, "description": "Root directory of the Go project (e.g. /app)"},
+    {"name": "package_path", "type": "string", "required": false, "description": "Package path to vet (default: './...'). Use '.' for root package only, or './pkg/...' for a subpackage."},
+    {"name": "--tags", "type": "string", "required": false, "description": "Go build tags (e.g. 'kqueue,dev')"},
+    {"name": "--max", "type": "int", "required": false, "description": "Maximum number of output lines to show (default: 30, use 0 for unlimited)"}
+  ],
+  "examples": [
+    {"call": "main.sh /app", "expected": "Vet all packages in /app, showing up to 30 lines of output."},
+    {"call": "main.sh /app ./pkg/...", "expected": "Vet only packages under /app/pkg/, showing up to 30 lines."},
+    {"call": "main.sh /app ./... --tags=kqueue,dev", "expected": "Vet all packages with build tags kqueue and dev."},
+    {"call": "main.sh /app . --max=50", "expected": "Vet only the root package, showing up to 50 lines."}
+  ],
+  "cost_saving_rationale": "Replaces 2-3 separate commands (cd to project, go vet with package path, optional head/tail for output filtering) with a single script call. The built-in --max flag prevents token overflow from verbose vet output, eliminating a separate head/grep step."
+}

@@ -1,0 +1,89 @@
+{
+  "name": "file_patch",
+  "description": "Reliable file patching using Python. Supports replace, stdin-replace, insert-before, insert-after, delete-matching, append, prepend, replace-range, replace-line, replace-block (brace-based, handles nested braces and string literals), replace-pyblock (Python indentation-based block replacement for functions/methods/classes), and stdin-replace-pyblock (read new Python block body from stdin via heredoc). More reliable than sed for multi-line edits and special characters (treats &, \\1-\\9, / as literal).",
+  "when_to_use": "Use instead of sed or inline Python heredoc scripts for any file modification - insertions, deletions, replacements, range replacements, block replacements, or multi-line edits. Replaces trial-and-error with sed escaping issues and eliminates the pattern of writing Python scripts for file patching. Particularly useful when line numbers shift after edits (sed with line numbers is fragile). The stdin-replace action is specifically designed to replace the common pattern of `python3 << 'PYEOF'` heredoc scripts that read a file, do a replace, and write it back - just pipe the old and new content through stdin with a '=====REPLACE=====' delimiter. Supports: replace, stdin-replace, insert-before, insert-after, delete-matching, append, prepend, replace-range, replace-line, replace-block.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {
+      "name": "file_path",
+      "type": "string",
+      "required": true,
+      "description": "Path to the file to modify"
+    },
+    {
+      "name": "action",
+      "type": "string",
+      "required": true,
+      "description": "Action: 'replace' (old->new, all occurrences), 'stdin-replace' (read old/new content from stdin via heredoc/pipe with '=====REPLACE=====' delimiter), 'insert-before' (insert before first pattern match), 'insert-after' (insert after first pattern match), 'delete-matching' (delete lines with pattern), 'append' (append to end of file), 'prepend' (prepend to beginning of file), 'replace-range' (replace content between start and end patterns, inclusive), 'replace-line' (replace first line matching pattern with new content), 'replace-block' (replace block from '{' to matching '}', handling nested braces and skipping braces inside string/template literals), 'replace-pyblock' (replace Python function/method/class body using indentation rules to find block boundaries), 'stdin-replace-pyblock' (read new Python block body from stdin via heredoc)."
+    },
+    {
+      "name": "pattern_or_old_or_start",
+      "type": "string",
+      "required": true,
+      "description": "For 'replace': the exact old text to replace (use \\n for newlines, \\t for tabs in multiline text). For 'stdin-replace': not used (content comes from stdin). For 'insert-before'/'insert-after'/'delete-matching'/'replace-line'/'replace-block': the search pattern (substring match). For 'replace-range': the start pattern marking the beginning of the range to replace (inclusive). For 'append'/'prepend': the text to add."
+    },
+    {
+      "name": "new_or_end_or_text",
+      "type": "string",
+      "required": false,
+      "description": "For 'replace': the new text to insert (use \\n for newlines, \\t for tabs). For 'stdin-replace': not used (content comes from stdin). For 'insert-before'/'insert-after': the text to insert. For 'replace-range': the end pattern marking the end of the range to replace (inclusive). For 'replace-block': the new body content (including both { and } braces). Not used for 'delete-matching', 'append', 'prepend', 'replace-line'."
+    },
+    {
+      "name": "new_text_for_range",
+      "type": "string",
+      "required": false,
+      "description": "For 'replace-range': the new text to replace the range with (use \\n for newlines, \\t for tabs). For 'replace-line': the new line content. Not used for other actions."
+    }
+  ],
+  "examples": [
+    {
+      "call": "main.sh evaluator/functions.go insert-after \"\\\"require\\\":\" \"\\\"require_cache_info\\\": \\u0026object.Builtin{\\\nTypes: []string{},\\\nFn: requireCacheInfoFn,\\\nStandalone: true,\\\nDoc: \\\"returns info about module cache\\\",\\n},\"",
+      "expected": "Inserts a new builtin entry after the require entry in the builtins map."
+    },
+    {
+      "call": "main.sh evaluator/functions.go delete-matching \"\\\"encoding/json\\\"\"",
+      "expected": "Removes the encoding/json import line from functions.go."
+    },
+    {
+      "call": "main.sh evaluator/modules.go replace \"import (\\n\\\"fmt\\\"\" \"import (\\n\\\"encoding/json\\\"\\n\\\"fmt\\\"\"",
+      "expected": "Adds encoding/json import before fmt in the import block."
+    },
+    {
+      "call": "main.sh evaluator/functions.go insert-before \"func doSource\" \"// requireFn was removed and moved to modules.go\"",
+      "expected": "Inserts a comment before the doSource function definition."
+    },
+    {
+      "call": "main.sh evaluator/functions.go delete-matching \"requireCache\"",
+      "expected": "Deletes all lines containing 'requireCache' from the file."
+    },
+    {
+      "call": "main.sh src/main.rs replace-range \"pub fn evaluate_with_evaluation\" \"pub fn get_value\" \"    pub fn new_method(...)\"",
+      "expected": "Replaces everything between the evaluate_with_evaluation method and the get_value method with new content."
+    },
+    {
+      "call": "main.sh src/main.rs replace-line \"#[derive(Debug)]\" \"#[derive(Debug, Clone)]\"",
+      "expected": "Replaces the first line containing '#[derive(Debug)]' with '#[derive(Debug, Clone)]'."
+    },
+    {
+      "call": "main.sh src/schema/actions/dto/getSchemaDTO/list.ts insert-before \"): ListSchemaDTO => {\" \"  definitions?: Map<string, ISchemaDTO>\"",
+      "expected": "Adds a 'definitions' parameter to the list DTO serialization function."
+    },
+    {
+      "call": "main.sh src/core/query/modifiers/added.ts replace-block \"): Modifier<ExtractTraits<T>,\" \"{\\n    const traits: Trait[] = [];\\n    for (const input of inputs) {\\n        if (isAspect(input)) {\\n            for (const t of input.traits) {\\n                traits.push(t);\\n            }\\n        } else if (isRelation(input)) {\\n            traits.push(input[$internal].trait);\\n        } else {\\n            traits.push(input as Trait);\\n        }\\n    }\\n    return createModifier(`added-${id}`, id, traits);\\n}\"",
+      "expected": "Replaces the function body (from '{' to matching '}') of the createAdded factory function, handling nested braces correctly."
+    },
+    {
+      "call": "main.sh path/to/file.ts stdin-replace << 'EOF'\nold code block here\n=====REPLACE=====\nnew code block here\nEOF",
+      "expected": "Uses heredoc-style input for multiline replacement. Everything before '=====REPLACE=====' is the old text to find, everything after is the new text. Replaces all occurrences. No escaping needed for multiline content."
+    },
+    {
+      "call": "main.sh src/api.py replace-pyblock \"def format_string\" \"def format_string(source_string: str, mode: Mode) -> str:\\n    \\\"\\\"\\\"Formats SQL string.\\\"\\\"\\\"\\n    ddl_result = _format_ddl_string(source_string, mode.line_length)\\n    if ddl_result is not None:\\n        return ddl_result\\n    analyzer = mode.dialect.initialize_analyzer(line_length=mode.line_length)\\n    return analyzer.format(source_string)\"",
+      "expected": "Replaces the body of the format_string function in the Python file, using indentation rules to find where the function ends. Handles decorators and nested functions correctly."
+    },
+    {
+      "call": "cat << 'PYEOF' | main.sh src/api.py stdin-replace-pyblock \"def format_string\"\\ndef format_string(source_string: str, mode: Mode) -> str:\\n    \\\"\\\"\\\"Formats SQL string.\\\"\\\"\\\"\\n    ddl_result = _format_ddl_string(source_string, mode.line_length)\\n    if ddl_result is not None:\\n        return ddl_result\\n    analyzer = mode.dialect.initialize_analyzer(line_length=mode.line_length)\\n    return analyzer.format(source_string)\\nPYEOF",
+      "expected": "Same as replace-pyblock, but reads the new function body from stdin via heredoc, avoiding shell escaping issues entirely. No need to escape quotes, indentation, or special characters."
+    }
+  ],
+  "cost_saving_rationale": "Replaces 5-20+ fragile sed commands (that fail when line numbers shift) with a single reliable call. Eliminates trial-and-error with sed escaping (special characters, multi-line patterns, indentation). Cuts token waste from failed sed attempts and subsequent fix-up commands. The pattern-based approach (searching for text content rather than line numbers) is robust to edits that shift line positions. The stdin-replace action specifically replaces the common pattern of writing inline Python scripts (python3 << 'PYEOF' ... PYEOF) with read/replace/write logic - just pipe old and new content through stdin with a delimiter. The replace-range action replaces the common pattern of writing inline Python scripts for finding and replacing code sections between two markers. The replace-line action replaces the pattern of using conditional Python logic to modify specific lines matching a pattern. The replace-block action eliminates the need for writing Python scripts that manually count braces - it automatically matches braces, handles nested braces, and skips braces inside string and template literals (e.g., `${var}` in TypeScript)."
+}

@@ -1,0 +1,19 @@
+{
+  "name": "python_import_manager",
+  "description": "Safely manage Python imports: add imports with proper placement (stdlib/third-party/local grouping), remove imports with usage checking, check if a name is used before removing, and list all imports grouped by category. Prevents accidental removal of still-used imports by analyzing the AST.",
+  "when_to_use": "Use when you need to add a new import to a Python file (the script places it in the correct import group automatically), remove an import (it checks if the imported name is still used elsewhere in the file first), verify whether an import can be safely removed, or inventory all imports in a file. Replaces the trial-and-error pattern of: adding an import inline -> later moving it to the top -> removing an import thinking it's unused -> then having to add it back because it was actually referenced. The AST-based usage check catches references like 'os.PathLike' (not just bare 'os') and distinguishes actual usage from comments/strings.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {"name": "file_path", "type": "string", "required": true, "description": "Path to the Python file to modify or inspect."},
+    {"name": "action", "type": "string", "required": true, "description": "Action: 'add' (add import with proper placement), 'remove' (remove import after checking usage), 'force-remove' (remove import without checking), 'check-usage' (check if a name is used), 'list' (list all imports grouped by category)."},
+    {"name": "import_stmt_or_name", "type": "string", "required": false, "description": "For 'add'/'remove'/'force-remove': the exact import statement (e.g., 'from contextlib import contextmanager', 'import os'). For 'check-usage': the name to check (e.g., 'os', 'contextmanager'). Not used for 'list'."}
+  ],
+  "examples": [
+    {"call": "main.sh src/app.py add \"from contextlib import contextmanager\"", "expected": "Adds the contextmanager import in the stdlib import section. If no stdlib imports exist, places it after the module docstring."},
+    {"call": "main.sh src/app.py remove \"import os\"", "expected": "Before removing, checks if 'os' is still used (e.g., os.path, os.PathLike). If used, reports error and refuses to remove. If unused, removes it."},
+    {"call": "main.sh src/app.py check-usage \"os\"", "expected": "Searches the AST for all references to 'os' (including os.PathLike, os.path.join, etc.) and reports each usage with line numbers and context."},
+    {"call": "main.sh src/app.py list", "expected": "Lists all imports grouped by category (stdlib, third_party, local) with line numbers."},
+    {"call": "main.sh src/app.py force-remove \"import platform\"", "expected": "Removes the import without checking if 'platform' is used. Use with caution."}
+  ],
+  "cost_saving_rationale": "Replaces 3-5+ trial-and-error steps when managing Python imports: instead of adding an import at the function definition (wrong place), then moving it to the top, then removing it thinking it's unused, then adding it back when tests fail \u2014 this script handles it in one call with correct placement and usage verification. The 'remove' action with built-in usage check prevents the common mistake of removing an import that is actually referenced (like removing 'import os' when 'os.PathLike' is used in type annotations), saving 2-3 fix-up steps. The AST-based analysis catches references that simple grep would miss (e.g., attribute access like 'os.path'). The 'add' action places imports in the correct group (stdlib vs third-party vs local) matching Python conventions, eliminating the need to manually find the right insertion point."
+}

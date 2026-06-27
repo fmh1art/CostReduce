@@ -1,0 +1,9 @@
+api_version: 2024-03-01-preview
+openai_base_url: https://aidp.bytedance.net/api/modelhub/online/v2/crawl
+key: K8Iwh3LaSiScQQX5HQMBFnbH2zXZtQV7
+llm_name: gpt-5.5-2026-04-24
+
+price_dollar_per_token:
+  input_token: 0.000015
+  output_token: 0.000120
+  cached_token: 0.0000015

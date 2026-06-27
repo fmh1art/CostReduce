@@ -1,0 +1,22 @@
+{
+    "name": "ts-typecheck",
+    "description": "Run TypeScript type-checking with tsc, filtering output to show errors compactly.",
+    "entrypoint": "main.sh",
+    "parameters": [
+      {"name": "tsconfig", "type": "string", "required": false,
+       "description": "Path to tsconfig.json, default uses --showConfig or auto-detect"},
+      {"name": "file", "type": "string", "required": false,
+       "description": "Single .ts file to type-check instead of full project"},
+      {"name": "-C, --dir", "type": "string", "required": false,
+       "description": "Directory to run tsc in"},
+      {"name": "--noEmit", "type": "bool", "required": false,
+       "description": "Do not emit outputs (default: true)"},
+      {"name": "--skipLibCheck", "type": "bool", "required": false,
+       "description": "Skip type-checking .d.ts files (default: true)"},
+      {"name": "--head", "type": "int", "required": false,
+       "description": "Show only first N lines of output, default 30"}
+    ],
+    "examples": [{"call": "/app/.preinstalled_scripts/ts-typecheck/main.sh global.tsconfig.json --head=20",
+                   "expected": "cli/templates/module-imports.ts(7,27): error TS1109: Expression expected."}],
+    "cost_saving_rationale": "Collapses the npx tsc + head pipeline into one step and avoids output noise, saving 1-2 agent steps per type-check."
+}

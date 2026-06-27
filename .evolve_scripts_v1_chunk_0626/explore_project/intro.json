@@ -1,0 +1,20 @@
+{
+  "name": "explore_project",
+  "description": "Quickly explore a project's structure: find source files (Python, Go, C, Rust, TypeScript), list top-level directories, count files by type, identify config files, and show key subdirectories. Auto-detects language based on file counts. Automatically excludes build artifact directories (target/, build/, dist/, node_modules/, .git/, .venv/) from all searches. Supports targeting a specific subdirectory with --subdir.",
+  "when_to_use": "Use at the very beginning of a task to understand the project layout. Replaces multiple 'find', 'ls', and 'wc' calls. Supports Python, Go, C, Rust, and TypeScript projects out of the box. For Rust projects, shows Cargo.toml/lock info, workspace members, and checks common workspace subdirectories (core/, cli/, engine/, parser/, ast/). Use --subdir <path> to explore a specific subdirectory (e.g., src/schema/) when you need a focused view of a particular module.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {"name": "project_root", "type": "string", "required": true, "description": "Root directory of the project (e.g. /app)"},
+    {"name": "lang", "type": "string", "required": false, "description": "Primary language: 'py' (Python), 'go' (Go), 'c' (C), 'rs' (Rust), 'ts' (TypeScript), or 'auto' (detect from project, default: auto)"},
+    {"name": "max_files", "type": "int", "required": false, "description": "Maximum number of source filenames to show (default: 50)"},
+    {"name": "--subdir", "type": "string", "required": false, "description": "Target a specific subdirectory within the project (e.g., src/schema). Shows directory structure, file counts, and source files limited to that subdirectory. Useful when you need to focus on a specific module rather than the whole project."}
+  ],
+  "examples": [
+    {"call": "main.sh /app", "expected": "Project structure overview with detected language, source files (excluding build artifacts), directory listing, file counts, config files, and key subdirectory listing."},
+    {"call": "main.sh /app ts 30", "expected": "Project overview treating /app as a TypeScript project, showing up to 30 .ts/.tsx source files."},
+    {"call": "main.sh /app rs", "expected": "Project overview treating /app as a Rust project, showing .rs files (excluding target/), Cargo config with workspace members, and src/ directory."},
+    {"call": "main.sh /app ts 50 --subdir src/schema", "expected": "Focused exploration of the src/schema subdirectory in a TypeScript project, showing up to 50 .ts/.tsx source files within that directory."},
+    {"call": "main.sh /app auto 100 --subdir src", "expected": "Explores the src/ directory with auto-detected language, showing up to 100 source files."}
+  ],
+  "cost_saving_rationale": "Combines 5-10 separate bash commands (find, ls, wc, multiple greps for config) into a single script call, cutting round trips and reducing output volume by only showing essential info in one pass. Excluding build artifact directories prevents token waste from showing compiled/generated files. The --subdir flag replaces the common pattern of running 'find <subdir> -type f -name \"*.ts\"' to focus on a specific module, saving an additional tool call."
+}

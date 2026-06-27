@@ -1,0 +1,179 @@
+{
+  "name": "go_runner",
+  "description": "Run common Go commands (build, test, run, vet, fmt, fmtcheck, fmtdiff, syncheck, gofmt, mod) in a project directory. Automatically cds to the project root, handles timeout, and supports verbose output, race detection, test cache cleaning, --stash for working on clean code, and --head/--tail output limiting. Supports --run flag to filter tests by name pattern, --rewrite for data-driven test frameworks (datadriven), --clean-cache to clear the test cache before running, and --go-timeout for Go native -timeout flag. Also supports --stash to stash working changes, run the command, then pop stash. Actions: fmtcheck (gofmt -e on a file, display formatted code without modifying), fmtdiff (gofmt -d on a file, show diff without modifying), syncheck (gofmt -e silently, exit code only, for checking Go syntax), and gofmt (gofmt -w on one or more files, formatting them in place).",
+  "when_to_use": "Use when working on Go projects. Replaces `cd <project> && go build/test/run/...` sequences. Particularly useful for: building Go packages (go build), running tests with filters (go test -run), running Go files directly (go run file.go), vetting code (go vet), and formatting (go fmt). Supports --count=1 for Go test caching bypass, --clean-cache to run `go clean -testcache` before tests, --race for race detection, --rewrite for data-driven test frameworks (datadriven) to auto-update test data, --go-timeout for Go native -timeout flag, and --stash for stash+command+pop workflow. The --run flag eliminates a separate grep step to find test names. The --stash flag replaces the 3-step stash+command+pop workflow with a single call. The --head/--tail options prevent token overflow from long build/test outputs by limiting output lines. The --rewrite flag replaces the pattern of running `go test -rewrite ...` and eliminates the need to search for the correct flag syntax in the project test framework. The --go-timeout flag passes Go native -timeout to `go test` separately from the bash timeout wrapper, replacing the pattern of manually adding `-timeout 60s` to the test command. The fmtcheck action replaces `gofmt -e file.go | head -N` patterns for checking formatting of specific files without modifying them. The fmtdiff action replaces `gofmt -d file.go` patterns for viewing formatting diffs. The syncheck action replaces `gofmt -e file.go > /dev/null 2>&1 && echo \"Syntax OK\" || echo \"Syntax errors\"` pattern for quickly checking Go syntax after file modifications. The gofmt action replaces `gofmt -w file1.go file2.go ...` patterns for formatting multiple specific files in one call, saving multiple separate gofmt -w calls.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {
+      "name": "project_root",
+      "type": "string",
+      "required": true,
+      "description": "Root directory of the Go project (e.g., /app)"
+    },
+    {
+      "name": "action",
+      "type": "string",
+      "required": true,
+      "description": "Action: 'build' (compile package), 'test' (run tests), 'run' (execute), 'vet' (static analysis), 'fmt' (format code in place via go fmt), 'fmtcheck' (check formatting of a specific Go file with gofmt -e, no modifications), 'fmtdiff' (show formatting diff for a specific Go file with gofmt -d, no modifications), 'syncheck' (check Go syntax with gofmt -e silently, exit code only - returns 0 for syntax OK, 1 for syntax errors), 'gofmt' (format one or more Go files in place with gofmt -w, accepts space-separated file paths), 'mod' (module operations like tidy)"
+    },
+    {
+      "name": "target",
+      "type": "string",
+      "required": false,
+      "description": "Target package (e.g., '.' or './cmd/task'), file, or test path. For 'test', defaults to './...' (all packages). For 'mod', the subcommand (e.g., 'tidy'). For 'run', accepts a Go file path (e.g., '/tmp/test.go') or package. For 'fmtcheck' and 'fmtdiff', must be a specific file path (e.g., 'path/to/file.go'). For 'gofmt', can be one or more file paths separated by spaces (e.g., 'batch.go db.go')."
+    },
+    {
+      "name": "--timeout",
+      "type": "int",
+      "required": false,
+      "description": "Timeout in seconds (default: 60)"
+    },
+    {
+      "name": "--verbose|-v",
+      "type": "bool",
+      "required": false,
+      "description": "Verbose output"
+    },
+    {
+      "name": "--count",
+      "type": "int",
+      "required": false,
+      "description": "Test count (use --count=1 to bypass test caching)"
+    },
+    {
+      "name": "--run",
+      "type": "string",
+      "required": false,
+      "description": "Run only tests matching PATTERN (go test -run=PATTERN). Supports regex patterns like 'TestA|TestB'."
+    },
+    {
+      "name": "--race",
+      "type": "bool",
+      "required": false,
+      "description": "Enable Go race detector"
+    },
+    {
+      "name": "--clean-cache",
+      "type": "bool",
+      "required": false,
+      "description": "Run 'go clean -testcache' before running tests to clear stale cache"
+    },
+    {
+      "name": "--stash",
+      "type": "flag",
+      "required": false,
+      "description": "Stash uncommitted changes, run the go command on the clean working tree, then pop the stash. Useful for verifying the original code compiles before applying edits, or running tests on clean code."
+    },
+    {
+      "name": "--head",
+      "type": "int",
+      "required": false,
+      "description": "Show only first N lines of output. Useful for seeing compilation errors at the top without scrolling through all output. Replaces piping through 'head -N'."
+    },
+    {
+      "name": "--tail",
+      "type": "int",
+      "required": false,
+      "description": "Show only last N lines of output. Useful for seeing the test summary at the end of a test run. Replaces piping through 'tail -N'."
+    },
+    {
+      "name": "--rewrite",
+      "type": "flag",
+      "required": false,
+      "description": "Pass -rewrite flag to go test for data-driven test frameworks (e.g., datadriven in CockroachDB/Pebble). Tells the framework to rewrite test data files based on actual output."
+    },
+    {
+      "name": "--go-timeout",
+      "type": "string",
+      "required": false,
+      "description": "Go test/duration timeout passed as -timeout flag (e.g., 60s, 5m). This is the Go-native timeout for test execution, separate from the bash timeout wrapper (--timeout)."
+    }
+  ],
+  "examples": [
+    {
+      "call": "main.sh /app build ./cmd/task",
+      "expected": "Builds the task binary from ./cmd/task."
+    },
+    {
+      "call": "main.sh /app test ./... --count=1",
+      "expected": "Runs all tests bypassing cache."
+    },
+    {
+      "call": "main.sh /app test ./evaluator/... --run TestRequire -v",
+      "expected": "Runs only TestRequire in evaluator package with verbose output."
+    },
+    {
+      "call": "main.sh /app test ./... --clean-cache",
+      "expected": "Clears test cache, then runs all tests."
+    },
+    {
+      "call": "main.sh /app test ./evaluator/... --run TestRequire --clean-cache -v",
+      "expected": "Clears test cache, then runs only TestRequire with verbose output."
+    },
+    {
+      "call": "main.sh /app test ./... -v --race",
+      "expected": "Runs all tests with verbose output and race detection."
+    },
+    {
+      "call": "main.sh /app run /tmp/test_debug.go",
+      "expected": "Runs the Go file /tmp/test_debug.go directly."
+    },
+    {
+      "call": "main.sh /app run ./cmd/task -- --help",
+      "expected": "Runs the task binary with --help flag."
+    },
+    {
+      "call": "main.sh /app vet ./...",
+      "expected": "Runs go vet on all packages."
+    },
+    {
+      "call": "main.sh /app test ./evaluator/... --run TestRequire -v --tail 50",
+      "expected": "Runs TestRequire tests with verbose output, showing only the last 50 lines (test summary). Replaces piping through 'tail -50'."
+    },
+    {
+      "call": "main.sh /app build ./pkg/... --head 30",
+      "expected": "Builds the package and shows only the first 30 lines of output. Useful for quick compilation error check without scrolling through all warnings."
+    },
+    {
+      "call": "main.sh /app mod tidy",
+      "expected": "Runs go mod tidy to clean up dependencies."
+    },
+    {
+      "call": "main.sh /app test ./... --stash --run TestExisting",
+      "expected": "Stashes uncommitted changes, runs only TestExisting on clean code, then pops stash."
+    },
+    {
+      "call": "main.sh /app build --stash",
+      "expected": "Stashes changes, builds the project, then restores stashed changes."
+    },
+    {
+      "call": "main.sh /app fmtcheck path/to/file.go",
+      "expected": "Runs gofmt -e on the specified file to check formatting without modifying. Shows the formatted code. Useful for quickly checking if a specific file has formatting issues."
+    },
+    {
+      "call": "main.sh /app fmtdiff path/to/file.go",
+      "expected": "Runs gofmt -d on the specified file to show the diff of formatting changes without modifying. Exit code 0 means no formatting changes needed."
+    },
+    {
+      "call": "main.sh /app syncheck path/to/file.go",
+      "expected": "Checks Go syntax of the specified file silently. Returns 'Syntax OK: <file>' with exit code 0 if syntax is valid, or 'Syntax errors found: <file>' with exit code 1 if there are syntax errors. Replaces the pattern 'gofmt -e file.go > /dev/null 2>&1 && echo \"Syntax OK\" || echo \"Syntax errors\"'."
+    },
+    {
+      "call": "main.sh /app gofmt batch.go db.go",
+      "expected": "Formats both batch.go and db.go in place with gofmt -w. Replaces two separate 'gofmt -w batch.go' and 'gofmt -w db.go' calls, saving 1 tool call."
+    },
+    {
+      "call": "main.sh /app gofmt commit.go",
+      "expected": "Formats commit.go in place with gofmt -w."
+    },
+    {
+      "call": "main.sh /app test ./... --run \"TestEventListener$\" --rewrite",
+      "expected": "Runs TestEventListener tests with the -rewrite flag, which tells datadriven test frameworks to auto-update test data files based on actual output."
+    },
+    {
+      "call": "main.sh /app test ./... --run TestBatchDurable -v --rewrite --go-timeout 60s",
+      "expected": "Runs TestBatchDurable with verbose output, -rewrite flag for data-driven tests, and Go native -timeout=60s."
+    }
+  ],
+  "cost_saving_rationale": "Replaces 2-3 separate steps (cd to project, go command, optional flags) with a single script call. The --count=1 flag eliminates the common bug of stale test cache results. The --clean-cache flag combines `go clean -testcache` and `go test` in one call, saving an extra step. The --run flag lets you target specific tests without manually finding their names first, saving a grep step. The --rewrite flag eliminates searching for the correct -rewrite flag syntax and combines it with the test command, saving 1-2 tool calls. The --go-timeout flag eliminates the need to manually add -timeout flag to the go test command, preventing the common error of forgetting the timeout format (e.g., 60s vs 60). The --head/--tail options eliminate the need to pipe through head/tail for output limiting, preventing token overflow from long build/test outputs. The --stash flag replaces the 3-step stash+command+pop workflow (which is error-prone if stash pop is forgotten) with a single call, saving 2 tool calls each time you need to verify clean code. The fmtcheck action replaces `cd <project> && gofmt -e file.go 2>&1 | head -N` patterns, saving the cd step and output limiting pipe. The fmtdiff action replaces the same pattern for `gofmt -d`. The syncheck action replaces `gofmt -e file.go > /dev/null 2>&1 && echo \"Syntax OK\" || echo \"Syntax errors\"` pattern (saving 1 tool call) by combining the syntax check and result message into a single step. The gofmt action replaces `gofmt -w file1.go file2.go` patterns (saving 1 tool call when formatting multiple files) by accepting space-separated file paths in a single call. All actions eliminate the need to check if gofmt is installed separately. Reduces round trips by batching cd, command, and timeout into one step."
+}

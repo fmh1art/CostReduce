@@ -1,0 +1,16 @@
+{
+    "name": "gofmt-fix",
+    "description": "Check and fix Go source formatting with gofmt -l (list unformatted files) then optional gofmt -w (fix in place).",
+    "entrypoint": "main.sh",
+    "parameters": [
+      {"name": "files", "type": "string", "required": false,
+       "description": "One or more .go files or directories to check; default runs gofmt -l . on the working directory"},
+      {"name": "--fix, -w", "type": "bool", "required": false,
+       "description": "Fix unformatted files in place with gofmt -w after listing them"},
+      {"name": "-C, --dir", "type": "string", "required": false,
+       "description": "Working directory to run gofmt in"}
+    ],
+    "examples": [{"call": "/app/.preinstalled_scripts/gofmt-fix/main.sh --fix batch.go db.go",
+                   "expected": "batch.go\ndb.go\n---\n2 file(s) need formatting\nFormatted 2 file(s)"}],
+    "cost_saving_rationale": "Collapses the two-step gofmt -l (check) + gofmt -w (fix) pattern into one step, saving 1 agent step per formatting cycle."
+}

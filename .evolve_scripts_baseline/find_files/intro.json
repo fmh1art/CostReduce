@@ -1,0 +1,21 @@
+{
+  "name": "find_files",
+  "description": "Find files by extension/type under a given path, with optional path inclusion/exclusion filters, sorting, and result limits. Supports Python, Go, shell, config, and test files in one call.",
+  "when_to_use": "Use at the beginning of a task or anytime you need to locate files of specific types in a project. Replaces multiple 'find' and 'ls' calls with different filters. Preferred over ad-hoc find commands for routine file discovery.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {"name": "root_dir", "type": "string", "required": true, "description": "Root directory to search (e.g. /app)"},
+    {"name": "extensions", "type": "string", "required": false, "description": "Comma-separated file extensions to find, e.g. 'py,go,sh' (default: 'py')"},
+    {"name": "include_path", "type": "string", "required": false, "description": "Only include paths matching this pattern (e.g. 'pkg/services')"},
+    {"name": "exclude_path", "type": "string", "required": false, "description": "Exclude paths matching this pattern (e.g. 'migrations,venv,__pycache__')"},
+    {"name": "max_results", "type": "int", "required": false, "description": "Maximum number of results to show (default: 50, use 0 for unlimited)"},
+    {"name": "sort", "type": "bool", "required": false, "description": "Sort results alphabetically (default: false)"}
+  ],
+  "examples": [
+    {"call": "main.sh /app py", "expected": "List of up to 50 Python files under /app, excluding venv and __pycache__."},
+    {"call": "main.sh /app go,sh include_path=pkg/services sort=true", "expected": "Sorted list of Go and shell files under /app/pkg/services."},
+    {"call": "main.sh /app py exclude_path=migrations,venv max_results=200 sort=true", "expected": "Sorted list of up to 200 Python files, excluding migrations and venv directories."},
+    {"call": "main.sh /app go include_path=ngalert", "expected": "Go files under /app related to ngalert."}
+  ],
+  "cost_saving_rationale": "Combines 2-3 separate find commands (with different extensions, filters, sorting) into a single script call, reducing round trips. The exclusion patterns and result limits prevent token-wasting output of irrelevant files."
+}

@@ -1,0 +1,33 @@
+{
+  "name": "cargo_runner",
+  "description": "Run Cargo commands (build, test, check, clippy, run) with automatic output limiting and working directory management. Supports building specific packages, test filtering, error-only output mode, and result summarization. The --stash flag automatically stashes working changes before running and pops them after, enabling the common save-test-restore workflow in one call.",
+  "when_to_use": "Use when working on Rust projects with Cargo. Replaces 'cd <project> && cargo build 2>&1 | tail -30' sequences. Supports: build (compile with optional package filter), test (run tests with optional name filter), check (fast compilation check), clippy (linting), and run (execute binary). Use --tail to show only the last N lines of output (prevents token overflow from long compile outputs). Use --errors-only to show only error lines (useful for quick compilation checks after edits, replaces 'cargo build | grep -E \"^error\"'). Use --package to build/test a specific workspace member. Use --stash to stash changes, run the command on the clean working tree, then restore changes -- replaces the 3-step stash/build/pop workflow with a single call.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {"name": "project_root", "type": "string", "required": true, "description": "Root directory of the Rust/Cargo project (e.g., /app)"},
+    {"name": "action", "type": "string", "required": true, "description": "Action: 'build' (compile), 'test' (run tests), 'check' (fast compile check), 'clippy' (lint), 'run' (execute binary/example)"},
+    {"name": "--package/-p", "type": "string", "required": false, "description": "Specific workspace package to build/test (e.g., 'boa_engine'). Default: entire workspace."},
+    {"name": "--release", "type": "flag", "required": false, "description": "Build in release mode."},
+    {"name": "--tail/-t", "type": "int", "required": false, "description": "Show only the last N lines of output (default: 30 for build/check/clippy, 0/unlimited for test)."},
+    {"name": "--errors-only", "type": "flag", "required": false, "description": "Show only error lines (filters output to lines matching 'error' patterns). Useful for quick compilation error checks after edits, replaces 'cargo build 2>&1 | grep -E \"^error\"'."},
+    {"name": "--filter/-f", "type": "string", "required": false, "description": "For 'test' action: only run tests matching this name filter (passed to cargo test)."},
+    {"name": "--features", "type": "string", "required": false, "description": "Comma-separated feature flags to enable."},
+    {"name": "--target", "type": "string", "required": false, "description": "Build target (e.g., 'wasm32-unknown-unknown')."},
+    {"name": "--all-features", "type": "flag", "required": false, "description": "Enable all available features."},
+    {"name": "--no-default-features", "type": "flag", "required": false, "description": "Disable default features."},
+    {"name": "--manifest-path", "type": "string", "required": false, "description": "Path to a specific Cargo.toml (overrides project_root)."},
+    {"name": "--args", "type": "string", "required": false, "description": "Extra arguments to pass through to cargo (e.g., '-- --nocapture' for test)."},
+    {"name": "--stash", "type": "flag", "required": false, "description": "Stash uncommitted changes, run the cargo command on the clean working tree, then pop the stash. Useful for verifying the original code compiles before applying edits."}
+  ],
+  "examples": [
+    {"call": "main.sh /app build --package boa_engine --tail 30", "expected": "Builds the boa_engine package and shows last 30 lines of output."},
+    {"call": "main.sh /app build --package boa_engine --errors-only", "expected": "Builds boa_engine and shows only error lines. Useful after making edits to check for compilation errors without seeing warnings."},
+    {"call": "main.sh /app test --package boa_engine --filter cancellation", "expected": "Runs tests matching 'cancellation' in the boa_engine package."},
+    {"call": "main.sh /app check --package boa_engine", "expected": "Fast compile check of boa_engine."},
+    {"call": "main.sh /app clippy --package boa_engine", "expected": "Runs clippy linter on boa_engine package."},
+    {"call": "main.sh /app test --all-features --args '-- --nocapture'", "expected": "Runs all tests with all features enabled and stdout not captured."},
+    {"call": "main.sh /app check --stash", "expected": "Stashes current changes, runs cargo check on clean code, then restores stashed changes."},
+    {"call": "main.sh /app build --package boa_engine --stash", "expected": "Stashes changes, builds boa_engine, then restores changes."}
+  ],
+  "cost_saving_rationale": "Replaces 2-3 separate steps (cd to project, construct cargo command, pipe through tail or grep for output limiting) with a single script call. Eliminates the common error of forgetting --package or 2>&1 redirection. The --errors-only flag replaces the 'cargo build 2>&1 | grep -E \"^error\" | head -5' pattern with a single flag, saving an additional pipe/grep step when you only need error info. The --stash flag replaces the 3-step 'stash + cargo + pop' workflow with a single call, saving 2 tool calls each time you need to verify a clean build. The tail-based output limiting prevents token overflow from long compiler outputs (Rust compile errors can be hundreds of lines). The built-in test name filter avoids needing separate grep commands to find relevant test output."
+}

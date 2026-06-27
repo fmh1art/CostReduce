@@ -1,0 +1,20 @@
+{
+  "name": "source_reader",
+  "description": "Read source files with line numbers, search for patterns (function definitions, keywords), or view specific line ranges. Supports batch mode for reading multiple files in a single call using comma-separated file specs with optional line ranges, or glob patterns (e.g. '/path/to/*.go').",
+  "when_to_use": "Use when you need to examine source code. Replace multiple 'nl', 'sed', 'grep', 'cat', 'head' calls with one script. Use batch mode ('file1:1-50,file2:10-30,...' batch) to read multiple files at once, eliminating sequential cat/read steps. Use glob patterns ('/path/to/*.go' batch) to read all files matching a pattern.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {"name": "file_path_or_spec", "type": "string", "required": true, "description": "Path to the source file, or comma-separated file specs with optional :line_range suffix (e.g. 'file1.py:10-30,file2.py:40-60') for batch mode, or a glob pattern (e.g. '/path/to/*.go') for batch reading all matching files"},
+    {"name": "action", "type": "string", "required": false, "description": "Action: 'grep' (search single pattern), 'lines' (show line range), 'functions' (list def/class lines), 'all' (functions + first 50 lines, default), 'batch' (read multiple file specs at once)"},
+    {"name": "pattern_or_line_start", "type": "string", "required": false, "description": "For 'grep' action: pattern to search (default: 'def '). For 'lines' and 'all' actions: starting line number (default: 1)"},
+    {"name": "line_end", "type": "int", "required": false, "description": "Ending line number (used with lines action, default: 50 or end of file)"}
+  ],
+  "examples": [
+    {"call": "main.sh /app/app/email_utils.py functions", "expected": "All function/method definitions in the file with line numbers."},
+    {"call": "main.sh /app/email_handler.py grep contact", "expected": "All lines containing 'contact' with line numbers."},
+    {"call": "main.sh /app/app/models.py lines 1863 1950", "expected": "Lines 1863-1950 with line numbers."},
+    {"call": "main.sh '/app/src/documents/file_handling.py,/app/src/documents/models.py:1-100' batch", "expected": "First file fully, second file lines 1-100, all with line numbers in a single output."},
+    {"call": "main.sh '/app/internal/module/*.go' batch", "expected": "First 50 lines of every .go file under /app/internal/module/, with line numbers."}
+  ],
+  "cost_saving_rationale": "Replaces 2-3 separate tool calls (one to grep for functions, another to read specific lines) with a single script call. Batch mode eliminates 5-10 sequential cat/read steps by reading multiple files at once. Glob pattern support eliminates the need to manually list each file, further reducing round trips. Reduces token usage by combining output into one structured response."
+}

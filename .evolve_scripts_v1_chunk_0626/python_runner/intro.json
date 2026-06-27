@@ -1,0 +1,67 @@
+{
+  "name": "python_runner",
+  "description": "Run Python files or inline Python expressions within a project context. Supports run (execute a .py file), eval (run inline Python code), script (read Python code from stdin via heredoc/pipe), and test (run Python unittest/pytest tests) actions. All actions support configurable timeout, output limiting, and safe environment variable loading. **Auto-detects and activates virtualenv** (venv/, .venv/, env/, virtualenv/) so you don't need to worry about 'source: not found' errors or manually activating venvs. **Auto-detects and safely loads .env files** using Python-based parsing (avoiding the fragile 'export $(grep ...)' approach that breaks on values with spaces or special characters). Optionally specify a custom --env-file path. Replaces the pattern of creating temp Python scripts for one-off analysis or code patching, while eliminating the common pitfalls of virtualenv activation and .env file loading.",
+  "when_to_use": "Use instead of creating temp Python scripts with heredoc and running them. The eval action runs inline Python expressions (replaces `cat > /tmp/script.py << 'PYEOF' ... PYEOF && python3 /tmp/script.py` pattern) without needing to create temp files. The script action reads Python code from stdin via heredoc or pipe, directly replacing the `python3 << 'PYEOF'` pattern used for file analysis, regex transformations, and data inspection -- no escaping needed for multiline code. The run action executes a Python file with automatic project root handling. The test action runs Python tests via unittest or pytest. **Particularly useful for Python projects with virtual environments and .env files** -- the script auto-detects venv and activates it (using '.' instead of 'source' for POSIX compatibility), and safely loads .env files using Python parsing (avoiding the 'export $(grep ... | xargs)' pitfall that fails on values with spaces, parentheses, or special characters). Use --env-file to specify a custom env file path. The timeout prevents Python processes from hanging indefinitely. Output limiting prevents token overflow from long outputs.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {
+      "name": "project_root",
+      "type": "string",
+      "required": true,
+      "description": "Root directory of the Python project (e.g., /app)"
+    },
+    {
+      "name": "action",
+      "type": "string",
+      "required": true,
+      "description": "Action: 'run' (execute a .py file), 'eval' (run inline Python code), 'script' (read Python code from stdin via heredoc/pipe), 'test' (run a Python test file or discover tests)"
+    },
+    {
+      "name": "target",
+      "type": "string",
+      "required": true,
+      "description": "For 'run'/'test': path to the file or directory (relative to project_root or absolute). For 'eval': inline Python code string. For 'script': optional description label (code is read from stdin)."
+    },
+    {
+      "name": "--timeout",
+      "type": "int",
+      "required": false,
+      "description": "Timeout in seconds (default: 60)"
+    },
+    {
+      "name": "--max-lines/-m",
+      "type": "int",
+      "required": false,
+      "description": "Maximum output lines to show (default: 100, use 0 for unlimited)"
+    },
+    {
+      "name": "--env-file",
+      "type": "string",
+      "required": false,
+      "description": "Path to a .env file to load environment variables from (relative to project_root or absolute). If not specified, auto-detects .env, env, .env.example, or example.env in the project root. Uses Python-based parsing to safely load variables, avoiding the fragile 'export $(grep ... | xargs)' approach that breaks on values with spaces, parentheses, or special characters."
+    }
+  ],
+  "examples": [
+    {
+      "call": "main.sh /app eval \"import re\\nwith open('src/environments/array.ts') as f:\\n    content = f.read()\\n    print('File length:', len(content))\\n    print('Has htmlBuilder:', 'htmlBuilder' in content)\"",
+      "expected": "Runs the inline Python code to analyze a source file without creating a temp script. Replaces `cat > /tmp/analysis.py << 'PYEOF' ... PYEOF && python3 /tmp/analysis.py`. Auto-detects and activates project venv if present."
+    },
+    {
+      "call": "main.sh /app run scripts/analyze.py",
+      "expected": "Runs the Python file from the project root. Auto-detects venv and .env file, activates venv, loads env vars, then runs the script."
+    },
+    {
+      "call": "main.sh /app test tests/unit_tests/ --max-lines 50",
+      "expected": "Runs pytest on the test directory with output limited to 50 lines. Auto-activates venv and loads .env if available."
+    },
+    {
+      "call": "main.sh /app script << 'PYEOF'\\nimport re\\nwith open('testdata/event_listener') as f:\\n    content = f.read()\\ncontent = re.sub(r'\\\\[JOB (\\\\d+)\\\\]', lambda m: f'[JOB {int(m.group(1))+1}]' if int(m.group(1)) >= 2 else m.group(0), content)\\nwith open('testdata/event_listener', 'w') as f:\\n    f.write(content)\\nprint(\"Updated job IDs\")\\nPYEOF",
+      "expected": "Runs the piped Python script on the project root. Replaces the pattern `python3 << 'PYEOF'` with a managed script call that handles venv activation, env loading, timeout, and output limiting automatically."
+    },
+    {
+      "call": "main.sh /app eval \"import os\\nfrom app import config\\nprint('DB_URI:', config.DB_URI[:50] if config.DB_URI else 'None')\\nprint('EMAIL_DOMAIN:', config.EMAIL_DOMAIN)\" --env-file /app/example.env",
+      "expected": "Runs inline Python that imports project modules. Loads env vars from example.env first (safely, avoiding shell export issues), then activates venv if available. This replaces the failing pattern of 'export $(grep -v \\'^#\\' example.env | xargs)' which breaks on values with spaces/special chars, and avoids 'source: not found' errors by using '.' for activation."
+    }
+  ],
+  "cost_saving_rationale": "Replaces 3-6 separate steps that are commonly needed when running Python code in project context: (1) finding and activating virtualenv, (2) loading .env files safely, (3) running Python code, (4) capturing output, (5) limiting output length, (6) timing out long-running commands. The eval action eliminates heredoc escaping issues and temp file cleanup. The script action directly replaces the common `python3 << 'PYEOF'` pattern with a managed call. **The venv auto-detection eliminates the 'source: not found' error** that occurs when using 'source' in non-bash shells (the script uses '.' instead). **The Python-based .env loading eliminates the 'export: bad variable name' error** that occurs when using `export $(grep -v '^#' .env | xargs)` on env files with values containing spaces, parentheses, or other special characters. This saves 2-4 tool calls by eliminating the trial-and-error of finding the right venv activation and env loading approach. The timeout prevents Python processes from hanging indefinitely. Output limiting prevents token overflow from long outputs."
+}

@@ -1,0 +1,12 @@
+{
+  "name": "find-src",
+  "description": "Find source files by extension(s), excluding common non-source dirs (node_modules, target, git). Supports --count to tally files.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {"name": "extension", "type": "string", "required": true, "description": "File extension without dot (e.g. go, ts, rs). Comma-separated for multiple (ts,js)."},
+    {"name": "directory", "type": "string", "required": false, "description": "Root directory to search (default: .)."},
+    {"name": "options", "type": "string", "required": false, "description": "Use --sort to sort, --head=N to limit, --count to tally."}
+  ],
+  "examples": [{"call": "main.sh ts,js src --sort", "expected": "Sorted list of ts/js files excluding non-source dirs."}],
+  "cost_saving_rationale": "Combines find with exclusions in one command, reducing failed attempts and output noise."
+}

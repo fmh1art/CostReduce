@@ -1,0 +1,14 @@
+{
+  "name": "search-src",
+  "description": "Grep for a pattern across source files, excluding non-source directories like node_modules and target. Supports --files-only and --head=N.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {"name": "pattern", "type": "string", "required": true, "description": "Grep pattern to search for."},
+    {"name": "extension", "type": "string", "required": false, "description": "File extension filter (e.g. go, ts, rs)."},
+    {"name": "directory", "type": "string", "required": false, "description": "Root directory (default: .)."},
+    {"name": "--files-only", "type": "bool", "required": false, "description": "List filenames only instead of matching lines."},
+    {"name": "--head=N", "type": "int", "required": false, "description": "Limit output to N results (default: 100)."}
+  ],
+  "examples": [{"call": "main.sh \"ConsistentHash\" go --files-only", "expected": "Filenames containing ConsistentHash."}],
+  "cost_saving_rationale": "Avoids grep --include failures on busybox, excludes non-source dirs, and limits output to reduce token cost."
+}

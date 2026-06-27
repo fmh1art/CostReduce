@@ -1,0 +1,68 @@
+# Cost-Saving Instructions
+
+## Batching
+- **Batch independent file reads**: When you need to read multiple source files, use the source_reader script's batch mode with comma-separated file specs (e.g., `file1.py:1-50,file2.py:10-30`) or glob patterns (e.g., `/path/to/*.go`). This cuts 5-10 sequential read steps into a single call.
+- **Combine related searches**: When investigating a feature, search for all related patterns in one multi_grep call rather than one pattern at a time. Use `|` to separate patterns (e.g., `"func require|func source|func doSource"` instead of three separate calls).
+- **Batch independent tool calls**: When multiple commands don't depend on each other's output, execute them in a single step using parallel tool calls.
+- **Use git_utils for full git workflow**: Batch your git operations - create a branch, stage files, check status, and commit using git_utils's `branch`, `add`, `status`, and `commit` actions rather than separate `cd <repo> && git ...` commands.
+- **Use file_patch for multi-line replacements instead of writing Python scripts to /tmp**: When you need to replace complex multi-line code blocks, use `file_patch <file> replace <old> <new>` with `\n` for newlines, or pipe via heredoc with `---SEPARATOR---`. This replaces the 4-6 step pattern of writing a Python script to /tmp, executing it, and cleaning up. For simple line-based operations (insert, delete, append, prepend), use the corresponding actions directly.
+- **Check Go syntax and vet in one workflow**: After editing Go files, use `gofmt_check <project> <file>` to verify syntax, then `go_vet <project>` to check for common issues, before running `go_build` or `run_tests --go`. This separates syntax errors from build and test errors.
+
+## Keeping output lean
+- **Read only what you need**: Use line-range and pattern-search actions (source_reader lines/grep) to read specific sections of source files. Avoid `cat` for large files.
+- **Limit early exploration**: Use explore_project to understand the project structure rather than dumping entire directory trees.
+- **Use precise file discovery**: When finding files, specify extension and path filters to avoid irrelevant results.
+- **Filter test output**: When running tests, use --grep to run only relevant test cases instead of the full suite.
+- **Filter grep results by file type**: When searching for patterns in a mixed-language project, use multi_grep's `include=` parameter to limit search to specific file extensions (e.g., `include=*.c,*.h` for C source files, `include=*.py` for Python files). This avoids wasting tokens on irrelevant files like generated code, vendor libraries, or lock files.
+- **Use source_reader for targeted line ranges**: When you know the approximate line numbers, use `source_reader <file> lines <start> <end>` instead of dumping the whole file with `cat`.
+- **Use file_patch instead of writing Python/temp scripts for file modifications**: When modifying source files, use `file_patch` with `replace`, `insert-before`, `insert-after`, `delete-matching`, `append`, or `prepend` actions. This avoids the verbose pattern of creating temporary Python scripts in /tmp and then executing them, which wastes tokens on script boilerplate.
+- **Limit go_vet output**: Use the `--max=N` flag to limit go_vet output to prevent token overflow from verbose vet diagnostics.
+
+## Language-specific guidance
+- **Go projects**: After exploring with `explore_project /app go`, use source_reader with glob patterns (e.g., `/app/internal/module/*.go` batch) to batch-read all implementation files in a package. Use `run_tests --go` for Go test execution with filtering (--grep), build tags (--tags), and repetition count (--count). Use `go_build` to compile Go projects and verify the binary in one step. Use `multi_grep` to search for function definitions and patterns across Go files. Use `gofmt_check <project> <file_or_dir>` to quickly verify Go syntax after edits. Use `go_vet <project> <package>` to check for common issues before running tests. When implementing new features, follow this workflow: edit → `gofmt_check` (syntax) → `go_build` (compile) → `go_vet` (lint) → `run_tests --go` (test). This separates different categories of errors and speeds up debugging.
+- **Python projects**: Use source_reader batch mode with comma-separated file specs to read multiple Python files at once. Use run_tests with --grep to filter tests.
+- **C/Python mixed projects**: Start with `explore_project /app c` to see both .c and .h files. Use multi_grep with `include=*.c,*.h` to search only C source files.
+- **Rust projects**: Start with `explore_project /app rs` to discover .rs files and Cargo.toml metadata. Use `rust_build` to compile the project in debug or release mode before running tests (separates compilation errors from test failures). Use `run_tests --rust` to run cargo tests with filtering. Use `find_files /app rs` to find specific Rust source files. Use source_reader with glob patterns (e.g., `/app/core/engine/src/*.rs` batch) to batch-read multiple Rust source files. Use multi_grep to search for function definitions and struct/enum patterns across Rust files. For Rust projects, exclude `target/` directory from file searches.
+- **TypeScript/JavaScript projects**: Start with `explore_project /app ts` to see .ts/.tsx files and package.json configuration. Use source_reader with glob patterns (e.g., `/app/ark/json-schema/*.ts` batch) to batch-read TypeScript source files. Use multi_grep with `include=*.ts,*.tsx` to search TypeScript files only, excluding node_modules. Use `run_tests --ts` to run tests with vitest/jest (auto-detects runner from package.json). Use `ts_check /app` to run TypeScript type checking (tsc --noEmit) with optional --grep to filter relevant errors. Use `prettier_fmt /app --write <files>` to auto-format TypeScript files.
+
+## Anti-patterns to avoid
+- **Don't `cat` entire large files** — use source_reader with line ranges or grep action.
+- **Don't run `cd <project> && find ... && ls ... && wc ...` separately** — use explore_project or find_files.
+- **Don't run multiple separate `find` commands for different file types** — use find_files with comma-separated extensions.
+- **Don't run sequential `grep` commands for each pattern** — use multi_grep with `|`-separated patterns in a single call.
+- **Don't run individual `grep ... | head -N` commands for each function/type you're looking for** — use multi_grep with all patterns combined.
+- **Don't `cd <project> && go build ...` with raw commands** — use `go_build <project>` which handles cd, output paths, and binary verification.
+- **Don't run `cd <project> && go test ...` with raw commands** — use `run_tests --go` which handles cd, filtering, build tags, and timeout.
+- **Don't run `cd <project> && git <command>` for each git operation** — use git_utils for the full workflow (branch, add, status, commit, log, diff, stash, config).
+- **Don't run `cd <project> && grep -n "pattern" file.py`** — use `source_reader <file> grep <pattern>` which includes line numbers and file info automatically.
+- **Don't run `cd <project> && sed -n '10,20p' file.py`** — use `source_reader <file> lines 10 20` which adds line numbers and file header.
+- **Don't run `cd <project> && grep -rn "pattern" --include="*.go"`** — use `multi_grep "pattern" <dir> include=*.go` which handles include filtering consistently.
+- **Don't run `cd <project> && gofmt -e file.go > /dev/null && echo "Syntax OK"`** — use `gofmt_check <project> <file>` which handles cd, checks syntax, and reports status clearly.
+- **Don't run `cd <project> && go vet ./... 2>&1 | head -30`** — use `go_vet <project>` which handles cd, runs vet, and limits output to prevent token overflow.
+- **Don't write Python scripts to /tmp just to patch source files** — use `file_patch <file> replace` with heredoc input or inline `\n`-escaped strings. This avoids shell escaping issues with Python heredocs and reduces 4-6 steps to 1 step.
+- **Don't use `npx prettier --write/--check` with raw cd commands** — use `prettier_fmt <project_root> --write/--check <targets>` which handles cd internally.
+- **Don't skip type checking before running TypeScript tests** — use `ts_check /app --grep=<feature>` before `run_tests --ts` to separate type errors from test failures.
+- **Don't read JavaScript files one by one with `cat`** — use `source_reader` batch mode with glob patterns (e.g., `/app/lib/*.js` batch) to read multiple JS files in a single call, cutting 5-10 sequential reads down to 1 step.
+- **Don't run raw `npx mocha path/to/test.js` commands** — use `run_tests path/to/test.js --js` or `run_tests path/to/test.js --runner="npx mocha"` which handles cd, --grep filtering, and timeouts in one call.
+- **Don't write test scripts to /tmp, copy, run, then delete** — use `py_script` or inline node -e commands for ad-hoc test validation instead of the 4-step write-copy-run-cleanup pattern.
+
+## General principles
+- Use scripts to encapsulate common multi-step procedures that appear repeatedly in the trajectory.
+- For Go projects: start with `explore_project /app go`, then use source_reader with glob patterns for batch file reading, multi_grep for pattern searches, `gofmt_check` for syntax verification, `go_build` for compilation, `go_vet` for lint checks, `run_tests --go` for testing, and git_utils for version control (branch, add, commit).
+- For Python/Django projects: start with explore_project, then use source_reader batch mode to read key files, multi_grep for pattern searches, and run_tests for test execution.
+- For C/Python mixed projects: start with `explore_project /app c` to see both .c and .h files. Use multi_grep with `include=*.c,*.h` to search only C source files, or `include=*.c,*.h,*.py` to search across languages.
+- For Rust projects: start with `explore_project /app rs`, then use source_reader with glob patterns for batch file reading, multi_grep for pattern searches, rust_build for compilation, and run_tests --rust for testing.
+- For TypeScript projects: start with `explore_project /app ts`, then use source_reader with glob patterns for batch file reading, multi_grep with `include=*.ts,*.tsx` for pattern searches, `run_tests --ts` for test execution, `ts_check /app` for type checking, `prettier_fmt /app --write` for formatting, and git_utils for version control.
+- For JavaScript/Node.js projects: start with `explore_project /app js`, then use source_reader with glob patterns for batch file reading, multi_grep with `include=*.js` for pattern searches, `run_tests --js` or `run_tests --runner="npx mocha"` for test execution, and git_utils for version control (branch, add, commit). Use `file_patch` for multi-line code replacements rather than writing Python scripts.
+- Prefer parameterized scripts over ad-hoc inline commands for routine tasks.
+- When the same pattern of commands appears 3+ times in a trajectory, consider if a script can replace them.
+- For exploring how code works (especially Rust, Go, C, TypeScript, or mixed-language projects), combine multi_grep for initial pattern discovery with source_reader for deep-diving into specific code sections.
+- Use git_utils for the complete git workflow: `config` (setup identity), `branch` (create feature branch), `add` (stage files), `status` (verify), `commit` (save changes), `log`/`show`/`diff` (inspect history), `stash` (temporarily save work). This avoids repetitive cd + git command boilerplate and covers the full development cycle.
+- When implementing new features in Go projects, follow the workflow: edit source → `gofmt_check` (verify syntax) → `go_build` (verify compilation) → `go_vet` (check for common issues) → `run_tests --go` (run tests). This separates build errors from test errors and speeds up debugging. Use `file_patch` for multi-line code replacements rather than writing Python scripts.
+- When implementing new features in Rust projects, use `rust_build` to verify compilation before running tests — this separates build errors from test errors and speeds up debugging.
+- When implementing new features in TypeScript projects, use `ts_check /app --grep=<feature>` to verify types before running tests — this separates type errors from test failures and speeds up debugging. Use `prettier_fmt /app --write <files>` to auto-format new/modified TypeScript files to match project style.
+- When implementing new features in JavaScript/Node.js projects, use `source_reader` batch mode to read all related source files, `multi_grep` to find patterns across JS files, `file_patch` for multi-line edits, `run_tests --js` or `run_tests --runner="npx mocha"` to run specific tests with --grep filtering, and `git_utils` for version control (branch, add, status, commit).
+- For creating new source files, use `cat <<'EOF' > path/to/file` heredoc syntax directly rather than multiple echo/sed commands, which are error-prone with special characters and indentation.
+- For editing existing Rust/Go/Python/TypeScript source files, use `file_patch` with `replace`, `insert-before`, `insert-after`, `delete-matching`, `append`, or `prepend` actions. This handles multi-line replacements reliably (unlike `sed -i` which struggles with multi-line patterns and special characters) and avoids the 4-6 step pattern of writing Python scripts to /tmp.
+- When you need to run complex Python-based file transformations that go beyond simple string replacement, use `py_script` with stdin (pipe Python code via heredoc) rather than writing a temporary script file to /tmp and then executing it.
+- For Go projects, use `gofmt_check <project>` to verify all modified files have valid syntax at once, rather than checking each file individually with `gofmt -e`.

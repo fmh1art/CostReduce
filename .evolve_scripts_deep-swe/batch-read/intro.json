@@ -1,0 +1,98 @@
+{
+  "name": "batch-read",
+  "description": "Read multiple files or line ranges in one invocation, optionally with line numbers, count, pattern filtering via --grep, context around matches via -C, --code-only to strip source file boilerplate, or --structure to list functions/classes/structs.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {
+      "name": "files",
+      "type": "string[]",
+      "required": true,
+      "description": "One or more file paths, optionally with :start-end line ranges"
+    },
+    {
+      "name": "--head=N",
+      "type": "int",
+      "required": false,
+      "description": "Show first N lines of each file"
+    },
+    {
+      "name": "--tail=N",
+      "type": "int",
+      "required": false,
+      "description": "Show last N lines of each file"
+    },
+    {
+      "name": "--lines=start-end",
+      "type": "string",
+      "required": false,
+      "description": "Show line range start-end for subsequent files"
+    },
+    {
+      "name": "--number",
+      "type": "bool",
+      "required": false,
+      "description": "Show line numbers via nl"
+    },
+    {
+      "name": "--count",
+      "type": "bool",
+      "required": false,
+      "description": "Show line count of each file (like wc -l)"
+    },
+    {
+      "name": "--grep=PATTERN",
+      "type": "string",
+      "required": false,
+      "description": "Show only lines matching an extended regex pattern"
+    },
+    {
+      "name": "-C=N, --context=N",
+      "type": "int",
+      "required": false,
+      "description": "Show N lines of context around --grep matches"
+    },
+    {
+      "name": "--code-only",
+      "type": "bool",
+      "required": false,
+      "description": "Strip package/import boilerplate from Go/Python source files"
+    },
+    {
+      "name": "--structure, -s",
+      "type": "bool",
+      "required": false,
+      "description": "List functions/classes/structs/interfaces in source files (language-aware)"
+    },
+    {
+      "name": "--summary",
+      "type": "bool",
+      "required": false,
+      "description": "Compact one-line summary with --structure"
+    },
+    {
+      "name": "--dir=PATH",
+      "type": "string",
+      "required": false,
+      "description": "Read all files in a directory, use with --include"
+    },
+    {
+      "name": "--include=GLOB",
+      "type": "string",
+      "required": false,
+      "description": "File glob filter for --dir (default: *)"
+    },
+    {
+      "name": "--cd=DIR",
+      "type": "string",
+      "required": false,
+      "description": "Change to DIR before reading files (replaces cd + read pattern)"
+    }
+  ],
+  "examples": [
+    {
+      "call": "/app/.preinstalled_scripts/batch-read/main.sh --head=50 file1.py file2.py:100-200",
+      "expected": "First 50 lines of file1.py, then lines 100-200 of file2.py"
+    }
+  ],
+  "cost_saving_rationale": "Collapses multiple cat/nl/sed-n/wc/grep/code-structure calls into one step, saving step costs and observation size; --cd replaces cd + read two-step pattern."
+}

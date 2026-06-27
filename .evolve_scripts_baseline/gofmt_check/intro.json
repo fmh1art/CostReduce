@@ -1,0 +1,16 @@
+{
+  "name": "gofmt_check",
+  "description": "Check Go source file(s) syntax using 'gofmt -e'. Reports whether files have valid Go syntax. Supports single files, directories (checks all .go files recursively), uses find to locate .go files excluding vendor/ and .git/.",
+  "when_to_use": "Use after editing Go source files to quickly verify syntax before building or running tests. Replaces the pattern of 'cd <project> && gofmt -e <file> > /dev/null && echo \"Syntax OK\" || echo \"Syntax errors\"' with a single script call. For single files or entire directories.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {"name": "project_root", "type": "string", "required": true, "description": "Root directory of the Go project (e.g. /app)"},
+    {"name": "target", "type": "string", "required": false, "description": "File or directory to check (default: '.' for the entire project). For directories, recursively checks all .go files."}
+  ],
+  "examples": [
+    {"call": "main.sh /app", "expected": "Check all Go files under /app for syntax errors."},
+    {"call": "main.sh /app event.go", "expected": "Check only /app/event.go for syntax errors."},
+    {"call": "main.sh /app ./pkg/", "expected": "Check all Go files under /app/pkg/ for syntax errors."}
+  ],
+  "cost_saving_rationale": "Replaces 2-3 separate commands (cd to project, gofmt -e, status check) with a single script call. Directory mode eliminates repetitive gofmt calls for each file. Provides a clean summary instead of raw error output, reducing token usage."
+}

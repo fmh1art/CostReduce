@@ -1,0 +1,16 @@
+{
+  "name": "create_file",
+  "description": "Create a new file with content, auto-creating parent directories. Supports literal text (single argument), reading from a source file (prefix with @), and reading from stdin (-). Avoids heredoc escaping issues in shell.",
+  "when_to_use": "Use when you need to create a new source file or config file. Replaces 2-3 attempted heredoc commands that often fail due to escaping issues. Supports multiple content sources: literal string, file reference, or stdin pipe. Use @filepath to copy an existing file, or use quoted text for inline content.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {"name": "file_path", "type": "string", "required": true, "description": "Path to the new file (e.g., evaluator/modules.go). Parent directories are created automatically."},
+    {"name": "content", "type": "string", "required": false, "description": "Content to write. Can be literal text (use quotes), @/path/to/src (copy file), or - (read from stdin). Default: empty file."}
+  ],
+  "examples": [
+    {"call": "main.sh evaluator/modules.go 'package evaluator\\n\\nfunc NewFunc() {}'", "expected": "Creates evaluator/modules.go with the provided content, auto-creating evaluator/ directory."},
+    {"call": "main.sh /app/config.json @/template/config.json", "expected": "Copies template file to the new location, auto-creating parent directories."},
+    {"call": "cat content.txt | main.sh /app/output.txt -", "expected": "Creates /app/output.txt with piped content."}
+  ],
+  "cost_saving_rationale": "Eliminates trial-and-error with heredoc escaping in shell (single quotes, variable interpolation, indentation issues). Combines mkdir -p and file creation into one step, reducing a common failure point. The @file feature avoids retyping or copying content manually."
+}

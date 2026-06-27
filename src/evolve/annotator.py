@@ -24,16 +24,22 @@ class TrajectoryAnnotator:
 
     For each action step `i`, the LLM is asked to list every previous step
     index `j` that step `i` depends on. The result is written back into the
-    trajectory file in-place.
+    trajectory file in-place. Here, "depends on" means that if the agent see all previous step j, it can generate the step i.
     """
+
+    name = "annotate"
 
     SYSTEM_PROMPT = (
         "You annotate dependency relations between trajectory steps. "
         "Step 0 is the initial state before any action. For current step i, "
-        "return every previous step index j that the action depends on: if the "
-        "action needs information from step j's action/observation, or could only "
-        "be generated correctly after seeing step j. Output only a JSON list of integers."
+        "return every previous step index j that the action depends on: as long as the "
+        "agent sees all previous step j, it can generate the step i. "
+        "Step 0 (initial state) is almost always required — include 0 in the list "
+        "unless step i truly needs no prior context. "
+        "Output only a JSON list of integers."
     )
+
+    MAX_OBSERVATION_CHARS = 800
 
     def __init__(self, config_path, workers: int = 1, retry_failed: int = 1):
         self.config_path = str(config_path)
@@ -65,6 +71,9 @@ class TrajectoryAnnotator:
                 f"failed to annotate {len(failures)} trajectory file(s) after retry: {failures}"
             )
         return paths
+
+    # Stage interface
+    run = annotate_dir
 
     def annotate_file(self, path, llm=None, step_workers: int = 1):
         llm = llm or LLM(self.config_path)
@@ -104,7 +113,11 @@ class TrajectoryAnnotator:
         try:
             data = json.loads(Path(path).read_text(encoding="utf-8"))
             dependencies = data.get("dependencies")
-            return isinstance(dependencies, dict) and bool(dependencies)
+            if not isinstance(dependencies, dict) or not dependencies:
+                return False
+            expected = len(TrajectoryAnnotator._extract_action_steps(data))
+            # action step indices are 1..expected; every one must be present
+            return all(str(i) in dependencies for i in range(1, expected + 1))
         except Exception:
             return False
 
@@ -120,8 +133,40 @@ class TrajectoryAnnotator:
         action = step.get("tool_calls") or step.get("action") or step.get("message") or ""
         observation = step.get("observation", "")
         return json.dumps(
-            {"action": action, "observation": observation}, ensure_ascii=False, default=str
+            {"action": action, "observation": TrajectoryAnnotator._clip_observation(observation)},
+            ensure_ascii=False,
+            default=str,
         )
+
+    @staticmethod
+    def _clip_observation(observation) -> str:
+        """Render observation as a compact string capped at MAX_OBSERVATION_CHARS."""
+        if isinstance(observation, dict) and isinstance(observation.get("results"), list):
+            parts = []
+            for item in observation["results"]:
+                content = item.get("content", item) if isinstance(item, dict) else item
+                if isinstance(content, str):
+                    try:
+                        parsed = json.loads(content)
+                        if isinstance(parsed, dict):
+                            bits = []
+                            if "returncode" in parsed:
+                                bits.append(f"returncode: {parsed.get('returncode')}")
+                            if parsed.get("output"):
+                                bits.append(f"output: {parsed.get('output')}")
+                            if parsed.get("exception_info"):
+                                bits.append(f"exception_info: {parsed.get('exception_info')}")
+                            content = "\n".join(bits) if bits else content
+                    except json.JSONDecodeError:
+                        pass
+                parts.append(content if isinstance(content, str) else json.dumps(content, ensure_ascii=False, default=str))
+            text = "\n".join(parts)
+        elif isinstance(observation, str):
+            text = observation
+        else:
+            text = json.dumps(observation, ensure_ascii=False, default=str)
+        max_chars = TrajectoryAnnotator.MAX_OBSERVATION_CHARS
+        return text if len(text) <= max_chars else text[:max_chars] + "...<truncated>"
 
     def _build_step_inputs(self, action_steps):
         step_texts = [self._step_text(step) for step in action_steps]
@@ -137,8 +182,10 @@ class TrajectoryAnnotator:
         text = (text or "").strip()
         if not text:
             raise DependencyParseError("empty LLM dependency output")
-        m = re.search(r"\[[\s\S]*?\]", text)
-        candidate = m.group(0) if m else text
+        # Take the LAST [...] in the text — LLMs sometimes emit reasoning
+        # before the final answer, and earlier brackets are usually not the answer.
+        matches = re.findall(r"\[[\s\S]*?\]", text)
+        candidate = matches[-1] if matches else text
         try:
             values = ast.literal_eval(candidate)
         except (SyntaxError, ValueError) as exc:
@@ -157,6 +204,9 @@ class TrajectoryAnnotator:
                 )
             if 0 <= i <= max_index and i not in deps:
                 deps.append(i)
+        # step 0 (initial state) is almost always required for action steps
+        if 0 not in deps and max_index >= 0:
+            deps.append(0)
         return deps
 
     def _annotate_step(self, path, i, total, current_step_text, history, llm):
@@ -225,7 +275,8 @@ class TrajectoryAnnotator:
             return []
 
         file_workers = min(self.workers, len(pending))
-        step_workers = max(1, self.workers // file_workers)
+        # ceil division so workers don't go idle when pending > workers
+        step_workers = max(1, -(-self.workers // file_workers))
         logger.info(
             "annotation parallelism: total_workers=%d, file_workers=%d, step_workers=%d, pending_files=%d",
             self.workers,

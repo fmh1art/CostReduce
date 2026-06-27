@@ -1,0 +1,12 @@
+{
+  "name": "run-test",
+  "description": "Run tests with concise output (PASS/FAIL summary only) to reduce token cost. Supports go, vitest, jest, pytest, cargo, and npm.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {"name": "tool", "type": "string", "required": true, "description": "Test tool: go, vitest, jest, pytest, cargo, or npm."},
+    {"name": "directory", "type": "string", "required": true, "description": "Project directory containing tests."},
+    {"name": "test_args", "type": "string", "required": false, "description": "Test package/file/name to run (optional)."}
+  ],
+  "examples": [{"call": "main.sh go /app ./evaluator/...", "expected": "Summarized test output with PASS/FAIL lines."}],
+  "cost_saving_rationale": "Filters verbose test output to only PASS/FAIL lines and tail, dramatically reducing token cost vs full output."
+}

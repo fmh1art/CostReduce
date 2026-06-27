@@ -1,0 +1,50 @@
+{
+    "name": "multi-file-edit",
+    "description": "Apply structured edits to files matching a glob, or a Python transform over file content.",
+    "entrypoint": "main.sh",
+    "parameters": [
+        {
+            "name": "file_or_glob",
+            "type": "string",
+            "required": true,
+            "description": "File path or glob (**/*.go, ./pkg/**/*.ts)"
+        },
+        {
+            "name": "mode",
+            "type": "string",
+            "required": true,
+            "description": "--replace <old> <new> [pairs], --insert-before/after <pat> <txt>, --delete-matching <pat>, --append/--prepend <txt>, --write [content], or --transform[-file/-stdin] <python>"
+        },
+        {
+            "name": "--dry-run",
+            "type": "bool",
+            "required": false,
+            "description": "Show matching files without editing"
+        },
+        {
+            "name": "--transform",
+            "type": "string",
+            "required": false,
+            "description": "Inline Python receiving 'content' var to modify"
+        },
+        {
+            "name": "--transform-file",
+            "type": "string",
+            "required": false,
+            "description": "Python script file receiving 'content' var"
+        },
+        {
+            "name": "--transform-stdin",
+            "type": "bool",
+            "required": false,
+            "description": "Read Python transform from stdin (heredoc)"
+        }
+    ],
+    "examples": [
+        {
+            "call": "/app/.preinstalled_scripts/multi-file-edit/main.sh batch.go --replace 'old string' 'new string'",
+            "expected": "Applied 1 replacement(s) to batch.go"
+        }
+    ],
+    "cost_saving_rationale": "Batches multi-file/regex edits and Python transforms into one step, saving 1-2 steps per edit."
+}

@@ -1,0 +1,13 @@
+{
+  "name": "edit-file",
+  "description": "Edit source files safely: insert lines before/after a pattern, replace text (single or multi-line blocks), or check for patterns.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {"name": "action", "type": "string", "required": true, "description": "insert-before, insert-after, replace, replace-all, replace-block, show, or check."},
+    {"name": "file", "type": "string", "required": true, "description": "Path to the file to edit."},
+    {"name": "pattern", "type": "string", "required": true, "description": "Search pattern (sed regex), line number, or path to old-text file for replace-block."},
+    {"name": "text", "type": "string", "required": false, "description": "Text to insert, replacement text, or path to new-text file for replace-block."}
+  ],
+  "examples": [{"call": "main.sh insert-after src/index.ts \"import {\" \"import { newFunc } from './new';\"", "expected": "Inserted after first match of: import {"}],
+  "cost_saving_rationale": "Replaces error-prone raw sed/pipelines with a single safe command, reducing failed edits and retries."
+}

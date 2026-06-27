@@ -1,0 +1,18 @@
+{
+    "name": "find-and-read",
+    "description": "Search patterns in file(s)/dir or read line ranges (file:start-end), in one call with absolute line numbers.",
+    "entrypoint": "main.sh",
+    "parameters": [
+      {"name": "file_or_dir", "type": "string", "required": true,
+       "description": "File path, or dir with -r; line ranges as file:start-end (multiple allowed)"},
+      {"name": "pattern", "type": "string", "required": false,
+       "description": "Search pattern; -e pat1 -e pat2 for multi-pattern"},
+      {"name": "context", "type": "int", "required": false,
+       "description": "Context lines around each match (default 5)"},
+      {"name": "options", "type": "string", "required": false,
+       "description": "-r recursive, --include=<glob>, --head/--tail/--head-tail=N, --between <a> <b>, -A/-B/-C N"}
+    ],
+    "examples": [{"call": "/app/.preinstalled_scripts/find-and-read/main.sh src/file.rs:120-145 src/other.rs:225-245",
+                   "expected": "=== src/file.rs (120-145) === with absolute line numbers"}],
+    "cost_saving_rationale": "Collapses grep+sed/cat into one call and batches multi-pattern/multi-range reads, saving 1-3 steps."
+}

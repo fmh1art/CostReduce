@@ -1,0 +1,16 @@
+{
+    "name": "git-commit",
+    "description": "Stage files and commit in one step, auto-configuring git identity if missing.",
+    "entrypoint": "main.sh",
+    "parameters": [
+      {"name": "message", "type": "string", "required": true,
+       "description": "Commit message (last positional argument)"},
+      {"name": "files", "type": "string", "required": false,
+       "description": "One or more file paths to stage before the message; defaults to -A (all changes)"},
+      {"name": "-C", "type": "string", "required": false,
+       "description": "Working directory"}
+    ],
+    "examples": [{"call": "/app/.preinstalled_scripts/git-commit/main.sh main.go util.go \"feat: add cursor support\"",
+                   "expected": "[main-branch 1a2b3c4] feat: add cursor support"}],
+    "cost_saving_rationale": "Collapses the three-step git add + identity config (if missing) + git commit pattern into one step, saving 1-2 agent steps per commit."
+}

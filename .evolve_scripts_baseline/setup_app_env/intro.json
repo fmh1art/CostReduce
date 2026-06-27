@@ -1,0 +1,17 @@
+{
+  "name": "setup_app_env",
+  "description": "Set up the application environment: start PostgreSQL if needed, create database user and database, load environment variables from example.env. Bundles everything needed to get the app running.",
+  "when_to_use": "Use when the task requires running the application or database tests. Replaces multiple steps: checking PostgreSQL status, starting it, creating user/database, loading env vars.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {"name": "app_root", "type": "string", "required": false, "description": "Root directory of the application (default: /app)"},
+    {"name": "db_user", "type": "string", "required": false, "description": "Database username (default: myuser)"},
+    {"name": "db_pass", "type": "string", "required": false, "description": "Database password (default: mypassword)"},
+    {"name": "db_name", "type": "string", "required": false, "description": "Database name (default: simplelogin)"}
+  ],
+  "examples": [
+    {"call": "main.sh /app", "expected": "PostgreSQL started, user 'myuser' created, database 'simplelogin' created, env vars loaded from example.env."},
+    {"call": "main.sh /app admin secret_pass myappdb", "expected": "Custom user/password/database setup."}
+  ],
+  "cost_saving_rationale": "Replaces 5-7 separate bash commands (pg_lsclusters, pg_ctlcluster, CREATE USER, CREATE DATABASE, CREATE EXTENSION, loading env vars) with a single script call. Cuts both round trips and output token volume."
+}

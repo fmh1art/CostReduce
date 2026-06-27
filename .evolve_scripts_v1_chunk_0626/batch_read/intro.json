@@ -1,0 +1,18 @@
+{
+  "name": "batch_read",
+  "description": "Read multiple files in one call with clear separators between them. Supports line numbers, head/tail limiting per file. More compact than chaining separate cat commands.",
+  "when_to_use": "Use when you need to inspect multiple source files at once (e.g., reading related modules, test files, or config files). Replaces 2-5+ separate cat commands with a single call. The --head and --tail flags prevent token overflow by limiting output per file. The --lines flag adds line numbers for reference.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {"name": "files", "type": "array", "required": true, "description": "One or more file paths to read. Can include glob patterns (e.g., src/*.ts)."},
+    {"name": "--lines/-n", "type": "flag", "required": false, "description": "Show line numbers for each file."},
+    {"name": "--head/-h", "type": "int", "required": false, "description": "Show only the first N lines of each file (useful for large files)."},
+    {"name": "--tail/-t", "type": "int", "required": false, "description": "Show only the last N lines of each file."}
+  ],
+  "examples": [
+    {"call": "main.sh src/main.py src/utils.py", "expected": "Content of both files separated by '===== filename =====' headers."},
+    {"call": "main.sh --lines --head 30 src/*.ts", "expected": "First 30 lines with line numbers of each .ts file in src/."},
+    {"call": "main.sh --tail 20 package.json README.md", "expected": "Last 20 lines of both package.json and README.md."}
+  ],
+  "cost_saving_rationale": "Replaces 2-5 separate cat commands (or cat && echo && cat chains) with a single script call. Each separate cat command is a separate tool call that adds overhead. The batch approach reduces token waste from repeating similar commands and the shell escaping needed to chain them."
+}

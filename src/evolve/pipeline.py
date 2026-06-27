@@ -1,50 +1,47 @@
-"""End-to-end script evolution pipeline:
+"""Compose stages into the script-evolution pipeline.
 
-  1. `TrajectoryAnnotator`  — label each step's dependencies with an LLM.
-  2. `ContrastiveSampleBuilder` — derive minimal vs. original trajectories.
-  3. `ScriptEvolver` — let mini-swe-agent evolve scripts + instruction.md.
+A pipeline is just a sequence of `Stage`s. Any object exposing `name`
+(str) and `run(result_dir, task=None)` qualifies, so adding a new stage
+— or swapping in an alternative annotator / contrastive builder /
+evolver — is a matter of building a different list of stages and
+handing it to `ScriptEvolvePipeline`.
 """
 
 from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Optional
-
-from .annotator import TrajectoryAnnotator
-from .contrastive import ContrastiveSampleBuilder
-from .evolver import ScriptEvolver
+from typing import Any, Iterable, Optional, Protocol, Sequence, runtime_checkable
 
 logger = logging.getLogger(__name__)
 
 
+@runtime_checkable
+class Stage(Protocol):
+    """Minimal interface a pipeline stage must satisfy."""
+
+    name: str
+
+    def run(self, result_dir: Path, task: Optional[str] = None) -> Any: ...
+
+
 class ScriptEvolvePipeline:
-    def __init__(
-        self,
-        annotator: TrajectoryAnnotator,
-        contrastive_builder: ContrastiveSampleBuilder,
-        evolver: ScriptEvolver,
-    ):
-        self.annotator = annotator
-        self.contrastive_builder = contrastive_builder
-        self.evolver = evolver
+    def __init__(self, stages: Sequence[Stage]):
+        self.stages = list(stages)
 
     def run(
         self,
         result_dir,
         task: Optional[str] = None,
-        output_dir: Optional[str] = None,
-        skip_annotate: bool = False,
-        skip_contrastive: bool = False,
-        skip_evolve: bool = False,
-    ):
+        skip: Iterable[str] = (),
+    ) -> None:
         result_dir = Path(result_dir).resolve()
-        if not skip_annotate:
-            logger.info("[stage 1/3] annotate trajectories under %s", result_dir)
-            self.annotator.annotate_dir(result_dir, task=task)
-        if not skip_contrastive:
-            logger.info("[stage 2/3] build contrastive samples under %s", result_dir)
-            self.contrastive_builder.build_dir(result_dir, task=task)
-        if not skip_evolve:
-            logger.info("[stage 3/3] evolve scripts using contrastive samples")
-            self.evolver.evolve_dir(result_dir, output_dir=output_dir, task=task)
+        skip = set(skip)
+        total = len(self.stages)
+        for i, stage in enumerate(self.stages, start=1):
+            label = f"[stage {i}/{total}] {stage.name}"
+            if stage.name in skip:
+                logger.info("%s — skipped", label)
+                continue
+            logger.info("%s on %s", label, result_dir)
+            stage.run(result_dir, task=task)

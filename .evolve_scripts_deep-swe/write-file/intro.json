@@ -1,0 +1,18 @@
+{
+  "name": "write-file",
+  "description": "Write or append content to a file atomically, creating parent directories as needed.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {"name": "filepath", "type": "string", "required": true,
+     "description": "Path to the file to write"},
+    {"name": "content", "type": "string", "required": false,
+     "description": "Content to write (omit or use - to read from stdin)"},
+    {"name": "-", "type": "bool", "required": false,
+     "description": "Read content from stdin instead of argument"},
+    {"name": "--append", "type": "bool", "required": false,
+     "description": "Append to file instead of overwriting"}
+  ],
+  "examples": [{"call": "/app/.preinstalled_scripts/write-file/main.sh /tmp/out.txt \"Hello World\"",
+                 "expected": "Wrote /tmp/out.txt"}],
+  "cost_saving_rationale": "Replaces multi-line heredoc (cat > file << 'EOF') or echo+redirect chains with one step, saving tool call characters and step count."
+}

@@ -1,0 +1,131 @@
+{
+  "name": "ts_runner",
+  "description": "Run TypeScript/Node.js files or inline expressions with tsx, vitest tests, and tsc type checking. Supports run, eval, test, vitest (by test name filter), vitest-file (single file), vitest-paths (multiple files/directories), and tsc actions. All actions support output limiting and configurable timeout. The --failures flag shows only test failure details with context lines for quick debugging of test failures.",
+  "when_to_use": "Use for all TypeScript execution needs instead of raw node/tsx/vitest/tsc commands. The run/eval/test actions replace 'cd /app && node --conditions <cond> --import tsx <file>' with a single call. The vitest-file action replaces 'npx vitest run <file>' for running specific test files. The vitest-paths action replaces 'npx vitest run <dir1> <dir2> ... --reporter=verbose 2>&1 | tail -N' for running tests in specific directories (common when adding new features across multiple modules). The --failures flag replaces the common pattern of running vitest then grepping for FAIL with context: 'npx vitest run ... 2>&1 | grep -B 2 -A 20 \"FAIL\"', saving an extra tool call and manual grep steps. The tsc action replaces 'npx tsc --noEmit' with a safe timeout and output limiting, preventing wasted tool calls from hung processes. The inline eval action replaces writing temp files for quick TypeScript experiments.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {
+      "name": "project_root",
+      "type": "string",
+      "required": true,
+      "description": "Root directory of the TypeScript/Node.js project (e.g., /app)"
+    },
+    {
+      "name": "action",
+      "type": "string",
+      "required": true,
+      "description": "Action: 'run' (run a file), 'eval' (run inline code), 'test' (run a test file with tsx), 'vitest' (run vitest with test name filter or 'all' for full suite), 'vitest-file' (run a specific test file with vitest), 'vitest-paths' (run vitest on comma-separated paths/files/directories)"
+    },
+    {
+      "name": "target",
+      "type": "string",
+      "required": true,
+      "description": "For 'run'/'test'/'vitest-file': path to .ts file. For 'eval': inline TypeScript code string. For 'vitest': test name filter pattern or 'all'. For 'vitest-paths': comma-separated paths (e.g., 'src/schema/lazy/schema_.unit.test.ts,src/schema/anyOf/' to run tests in specific files and directories). For 'tsc': project root path or '.'."
+    },
+    {
+      "name": "--conditions/-c",
+      "type": "string",
+      "required": false,
+      "description": "Node --conditions flag value (default: 'ark-ts')"
+    },
+    {
+      "name": "--timeout",
+      "type": "int",
+      "required": false,
+      "description": "Timeout in seconds (default: 60)"
+    },
+    {
+      "name": "--max-lines/-m",
+      "type": "int",
+      "required": false,
+      "description": "Maximum output lines to show (default: 100, use 0 for unlimited)"
+    },
+    {
+      "name": "--filter/-f",
+      "type": "string",
+      "required": false,
+      "description": "Filter test output to lines matching this pattern (grep)"
+    },
+    {
+      "name": "--failures/-F",
+      "type": "flag",
+      "required": false,
+      "description": "Show only test failure details with context (grep -B 2 -A 20 \"FAIL\"). Useful for quickly debugging vitest test failures without showing all passing test output. Replaces the pattern of running vitest then running a separate grep for FAIL with context."
+    },
+    {
+      "name": "--no-conditions",
+      "type": "flag",
+      "required": false,
+      "description": "Skip the --conditions flag (for plain Node.js projects)"
+    },
+    {
+      "name": "--runner",
+      "type": "string",
+      "required": false,
+      "description": "Custom runner script/command (e.g., 'node --import tsx', 'tsx'). Default: 'node --conditions <cond> --import tsx'"
+    },
+    {
+      "name": "--vitest-config",
+      "type": "string",
+      "required": false,
+      "description": "Path to vitest config file (e.g., vitest.config.ts). Passed as --config to npx vitest."
+    },
+    {
+      "name": "--tsconfig",
+      "type": "string",
+      "required": false,
+      "description": "Path to tsconfig.json for the tsc action (e.g., tsconfig.json). Default is empty (uses default tsconfig)."
+    }
+  ],
+  "examples": [
+    {
+      "call": "main.sh /app test ark/json-schema/__tests__/ref.test.ts",
+      "expected": "Runs the ref test file with tsx and shows output."
+    },
+    {
+      "call": "main.sh /app eval 'import {jsonSchemaToType} from \"@ark/json-schema\"; console.log(jsonSchemaToType({type:\"string\"}).expression)'",
+      "expected": "Evaluates inline TypeScript code and prints the result."
+    },
+    {
+      "call": "main.sh /app run src/index.ts --no-conditions",
+      "expected": "Runs a TypeScript file with plain node --import tsx (no --conditions flag)."
+    },
+    {
+      "call": "main.sh /app test ark/json-schema/__tests__/ref.test.ts --filter 'PASS|FAIL|\u2713' --max-lines 30",
+      "expected": "Runs the test file and shows only lines matching the filter, limited to 30 lines."
+    },
+    {
+      "call": "main.sh /app vitest '$ref'",
+      "expected": "Runs vitest with test name filter '$ref'."
+    },
+    {
+      "call": "main.sh /app vitest-paths 'src/schema/actions/finder/,src/schema/actions/parse/,src/schema/actions/format/' --max-lines 40",
+      "expected": "Runs vitest on three specific directories with verbose reporter, showing only the last 40 lines of output (showing test summary). Replaces the pattern 'timeout 120 npx vitest run src/schema/actions/finder/ src/schema/actions/parse/ src/schema/actions/format/ --reporter=verbose 2>&1 | tail -40'."
+    },
+    {
+      "call": "main.sh /app vitest-paths 'src/schema/lazy/schema_.unit.test.ts,src/schema/anyOf/' --timeout 60 --max-lines 30",
+      "expected": "Runs vitest on a specific test file and a directory, with 60s timeout and last 30 lines of output."
+    },
+    {
+      "call": "main.sh /app vitest-file tests/window.test.ts --vitest-config vitest.config.ts",
+      "expected": "Runs the window.test.ts file with vitest using the specified config file."
+    },
+    {
+      "call": "main.sh /app vitest all --vitest-config vitest.config.ts --max-lines 50",
+      "expected": "Runs the full vitest test suite with output limited to 50 lines."
+    },
+    {
+      "call": "main.sh /app vitest-file tests/aspect.test.ts --failures",
+      "expected": "Runs the aspect test file with vitest and shows only failure details with 2 lines of context before and 20 lines after each FAIL line. Replaces the two-step pattern of running vitest then grepping for FAIL with context: 'npx vitest run ... 2>&1 | grep -B 2 -A 20 \"FAIL\"'."
+    },
+    {
+      "call": "main.sh /app tsc . --timeout 60 --max-lines 40",
+      "expected": "Runs tsc --noEmit on the project with a 60-second timeout, showing only the first 40 lines of errors."
+    },
+    {
+      "call": "main.sh /app tsc . --tsconfig tsconfig.esm.json --timeout 120",
+      "expected": "Runs tsc with a custom tsconfig and 120-second timeout, preventing the timeout error that occurs with raw npx tsc on large projects."
+    }
+  ],
+  "cost_saving_rationale": "Replaces 2-3 separate steps (cd to project, construct node/tsx command, possibly pipe to head for output limiting) with a single script call. Eliminates the common error of forgetting --conditions or --import tsx flags. The inline eval action replaces writing temp files for quick tests. The vitest-file action replaces the common pattern of running 'npx vitest run --config <config> <test_file>' for specific test files. The vitest-paths action replaces the even more complex pattern of 'timeout <N> npx vitest run <dir1> <dir2> ... --reporter=verbose 2>&1 | tail -N', which agents frequently use when running tests in specific directories during feature development. This saves 3-5+ tool calls by eliminating separate timeout wrapping, reporter flags, and piping through tail. The --failures flag replaces the common two-step debugging workflow of running vitest, then running a separate grep with context (e.g., 'npx vitest run ... 2>&1 | grep -B 2 -A 20 \"FAIL\"') to inspect test failures. This saves 1 tool call and reduces token waste from displaying passing test output. The tsc action replaces 'npx tsc --noEmit' calls that can hang indefinitely without a timeout flag, preventing wasted token usage from timed-out commands. The --vitest-config flag avoids the need to manually construct the config path. Output limiting prevents token overflow from long test outputs. The filter flag lets you see only relevant test lines without running separate grep commands."
+}

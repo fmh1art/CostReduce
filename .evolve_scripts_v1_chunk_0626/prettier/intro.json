@@ -1,0 +1,20 @@
+{
+  "name": "prettier",
+  "description": "Run prettier formatting check/write on TypeScript/JavaScript/JSON/CSS/MD files. Supports check (verify formatting), write (format in place), and list-unformatted (show only unformatted file names) actions. Automatically handles output limiting and timeout.",
+  "when_to_use": "Use when you need to check or fix code formatting in TypeScript/JS projects. Replaces 2-3 separate calls to npx prettier with output piping through grep and head. The check action replaces 'npx prettier --check ... 2>&1 | head -N' with a single call. The list-unformatted action replaces 'npx prettier --check ... 2>&1 | grep -E \"unformatted|warn\" | head -N', which is the most common pattern for checking formatting before committing. The write action replaces 'npx prettier --write ...' with automatic output limiting to prevent token overflow.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {"name": "project_root", "type": "string", "required": true, "description": "Root directory of the project (e.g., /app)."},
+    {"name": "action", "type": "string", "required": true, "description": "Action: 'check' (verify formatting, non-zero exit if unformatted), 'write' (format files in place), 'list-unformatted' (show only unformatted file names)."},
+    {"name": "patterns", "type": "string", "required": false, "description": "Glob patterns to match files. Default: 'src/**/*.{ts,js,tsx,jsx,json,css,md}'. Examples: 'src/**/*.ts', 'src/schema/**/*.ts'."},
+    {"name": "--max-lines/-m", "type": "int", "required": false, "description": "Maximum output lines to show (default: 100, 0=unlimited)."},
+    {"name": "--timeout", "type": "int", "required": false, "description": "Timeout in seconds (default: 60)."}
+  ],
+  "examples": [
+    {"call": "main.sh /app list-unformatted 'src/**/*.ts'", "expected": "Checks formatting of all TypeScript files under src/ and shows only unformatted file names with 'warn' prefix. Returns exit code 0 if all files are formatted."},
+    {"call": "main.sh /app check 'src/**/*.ts' -m 20", "expected": "Checks formatting of all TypeScript files under src/ and shows up to 20 lines of output. Non-zero exit if any files are unformatted."},
+    {"call": "main.sh /app write src/schema/lazy/schema_.ts src/schema/lazy/schema_.unit.test.ts", "expected": "Formats the two specified files in place with prettier."},
+    {"call": "main.sh /app write 'src/**/*.ts' --timeout 120", "expected": "Formats all TypeScript files under src/ with a 120-second timeout."}
+  ],
+  "cost_saving_rationale": "Replaces 2-3 separate steps (cd to project, run npx prettier, pipe through grep for 'unformatted' and head for output limiting) with a single script call. The list-unformatted action specifically replaces the common pattern of 'npx prettier --check ... 2>&1 | grep -E \"unformatted|warn\" | head -10', which agents frequently use before committing to verify formatting. The write action prevents token overflow from long prettier write output by automatically limiting output lines. The built-in timeout prevents prettier from hanging on large projects."
+}

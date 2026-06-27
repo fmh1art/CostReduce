@@ -1,0 +1,18 @@
+{
+  "name": "go_build",
+  "description": "Build a Go project with optional CGO_ENABLED=0 cross-compilation. Runs 'go build' with the specified package and output path, then reports binary info (file type, size, version). Replaces 3-4 separate commands: cd <repo>, go build, file <binary>, ls -la <binary>.",
+  "when_to_use": "Use when you need to build a Go project to test compilation, create a binary for testing, or verify the project compiles correctly. Replaces the common pattern of 'cd <project> && go build -o <output> <pkg> && file <output> && ls -la <output>'. Automatically enables CGO_ENABLED=0 for cross-platform builds.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {"name": "project_root", "type": "string", "required": true, "description": "Root directory of the Go project (e.g. /app)"},
+    {"name": "output_path", "type": "string", "required": false, "description": "Path for the compiled binary (default: /tmp/build_output)"},
+    {"name": "build_pkg", "type": "string", "required": false, "description": "Package to build, relative to project_root (default: '.', i.e. the main module)"},
+    {"name": "cgo_disabled", "type": "string", "required": false, "description": "Set CGO_ENABLED=0 for static/cross compilation (default: 'true'). Use 'false' if CGO is needed."}
+  ],
+  "examples": [
+    {"call": "main.sh /app /tmp/k6 ./cmd/", "expected": "Build /app/cmd/ to /tmp/k6 with CGO disabled, show binary info."},
+    {"call": "main.sh /app /tmp/myapp . false", "expected": "Build root package with CGO enabled, show binary info."},
+    {"call": "main.sh /app /tmp/mybin ./cmd/k6", "expected": "Build specific package ./cmd/k6 to /tmp/mybin."}
+  ],
+  "cost_saving_rationale": "Combines 3-4 separate commands (cd, go build, file, ls, optional version check) into a single script call. The CGO_ENABLED=0 flag avoids a common failure pattern where agents forget to set it, saving an extra round trip. The automatic binary verification (file + ls + version) eliminates additional verification steps."
+}

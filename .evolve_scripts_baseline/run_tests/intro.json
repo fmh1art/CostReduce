@@ -1,0 +1,117 @@
+{
+    "name": "run_tests",
+    "description": "Run Python/Django, Go, Rust, or TypeScript/JavaScript/Node.js tests with proper environment setup. Supports pytest, Django test runner, Go test runner, Cargo test runner, and vitest/jest/mocha/npm test runner. Auto-detects project type from file extensions or package.json/Cargo.toml. Allows filtering tests by name pattern and setting timeouts.",
+    "when_to_use": "Use when you need to run tests in any project. Replaces ad-hoc test commands like 'cd /app && npx mocha ...', 'cd /app && npx vitest run ...', 'cd /app && go test ...', 'cd /app && cargo test ...', or 'python -m pytest ...'. Use --ts or --js for TypeScript/JavaScript/Node projects (vitest, jest, mocha, or npm test), --go for Go projects, --rust for Rust/Cargo projects, and --django for Django projects. Use --grep to filter specific test names and --timeout to prevent hanging.",
+    "entrypoint": "main.sh",
+    "parameters": [
+        {
+            "name": "test_target",
+            "type": "string",
+            "required": true,
+            "description": "File path, module path, directory, or test name pattern to run"
+        },
+        {
+            "name": "--go",
+            "type": "bool",
+            "required": false,
+            "description": "Use Go test runner"
+        },
+        {
+            "name": "--rust",
+            "type": "bool",
+            "required": false,
+            "description": "Use Cargo test runner for Rust projects"
+        },
+        {
+            "name": "--ts",
+            "type": "bool",
+            "required": false,
+            "description": "Use TypeScript/Node test runner (vitest, jest, mocha, or npm test)"
+        },
+        {
+            "name": "--django",
+            "type": "bool",
+            "required": false,
+            "description": "Use Django test runner"
+        },
+        {
+            "name": "--settings",
+            "type": "string",
+            "required": false,
+            "description": "Django settings module (default: paperless.settings)"
+        },
+        {
+            "name": "--app_dir",
+            "type": "string",
+            "required": false,
+            "description": "Application directory (default: /app/src for Python, /app for Go/Rust/TS)"
+        },
+        {
+            "name": "--verbose",
+            "type": "bool",
+            "required": false,
+            "description": "Verbose output"
+        },
+        {
+            "name": "--grep",
+            "type": "string",
+            "required": false,
+            "description": "Filter tests by name (pytest -k, Go -run, vitest -t, Rust testname filter)"
+        },
+        {
+            "name": "--timeout",
+            "type": "int",
+            "required": false,
+            "description": "Timeout in seconds"
+        },
+        {
+            "name": "--runner",
+            "type": "string",
+            "required": false,
+            "description": "Explicit test runner command (e.g., 'npx vitest', 'npx mocha', 'npx jest', 'npm test')"
+        },
+        {
+            "name": "--args",
+            "type": "string",
+            "required": false,
+            "description": "Additional arguments passed to the test runner"
+        },
+        {
+            "name": "--js",
+            "type": "bool",
+            "required": false,
+            "description": "Use JavaScript/Node test runner (vitest, jest, mocha, or npm test). Alias for --ts."
+        }
+    ],
+    "examples": [
+        {
+            "call": "main.sh src/schema/lazy/schema_.unit.test.ts --ts --verbose",
+            "expected": "Runs vitest on the specified test file with verbose output."
+        },
+        {
+            "call": "main.sh src/schema/ --ts --grep=lazy --timeout=60",
+            "expected": "Runs vitest on src/schema/ directory, filtering tests matching 'lazy', with 60s timeout."
+        },
+        {
+            "call": "main.sh tests/window.test.ts --ts --runner='npx vitest run' --verbose",
+            "expected": "Runs vitest on window.test.ts with explicit runner command."
+        },
+        {
+            "call": "main.sh ./... --go --grep=TestWindow --count=1",
+            "expected": "Go test with filter and count=1."
+        },
+        {
+            "call": "main.sh my_crate::my_test --rust --verbose",
+            "expected": "Rust cargo test for specific test in a package."
+        },
+        {
+            "call": "main.sh tests/ --django --settings=myapp.settings",
+            "expected": "Django test runner with custom settings."
+        },
+        {
+            "call": "main.sh tests/utils/reporter_tests.js --js --grep=bail --timeout=30",
+            "expected": "Runs mocha on the specified test file with --grep filtering and 30s timeout."
+        }
+    ],
+    "cost_saving_rationale": "Replaces 2-3 separate steps (cd to project directory, run test command with flags, add timeout) with a single script call. The --ts/--js flag eliminates boilerplate for TypeScript/JavaScript/Node projects by auto-detecting vitest, jest, mocha, or npm test. Combined --grep and --verbose flags replace multiple sequential test runs and separate grep/cat inspection of test output. Auto-detection of project type saves an additional step of determining the test runner."
+}

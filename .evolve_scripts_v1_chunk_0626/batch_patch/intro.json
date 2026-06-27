@@ -1,0 +1,73 @@
+{
+  "name": "batch_patch",
+  "description": "Apply the same file modification to multiple files matching a glob pattern. Supports replace, insert-before, insert-after, delete-matching, append, prepend, replace-range, replace-line, replace-block, and stdin-replace actions. Reports which files were modified and any errors.",
+  "when_to_use": "Use when you need to make the same modification to multiple files (e.g., adding an import to all select query builders across database dialects, inserting a property in all config interfaces, adding a method to all dialect implementations, adding a parameter to multiple similar functions, or replacing the body of a function/method in multiple files). Replaces 3-10+ separate sed or file_patch calls with a single script call. Particularly useful when adding a new feature across multiple dialect implementations or module variants. The stdin-replace action lets you pipe multiline old/new content via heredoc for complex replacements across multiple files. The replace-range action is useful when adding a parameter to multiple functions that share the same structure (e.g., adding a 'definitions' parameter to DTO serialization functions). The replace-block action is useful when replacing the body of a function/method/loop in multiple files by finding the matching braces and handling nested braces correctly.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {
+      "name": "glob_pattern",
+      "type": "string",
+      "required": true,
+      "description": "Glob pattern to find files (e.g., 'src/*-core/query-builders/select.types.ts'). Supports ** for recursive matching."
+    },
+    {
+      "name": "action",
+      "type": "string",
+      "required": true,
+      "description": "Action: 'replace' (old->new, all occurrences), 'stdin-replace' (read old/new content from stdin via heredoc/pipe with '=====REPLACE=====' delimiter), 'insert-before' (insert before first pattern match), 'insert-after' (insert after first pattern match), 'delete-matching' (delete lines with pattern), 'append' (append to end of file), 'prepend' (prepend to beginning of file), 'replace-range' (replace content between start and end patterns, inclusive), 'replace-line' (replace first line matching pattern with new content), 'replace-block' (replace block from '{' to matching '}', handling nested braces)."
+    },
+    {
+      "name": "old_text_or_pattern",
+      "type": "string",
+      "required": true,
+      "description": "For 'replace': old text to replace. For 'stdin-replace': not used (content comes from stdin). For 'insert-before'/'insert-after'/'delete-matching'/'replace-line'/'replace-block': pattern to match. For 'replace-range': start pattern marking beginning of range. Use \\n for newlines, \\t for tabs."
+    },
+    {
+      "name": "new_text_or_end",
+      "type": "string",
+      "required": false,
+      "description": "For 'replace': new text. For 'stdin-replace': not used (content comes from stdin). For 'insert-before'/'insert-after'/'append'/'prepend': text to insert. For 'replace-range': end pattern marking end of range. For 'replace-block': the new body content (including both { and }). Not used for 'delete-matching'."
+    },
+    {
+      "name": "new_text_for_range",
+      "type": "string",
+      "required": false,
+      "description": "For 'replace-range': the new text to replace the range with. For 'replace-line': the new line content. Not used for other actions."
+    }
+  ],
+  "examples": [
+    {
+      "call": "main.sh \"src/*-core/query-builders/select.ts\" insert-after \"import { SQL, View } from '~/sql/sql.ts'\" \"import type { WindowSpec } from '~/sql/expressions/window.ts'\"",
+      "expected": "Adds WindowSpec import after the SQL/View import in all matching select.ts files across all database dialect cores."
+    },
+    {
+      "call": "main.sh \"src/*-core/*.ts\" insert-before \"getSQL()\" \"\\twindow(name: string, spec: WindowSpec): this {\\n\\t\\t...\\n\\t}\"",
+      "expected": "Adds a window() method before getSQL() in all matching TypeScript files across dialect cores."
+    },
+    {
+      "call": "main.sh \"src/**/*.ts\" delete-matching \"@ts-ignore\"",
+      "expected": "Removes all @ts-ignore comments from TypeScript files under src/."
+    },
+    {
+      "call": "main.sh \"src/schema/actions/dto/getSchemaDTO/*.ts\" replace-range \"): \" \"=> {\" \"  definitions?: Map<string, ISchemaDTO>\\n): \"",
+      "expected": "Adds a 'definitions' parameter to all DTO serialization functions across schema types."
+    },
+    {
+      "call": "main.sh \"src/**/*.ts\" append \"\\n// End of file\"",
+      "expected": "Appends a comment to the end of all TypeScript files."
+    },
+    {
+      "call": "main.sh \"src/schema/types/schema.ts\" insert-before \"export type Schema_\" \"import type { LazySchema, LazySchema_ } from '../lazy/index.js'\\n\"",
+      "expected": "Adds import for a new schema variant before the Schema_ type definition."
+    },
+    {
+      "call": "main.sh \"src/**/modifiers/added.ts\" replace-block \"return <T extends TraitOrRelation[]>(\" \"{\n    const traits: Trait[] = [];\n    for (const input of inputs) {\n        if (isAspect(input)) {\n            for (const t of input.traits) {\n                traits.push(t);\n            }\n        } else if (isRelation(input)) {\n            traits.push(input[$internal].trait);\n        } else {\n            traits.push(input as Trait);\n        }\n    }\n    return createModifier(`added-${id}`, id, traits);\n}\"",
+      "expected": "Replaces the function body of createAdded in all matching files, handling nested braces correctly and skipping braces inside string/template literals."
+    },
+    {
+      "call": "main.sh \"src/**/modifiers/*.ts\" stdin-replace << 'EOF'\nold code block\n=====REPLACE=====\nnew code block\nEOF",
+      "expected": "Applies the same multiline replacement across all files matching the glob pattern, reading old/new content from stdin via heredoc."
+    }
+  ],
+  "cost_saving_rationale": "Replaces 3-10+ separate sed or file_patch calls (one per file) with a single script call. When adding a new feature across multiple dialect implementations (e.g., pg-core, mysql-core, sqlite-core, singlestore-core, gel-core), each file needs the same import addition and method body addition. Doing them individually wastes tokens repeating the same command. The glob-based batch approach also eliminates the initial 'find' step to discover which files need modification. The stdin-replace action eliminates the pattern of writing inline Python scripts for file patching by allowing multiline content via heredoc piping. The replace-range action eliminates the pattern of rewriting entire files with heredocs when only a function signature change is needed. The replace-block action eliminates the need to write inline Python scripts for replacing function/loop bodies - it handles brace matching automatically, including nested braces and skipping braces inside string/template literals. Using Python-based patching avoids the escaping issues common with complex sed one-liners that often fail on special characters."
+}

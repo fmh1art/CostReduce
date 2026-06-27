@@ -1,0 +1,18 @@
+{
+  "name": "prettier_fmt",
+  "description": "Format or check code formatting with Prettier in one call. Supports --write (format in-place) and --check (verify formatting) actions. Targets can be specific files, directories, or glob patterns. Replaces 'cd /app && npx prettier --write/--check <files>' boilerplate.",
+  "when_to_use": "Use when you need to format TypeScript/JavaScript/CSS/MD files with Prettier after making changes, or check if files are properly formatted before committing. Use --write to auto-format files, --check to verify formatting (e.g., before running tsc or committing). Target specific files or use glob patterns like 'src/**/*.ts' to format all TypeScript files.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {"name": "project_root", "type": "string", "required": true, "description": "Root directory of the project (e.g., /app)"},
+    {"name": "action", "type": "string", "required": false, "description": "Either '--write' (format in-place, default) or '--check' (verify formatting)"},
+    {"name": "targets", "type": "string", "required": true, "description": "Space-separated file paths, directories, or glob patterns to format/check (e.g., 'src/**/*.ts' or 'src/schema/lazy/schema_.ts src/schema/lazy/schema_.unit.test.ts')"},
+    {"name": "--no-cd", "type": "bool", "required": false, "description": "Stay in current directory instead of cd'ing to project_root"}
+  ],
+  "examples": [
+    {"call": "main.sh /app --write src/schema/lazy/schema_.ts", "expected": "Formats a single TypeScript file in-place."},
+    {"call": "main.sh /app --check 'src/**/*.ts'", "expected": "Checks formatting of all TypeScript files."},
+    {"call": "main.sh /app --write src/schema/lazy/schema_.ts src/schema/lazy/schema_.unit.test.ts", "expected": "Formats multiple specific files."}
+  ],
+  "cost_saving_rationale": "Replaces 2 steps (cd to project, npx prettier command) with a single script call. Eliminates repetitive 'cd /app && npx prettier --write/--check ...' boilerplate that appears multiple times per trajectory in TypeScript projects. The --check action with exit code handling replaces separate formatting verification steps."
+}

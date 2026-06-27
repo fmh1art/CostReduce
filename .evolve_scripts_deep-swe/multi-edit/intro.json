@@ -1,0 +1,68 @@
+{
+  "name": "multi-edit",
+  "description": "Apply edits (replace, insert, delete, append, prepend, pairs, or inline Python transforms) to a file in one step, with --stdin for multi-line replacements and --stdin-code for stdin-based Python transforms.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {
+      "name": "file",
+      "type": "string",
+      "required": true,
+      "description": "Path to the file to edit"
+    },
+    {
+      "name": "action",
+      "type": "string",
+      "required": false,
+      "description": "replace|insert-before|insert-after|delete-matching|append|prepend"
+    },
+    {
+      "name": "old_or_pattern",
+      "type": "string",
+      "required": false,
+      "description": "Old text (for replace) or search pattern (for insert/delete)"
+    },
+    {
+      "name": "new_text",
+      "type": "string",
+      "required": false,
+      "description": "New text (for replace) or text to insert (for insert/append/prepend)"
+    },
+    {
+      "name": "--pairs",
+      "type": "bool",
+      "required": false,
+      "description": "Perform multiple old/new replacements in one call"
+    },
+    {
+      "name": "--code",
+      "type": "string",
+      "required": false,
+      "description": "Inline Python transform code that receives 'content' and 'filepath' variables"
+    },
+    {
+      "name": "-f",
+      "type": "string",
+      "required": false,
+      "description": "Custom Python transform script path"
+    },
+    {
+      "name": "--stdin",
+      "type": "bool",
+      "required": false,
+      "description": "Read old/new text from stdin (separated by blank line or ---DELIM---)"
+    },
+    {
+      "name": "--stdin-code",
+      "type": "bool",
+      "required": false,
+      "description": "Read Python transform from stdin instead of as argument"
+    }
+  ],
+  "examples": [
+    {
+      "call": "/app/.preinstalled_scripts/multi-edit/main.sh --stdin-code file.go",
+      "expected": "Applied stdin transform to file.go"
+    }
+  ],
+  "cost_saving_rationale": "Replaces inline Python edit scripts (heredocs or python3 -c) with one step, reducing tool call characters and step count; --stdin-code matches python3 << PYEOF pattern exactly."
+}

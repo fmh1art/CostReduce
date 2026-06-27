@@ -1,0 +1,17 @@
+{
+  "name": "py_script",
+  "description": "Write and execute Python scripts from heredoc stdin, inline strings, or existing files. Automatically handles single-line and multi-line code. Replaces the common pattern of writing a .py file to /tmp, then running it with python3.",
+  "when_to_use": "Use when you need to execute Python code that spans multiple lines (e.g., importing modules, defining functions, running experiments). Accepts heredoc input for complex scripts. Replaces the 'cat > /tmp/test_*.py << EOF ... EOF && python3 /tmp/test_*.py' boilerplate pattern. For simple one-liners, py_exec may be more convenient.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {"name": "code_or_flag", "type": "string", "required": false, "description": "Inline Python code as a string, '-f' to run an existing file, or leave empty to read code from stdin (piped/heredoc input)."},
+    {"name": "script_file", "type": "string", "required": false, "description": "When using '-f', the path to the Python script file to execute."},
+    {"name": "args", "type": "string", "required": false, "description": "Additional arguments passed to the script when using '-f'."}
+  ],
+  "examples": [
+    {"call": "main.sh 'import sys; sys.path.insert(0, \"/app\"); from scapy.all import *; print(\"OK\")\"'", "expected": "Output of the Python code."},
+    {"call": "cat > /tmp/test.py << 'EOF' | main.sh\nimport os\nprint(os.getcwd())\nEOF", "expected": "Output of the Python script executed from heredoc input."},
+    {"call": "main.sh -f /tmp/test_behavior.py arg1 arg2", "expected": "Output of executing the script file with arguments."}
+  ],
+  "cost_saving_rationale": "Replaces 2-4 separate bash commands (cat writing a script to /tmp, then python3 running it) with a single script call. Accepts heredoc input so multi-line scripts can be passed without shell escaping issues. Eliminates temp file management boilerplate."
+}

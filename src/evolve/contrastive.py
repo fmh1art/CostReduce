@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 
 
 class ContrastiveSampleBuilder:
+    name = "contrastive"
+
     def find_trajectory_files(self, result_dir, task=None):
         files = sorted(Path(result_dir).glob("**/agent/trajectory.json"))
         return [p for p in files if not task or task in str(p)]
@@ -32,6 +34,9 @@ class ContrastiveSampleBuilder:
             logger.info("writing %s", out)
             outs.append(out)
         return outs
+
+    # Stage interface
+    run = build_dir
 
     def build_file(self, path) -> Path:
         trajectory = json.loads(Path(path).read_text(encoding="utf-8"))
@@ -54,8 +59,12 @@ class ContrastiveSampleBuilder:
     @classmethod
     def _trace_minimal_indices(cls, dependencies):
         if not dependencies:
-            return set()
-        last = max(int(k) for k in dependencies)
+            # no action steps → only keep the initial context (step 0)
+            return {0}
+        try:
+            last = max(int(k) for k in dependencies)
+        except (ValueError, TypeError) as exc:
+            raise ValueError(f"invalid dependencies keys: {list(dependencies)!r}") from exc
         keep = set()
         stack = [last]
         while stack:
@@ -64,6 +73,8 @@ class ContrastiveSampleBuilder:
                 continue
             keep.add(i)
             stack.extend(int(j) for j in dependencies.get(str(i), []))
+        # step 0 (initial state before any action) is almost always required
+        keep.add(0)
         return keep
 
     @classmethod
@@ -81,8 +92,13 @@ class ContrastiveSampleBuilder:
                 action_i += 1
                 if action_i in keep:
                     positive_steps.append(step)
-            elif 0 in keep:
+            elif action_i == 0:
+                # Non-action steps BEFORE any action step (system prompt,
+                # task description, etc.) are required context — always keep.
                 positive_steps.append(step)
+            # Non-action steps in the middle of a trajectory are dropped by
+            # default; they were not the agent's actions and not the task
+            # boundary.
 
         positive["steps"] = positive_steps
         positive["dependencies"] = {

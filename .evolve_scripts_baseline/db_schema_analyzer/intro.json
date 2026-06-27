@@ -1,0 +1,15 @@
+{
+  "name": "db_schema_analyzer",
+  "description": "Analyze a PostgreSQL database table schema in one call: shows columns (name, type, nullable, default), constraints (PK, FK, unique, check), and indexes with definitions, plus sample data.",
+  "when_to_use": "Use when you need to understand a database table's structure. Replaces 3-4 separate psql commands (one for columns, one for constraints, one for indexes, one for sample data) with a single script call.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {"name": "table_name", "type": "string", "required": true, "description": "Name of the database table to analyze"},
+    {"name": "db_uri", "type": "string", "required": false, "description": "Database URI (default: postgresql://myuser:mypassword@localhost:5432/simplelogin)"}
+  ],
+  "examples": [
+    {"call": "main.sh contact", "expected": "Columns, constraints, indexes, and sample data for the 'contact' table."},
+    {"call": "main.sh users postgresql://user:pass@localhost:5432/mydb", "expected": "Full schema analysis for the 'users' table."}
+  ],
+  "cost_saving_rationale": "Combines 4 SQL queries (columns info, constraints, indexes, sample data) into one script call, reducing 3+ round trips. Also keeps output organized and eliminates parsing overhead."
+}

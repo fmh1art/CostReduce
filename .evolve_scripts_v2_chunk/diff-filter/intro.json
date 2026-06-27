@@ -1,0 +1,14 @@
+{
+    "name": "diff-filter",
+    "description": "Show only added and removed lines from git diff, or show --stat/--name-only summaries, with optional --head limit.",
+    "entrypoint": "main.sh",
+    "parameters": [
+      {"name": "file", "type": "string", "required": false,
+       "description": "Optional file path to filter diff for"},
+      {"name": "options", "type": "string", "required": false,
+       "description": "--cached for staged, --added-only or --removed-only to filter, --stat for file summary, --name-only for filenames, --head N to limit output lines"}
+    ],
+    "examples": [{"call": "/app/.preinstalled_scripts/diff-filter/main.sh --stat",
+                   "expected": " packages/core/src/index.ts | 6 ++++"}],
+    "cost_saving_rationale": "Replaces a full git diff or git diff --stat piped through head with a compact view, reducing observation size and saving one or more agent steps."
+}

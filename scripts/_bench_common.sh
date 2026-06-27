@@ -177,16 +177,123 @@ print(json.dumps(mounts))
 PY
 }
 
+evolve_scripts_tools_block() {
+  # 扫 $EVOLVE_SCRIPTS_DIR/*/intro.json，拼成 markdown 工具清单（含绝对路径），
+  # 用于注入下游 code agent 的 system prompt。
+  #
+  # 入参（环境变量）：
+  #   EVOLVE_SCRIPTS_DIR          host 上 evolve 输出目录；空则不输出。
+  #   EVOLVE_SCRIPTS_TARGET_ROOT  容器内挂载根目录，默认 /app/.preinstalled_scripts。
+  #                               tools block 里 entrypoint 会拼成绝对路径：
+  #                               ${EVOLVE_SCRIPTS_TARGET_ROOT}/<name>/<entrypoint>
+  #
+  # 输出（stdout）：
+  #   - 没有任何 intro.json 时输出空串（软回退：测评脚本退回旧行为，只看 instruction.md）
+  #   - 有 intro.json 时输出 markdown 工具清单
+  #
+  # 解析失败的 intro.json 会被跳过并在 stderr 打 warning，不会中断。
+  local scripts_dir="${EVOLVE_SCRIPTS_DIR:-}"
+  if [[ -z "${scripts_dir}" ]]; then
+    return 0
+  fi
+  if [[ ! -d "${scripts_dir}" ]]; then
+    return 0
+  fi
+  local target_root="${EVOLVE_SCRIPTS_TARGET_ROOT:-/app/.preinstalled_scripts}"
+  EVOLVE_SCRIPTS_DIR_ABS="$(cd "${scripts_dir}" && pwd)" \
+  EVOLVE_SCRIPTS_TARGET_ROOT="${target_root}" \
+  python - <<'PY'
+import json
+import os
+import sys
+from pathlib import Path
+
+# 下游 system prompt 拼装时只保留 agent 真正需要的最小字段集合：
+#   - description:  一句话用途
+#   - entrypoint:   绝对路径
+#   - parameters:   名称/类型/必填/简短描述
+#   - example:      至多 1 条（call + 一行 expected）
+#   - cost_saving_rationale: 一句话
+# 不输出 when_to_use（与 description 重复），不输出全部 examples（避免 prompt 膨胀）。
+# 所有长字段都按下面 *_LIMIT 截断，确保 system prompt 不会因为单个工具爆 token。
+DESC_LIMIT = 240
+PARAM_DESC_LIMIT = 120
+EXAMPLE_LIMIT = 1
+EXPECTED_LIMIT = 160
+RATIONALE_LIMIT = 200
+
+def clip(text, limit):
+    text = "" if text is None else str(text)
+    text = " ".join(text.split())  # 折叠多余空白/换行
+    return text if len(text) <= limit else text[:limit].rstrip() + "..."
+
+scripts_dir = Path(os.environ["EVOLVE_SCRIPTS_DIR_ABS"])
+target_root = os.environ.get("EVOLVE_SCRIPTS_TARGET_ROOT", "/app/.preinstalled_scripts").rstrip("/") or "/"
+
+intros = []
+for d in sorted(scripts_dir.iterdir()):
+    if not d.is_dir():
+        continue
+    intro = d / "intro.json"
+    if not intro.exists():
+        continue
+    try:
+        data = json.loads(intro.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        print(f"[evolve_scripts_tools_block] skip {intro}: invalid JSON: {exc}", file=sys.stderr)
+        continue
+    if not isinstance(data, dict):
+        print(f"[evolve_scripts_tools_block] skip {intro}: top-level is not a JSON object", file=sys.stderr)
+        continue
+    intros.append((d.name, data))
+
+if not intros:
+    sys.exit(0)
+
+lines = ["## Available evolved scripts", ""]
+for name, data in intros:
+    entrypoint = data.get("entrypoint", "main.sh")
+    abs_path = f"{target_root}/{name}/{entrypoint}" if target_root != "/" else f"/{name}/{entrypoint}"
+    lines.append(f"### ./{name}/")
+    lines.append(f"- description: {clip(data.get('description', '(no description)'), DESC_LIMIT)}")
+    lines.append(f"- entrypoint: {abs_path}")
+    params = data.get("parameters") or []
+    if isinstance(params, list) and params:
+        lines.append("- parameters:")
+        for p in params:
+            if isinstance(p, dict):
+                req = "required" if p.get("required") else "optional"
+                pdesc = clip(p.get("description", ""), PARAM_DESC_LIMIT)
+                lines.append(f"    - {p.get('name', '?')} ({p.get('type', '?')}, {req}): {pdesc}")
+    examples = data.get("examples") or []
+    if isinstance(examples, list) and examples:
+        # 只取第一条 example，避免 prompt 膨胀
+        ex = examples[0]
+        if isinstance(ex, dict):
+            call = clip(ex.get("call", ""), EXPECTED_LIMIT)
+            expected = clip(ex.get("expected", ""), EXPECTED_LIMIT)
+            lines.append(f"- example: {call}  ->  {expected}")
+    rationale = data.get("cost_saving_rationale")
+    if rationale:
+        lines.append(f"- cost_saving_rationale: {clip(rationale, RATIONALE_LIMIT)}")
+    lines.append("")
+
+print("\n".join(lines))
+PY
+}
+
 evolve_scripts_prompt_template() {
   # 根据 EVOLVE_SCRIPTS_DIR 找到 instruction.md，并生成可供 Pier
   # --ak prompt_template_path=... 使用的 Jinja2 模板文件。
   #
-  # 模板内容 = instruction.md 全文 + 分隔符 + "{{ instruction }}"。
+  # 模板内容 = instruction.md 全文 + 分隔符 + tools_block（来自 intro.json）
+  #           + 分隔符 + "{{ instruction }}"。
   # Pier 的 render_prompt_template 校验模板必须包含 {{ instruction }}，
   # 渲染后再传给底层 agent（如 mini-swe-agent --task=...）。
   #
   # 入参（环境变量）：
-  #   EVOLVE_SCRIPTS_DIR  host 上辅助 bash 脚本目录；空则不生成。
+  #   EVOLVE_SCRIPTS_DIR          host 上辅助 bash 脚本目录；空则不生成。
+  #   EVOLVE_SCRIPTS_TARGET_ROOT  容器内挂载根目录，用于 tools block 拼绝对路径。
   #
   # 输出：
   #   stdout 打印临时模板文件路径；EVOLVE_SCRIPTS_DIR 为空或不存在 instruction.md 时打印空串。
@@ -200,11 +307,22 @@ evolve_scripts_prompt_template() {
   if [[ ! -f "${instr}" ]]; then
     return 0
   fi
+  local tools_block
+  tools_block="$(evolve_scripts_tools_block)"
   local tmp
   tmp="$(mktemp -t evolve_prompt.XXXXXX)"
+  # instruction.md 和 tools_block 可能含 {{ }} 字面量（如 Go template
+  # '{{.GoFiles}}'、shell $(( ))、JSON 等），若直接交给 Jinja2 会被当成
+  # 表达式解析而报 TemplateSyntaxError。用 {% raw %}...{% endraw %} 把这两
+  # 段整体包起来按字面输出，只保留末尾真正的 {{ instruction }} 占位符。
   {
+    printf '{%% raw %%}\n'
     cat "${instr}"
-    printf '\n\n---\n\n{{ instruction }}\n'
+    if [[ -n "${tools_block}" ]]; then
+      printf '\n\n---\n\n'
+      printf '%s\n' "${tools_block}"
+    fi
+    printf '\n{%% endraw %%}\n\n---\n\n{{ instruction }}\n'
   } > "${tmp}"
   printf '%s\n' "${tmp}"
 }

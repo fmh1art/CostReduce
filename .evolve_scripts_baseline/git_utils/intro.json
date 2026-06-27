@@ -1,0 +1,25 @@
+{
+  "name": "git_utils",
+  "description": "Full git workflow in one script: show commit log, view commit diffs, create/switch branches, stage files, commit changes, stash, check status, and set config. Replaces multiple sequential 'cd <repo> && git ...' calls for the most common git operations.",
+  "when_to_use": "Use when you need to perform git operations: view commit history (log), inspect commits (show), compare changes (diff), annotate files (blame), create feature branches (branch), stage files (add), commit (commit), stash work-in-progress (stash), check working tree (status), or configure git (config). Replaces 2-4 separate bash commands per operation (cd to repo + git command). The 'branch', 'add', and 'commit' actions are particularly useful during development workflows when creating branches, staging modified files, and committing changes. The 'config' action avoids the common 'Author identity unknown' error by setting user config in one step.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {"name": "repo_dir", "type": "string", "required": true, "description": "Path to the git repository root (e.g. /app)"},
+    {"name": "action", "type": "string", "required": true, "description": "Action: 'log' (show commit log), 'show' (show commit details), 'diff' (show diff), 'blame' (file blame), 'branch' (create/switch branch), 'add' (stage files), 'commit' (commit staged changes), 'stash' (stash operations), 'status' (working tree status), 'config' (set git config)"},
+    {"name": "args", "type": "string", "required": false, "description": "Additional options: --oneline, --all, --reverse, --count=N (default: 20), --since=DATE, --file=PATH, --stat, --cached, --from=REF, --to=REF, -m 'MESSAGE' (commit message), --author='Name <email>', --force (force branch create), --short (short status), --global (global config)"}
+  ],
+  "examples": [
+    {"call": "main.sh /app log --oneline --count=10", "expected": "Last 10 commits in oneline format."},
+    {"call": "main.sh /app log --oneline --all --file=lib/netext/httpext/tracer.go --count=5", "expected": "Last 5 commits affecting tracer.go across all branches."},
+    {"call": "main.sh /app show abc1234 --stat", "expected": "Commit details with file change stats for hash abc1234."},
+    {"call": "main.sh /app diff --stat --from=HEAD~5 --to=HEAD", "expected": "Diff stat between HEAD~5 and HEAD."},
+    {"call": "main.sh /app blame /app/js/bundle.go --count=30", "expected": "Blame annotations for bundle.go (first 30 lines)."},
+    {"call": "main.sh /app branch improve-feature", "expected": "Create and switch to new branch 'improve-feature'."},
+    {"call": "main.sh /app add file1.go,file2.go", "expected": "Stage file1.go and file2.go for commit."},
+    {"call": "main.sh /app commit -m 'Add new feature' --author='Developer <dev@example.com>'", "expected": "Commit staged changes with the given message and author."},
+    {"call": "main.sh /app config user.email 'dev@example.com'", "expected": "Set local git user email."},
+    {"call": "main.sh /app stash push", "expected": "Stash working directory changes."},
+    {"call": "main.sh /app status --short", "expected": "Short status of working tree."}
+  ],
+  "cost_saving_rationale": "Combines 'cd <repo> && git ...' sequences into a single script call, reducing 2-4 round trips per git operation. The 'branch' + 'add' + 'commit' workflow replaces 4-6 separate tool calls (cd, git checkout -b, git add, git status, git commit) with 3 script calls. The 'config' action avoids the common 'Author identity unknown' error that blocks commits, saving debugging round trips. Covers common git operations (log, show, diff, blame, branch, add, commit, stash, status, config) that appear 10+ times per trajectory."
+}
