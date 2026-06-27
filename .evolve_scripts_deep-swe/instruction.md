@@ -1,12 +1,12 @@
 # Cost-saving instructions
 
-- After 4 consecutive reads without attempting a fix, STOP exploring and attempt a fix based on what you already know.
+- Use `write-file` instead of `cat > file << 'EOF'` to write files — heredocs embed the entire file content in the command, massively bloating the observation when the command appears in error output.
+- Use `multi-edit --stdin-code` instead of `python3 << PYEOF` or complex `sed -i` — Python-heredoc and sed patterns often produce broken state that takes multiple cleanup steps.
+- Use `build-check --mocha --tail=15 --cd=DIR` instead of `cd DIR && npx mocha tests/... 2>&1 | tail -15` — the pipe can timeout and the cd + npx pattern wastes steps.
+- Use `build-check --go --cd=DIR --test-only --tail=10 --fail-only` instead of `cd /app && go test ... -v 2>&1 | grep -E "PASS|FAIL|---"` — grep filters out failure details that the agent later needs to re-read.
+- Instead of running `cd + go build`/`cd + go vet`/`cd + gofmt | head` as separate chained steps, use `build-check --cd=DIR --build-only/--vet-only/--gofmt/--list-only` with `--timeout=N` and `--head=N` to collapse them into one step.
+- When running pytest, use `build-check --trim-pytest --pytest` (or `--tail=1` as fallback) instead of raw `pytest | tail -15` — pytest output contains long duration dumps, snapshot reports, and docs links that are never useful; only the summary line matters.
+- After 4 consecutive reads without attempting a fix, STOP and attempt a fix based on what you already know — repeatedly reading the same file with different commands (sed -n, nl -ba, head, grep) wastes steps.
 - If you've made 5+ edits without running tests/build, stop editing and run the tests now.
-- When a targeted text replacement fails after verifying the old text exists, read current file content around the target to find the exact text before retrying.
-- After 5+ unsuccessful edit attempts on the same code section, reconsider your approach rather than continuing to iterate.
-- If you've inspected the same file/line 3+ times with different commands, stop and directly run the build/test command you're investigating for.
-- When test output is very long (>50 lines), rerun with --head/--tail/--trim-ansi to reduce observation size before the next action.
-- After 3+ failed compilation attempts on the same code block, stop editing and re-read the file to understand its full context before making further changes.
-- If you've written a temp file and run it twice without progress, use build-check --go-run/--node-run to skip the write-file step entirely.
-- When stuck on a failing test, use batch-read --structure or code_structure to understand broader context before further edits.
-- If you git checkout --file to undo edits 3+ times on the same file, stop and understand the full logic before attempting another edit.
+- Before editing code to fix an anticipated issue or writing custom smoke tests, run the project's relevant tests first — they may already pass, saving unnecessary edit and intermediate-verification steps.
+- After 5+ unsuccessful edit attempts on the same code section, reconsider your overall approach rather than continuing to iterate with minor changes.

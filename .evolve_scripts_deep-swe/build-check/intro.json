@@ -1,6 +1,6 @@
 {
   "name": "build-check",
-  "description": "Run build/vet/test for Go, TypeScript, Python, or Node.js in one step with timeout, test filtering, fail-only mode (show only failures), output limiting, quiet mode, ANSI stripping, or run Go/Node code from stdin via --go-run/--node-run, with --cd to change directory before running.",
+  "description": "Run build/vet/test for Go, TypeScript, Python, or Node.js in one step with timeout, test filtering, fail-only mode (show only failures), output limiting, quiet mode, ANSI stripping, or run Go/Node/TS code from stdin via --go-run/--node-run/--tsx-run, or run mocha/jest/vitest tests, with --cd to change directory before running, or --trim-stack to strip stack traces from output, or --trim-pytest to filter pytest output to summary/failures only.",
   "entrypoint": "main.sh",
   "parameters": [
     {
@@ -34,6 +34,12 @@
       "description": "Write Node.js code from stdin to temp file and run with node"
     },
     {
+      "name": "--tsx-run",
+      "type": "bool",
+      "required": false,
+      "description": "Write TypeScript code from stdin to temp file and run with npx tsx"
+    },
+    {
       "name": "--ts",
       "type": "bool",
       "required": false,
@@ -50,6 +56,12 @@
       "type": "bool",
       "required": false,
       "description": "Run jest tests"
+    },
+    {
+      "name": "--mocha",
+      "type": "bool",
+      "required": false,
+      "description": "Run mocha tests"
     },
     {
       "name": "--pytest",
@@ -121,7 +133,7 @@
       "name": "--force-exit",
       "type": "bool",
       "required": false,
-      "description": "Add --forceExit flag to jest commands"
+      "description": "Add --forceExit flag to jest or mocha commands"
     },
     {
       "name": "--build-only",
@@ -158,13 +170,35 @@
       "type": "bool",
       "required": false,
       "description": "Only compile without running tests"
+    },
+    {
+      "name": "--list-only, --go-list",
+      "type": "bool",
+      "required": false,
+      "description": "Run go list -e on the target to verify package resolution and imports"
+    },
+    {
+      "name": "--trim-stack",
+      "type": "bool",
+      "required": false,
+      "description": "Strip stack trace lines from output, keeping only error messages and code lines"
+    },
+    {
+      "name": "--trim-pytest",
+      "type": "bool",
+      "required": false,
+      "description": "Strip pytest noise (durations, snapshot reports, docs links); keep only summary line(s) and failure info"
     }
   ],
   "examples": [
     {
       "call": "/app/.preinstalled_scripts/build-check/main.sh --go-run < /tmp/test_snippet.go",
       "expected": "Compiles and runs Go code from stdin"
+    },
+    {
+      "call": "/app/.preinstalled_scripts/build-check/main.sh --tsx-run << 'EOF'",
+      "expected": "Compiles and runs TypeScript code from stdin via npx tsx"
     }
   ],
-  "cost_saving_rationale": "Combines Go/Node code write+run into one step instead of cat heredoc then run separately; --quiet and --trim-ansi suppress observation-blowing output; --fail-only filters out passing tests to dramatically reduce observation size; unifies build/vet/test with a single entrypoint; -count=1 avoids Go test caching issues; --cd replaces cd + command two-step pattern."
+  "cost_saving_rationale": "Combines Go/Node/TS code write+run into one step instead of write-file + npx tsx two-step; --quiet and --trim-ansi suppress observation-blowing output; --fail-only filters out passing tests to dramatically reduce observation size; unifies build/vet/test with a single entrypoint; --cd replaces cd + command two-step pattern; --trim-stack reduces observation size by removing stack trace boilerplate."
 }

@@ -21,6 +21,8 @@ Options:
   --ts              Force TypeScript check via tsc (--noEmit)
   --vitest          Run vitest tests
   --jest            Run jest tests
+
+  --mocha           Run mocha tests
   --pytest          Run Python pytest
   --python          Python syntax check only (ast.parse)
   --gofmt           Check Go file formatting via gofmt -e
@@ -32,12 +34,14 @@ Options:
   --tail=N          Show last N lines of output
   --quiet, --silent Suppress stdout on success (exit 0); always show stderr
   --trim-ansi       Strip ANSI escape codes from output (reduces observation size)
-  --force-exit      Add --forceExit flag to jest commands
+  --force-exit      Add --forceExit flag to jest or mocha commands
   --build-only      Only build, skip tests
   --vet-only        Only run go vet
   --test-only       Only run tests
   --compile-only    Only compile without running tests
+  --list-only, --go-list  Run go list -e on the target (verifies package resolution)
   --fail-only       Show only failed tests and their error messages (filters out passing tests)
+  --trim-pytest     When used with --pytest, strip durations, snapshot reports, docs links, and other noise; keep only summary line(s) and failure/error info
   --only-errors     Alias for --fail-only
 
 Examples:
@@ -70,6 +74,7 @@ TRIM_ANSI=""
 FORCE_EXIT=""
 FAIL_ONLY=""
 ONLY_ERRORS=""
+TRIM_PYTEST=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -89,6 +94,8 @@ while [[ $# -gt 0 ]]; do
         --pytest) MODE="pytest" ;;
         --python) MODE="python-check" ;;
         --gofmt) MODE="gofmt" ;;
+
+        --mocha) MODE="mocha" ;;
         --timeout=*) TIMEOUT="${1#*=}" ;;
         --filter=*) FILTER="${1#*=}" ;;
         --tags=*) TAGS="${1#*=}" ;;
@@ -100,10 +107,12 @@ while [[ $# -gt 0 ]]; do
         --force-exit) FORCE_EXIT="1" ;;
         --fail-only) FAIL_ONLY="1" ;;
         --only-errors) ONLY_ERRORS="1" ;;
+        --trim-pytest) TRIM_PYTEST="1" ;;
         --build-only) MODE="${MODE:-go}-build" ;;
         --vet-only) MODE="${MODE:-go}-vet" ;;
         --test-only) MODE="${MODE:-go}-test" ;;
         --compile-only) MODE="${MODE:-go}-compile" ;;
+        --list-only|--go-list) MODE="go-list" ;;
         *) TARGET="$1" ;;
     esac
     shift
@@ -314,6 +323,52 @@ sys.stdout.write("".join(out_lines))
 ' < "$tmperr" > "${tmperr}_filtered" 2>/dev/null || true
         mv "${tmperr}_filtered" "$tmperr" 2>/dev/null || true
     fi
+    # --trim-pytest: strip pytest noise (durations, snapshot reports, docs links, etc.)
+    if [[ -n "$TRIM_PYTEST" ]]; then
+        python3 -c '
+import sys, re
+lines = sys.stdin.read().splitlines(True)
+out_lines = []
+keep = False
+keep_count = 0
+for line in lines:
+    s = line.strip()
+    # Always keep summary lines
+    if re.search(r"\d+ passed", s) and re.search(r"\d+ failed|\d+ skipped|in [\d.]+s", s):
+        out_lines.append(line)
+        keep = False
+        keep_count = 0
+        continue
+    # Keep FAILED lines
+    if s.startswith("FAILED"):
+        out_lines.append(line)
+        keep = True
+        keep_count = 20
+        continue
+    # Keep test names with black circle
+    if "\u25cf" in s:
+        out_lines.append(line)
+        keep = True
+        keep_count = 15
+        continue
+    # Keep short test summary info section
+    if s == "short test summary info":
+        out_lines.append(line)
+        keep = True
+        keep_count = 20
+        continue
+    # Keep failure context lines while counter lasts
+    if keep and keep_count > 0:
+        out_lines.append(line)
+        keep_count -= 1
+        continue
+    if keep and keep_count <= 0:
+        keep = False
+        continue
+sys.stdout.write("".join(out_lines))
+' < "$tmpout" > "${tmpout}_filtered" 2>/dev/null || true
+        mv "${tmpout}_filtered" "$tmpout" 2>/dev/null || true
+    fi
     if [[ -n "$QUIET" && $rc -eq 0 ]]; then
         # On success with --quiet, show nothing on stdout but always show stderr
         cat "$tmperr" >&2 || true
@@ -401,6 +456,11 @@ case "$MODE" in
         [[ -n "$TAGS" ]] && CMD+=(-tags="$TAGS")
         CMD+=("$TARGET")
         ;;
+    go-list)
+        CMD=(go list -e)
+        [[ -n "$TAGS" ]] && CMD+=(-tags="$TAGS")
+        CMD+=("$TARGET")
+        ;;
     go-test|go-compile)
         CMD=(go test -count=1)
         if [[ "$MODE" == go-compile ]]; then
@@ -429,6 +489,13 @@ case "$MODE" in
         CMD=(npx --no-install jest --no-coverage --no-cache)
         [[ -n "$FORCE_EXIT" ]] && CMD+=(--forceExit)
         [[ -n "$FILTER" ]] && CMD+=(-t "$FILTER")
+        CMD+=("$TARGET")
+        ;;
+    mocha)
+        CMD=(npx --no-install mocha)
+        [[ -n "$FORCE_EXIT" ]] && CMD+=(--forceExit)
+        [[ -n "$FILTER" ]] && CMD+=(--grep "$FILTER")
+        [[ -n "$VERBOSE" ]] && CMD+=(--reporter spec)
         CMD+=("$TARGET")
         ;;
     pytest)
