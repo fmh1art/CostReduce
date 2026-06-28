@@ -1,0 +1,23 @@
+{
+  "name": "find-read",
+  "description": "Find files by name pattern(s) and read or grep them in one step, merging find+cat or find+grep into 1 call.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {"name": "directory", "type": "string", "required": true, "description": "Directory to search in"},
+    {"name": "--name", "type": "string", "required": true, "description": "File name glob pattern (repeatable for OR matching)"},
+    {"name": "--max-depth", "type": "int", "required": false, "description": "Maximum search depth"},
+    {"name": "--path", "type": "string", "required": false, "description": "Path glob pattern for filtering (e.g. *query*)"},
+    {"name": "--exclude", "type": "string", "required": false, "description": "Path pattern to exclude (e.g. */vendor/*)"},
+    {"name": "--limit", "type": "int", "required": false, "description": "Maximum files to read or grep"},
+    {"name": "--names-only", "type": "bool", "required": false, "description": "Only print matching file paths, do not read"},
+    {"name": "--sort", "type": "bool", "required": false, "description": "Sort results alphabetically"},
+    {"name": "--type", "type": "string", "required": false, "description": "File type: f (file) or d (dir)"},
+    {"name": "--no-exclude-defaults", "type": "bool", "required": false, "description": "Do not exclude node_modules/.git/__pycache__/venv"},
+    {"name": "--grep", "type": "string", "required": false, "description": "Content pattern to search within matched files"},
+    {"name": "--grep-ignore-case", "type": "bool", "required": false, "description": "Case-insensitive grep search"}
+  ],
+  "examples": [
+    {"call": "/app/.preinstalled_scripts/find-read/main.sh /app/packages --name=*.ts --name=*.js --max-depth=3 --limit=5", "expected": "Finds and reads up to 5 .ts/.js files in /app/packages"}
+  ],
+  "cost_saving_rationale": "Merges file-finding and file-reading/grepping into 1 step instead of 2+ sequential steps per batch."
+}

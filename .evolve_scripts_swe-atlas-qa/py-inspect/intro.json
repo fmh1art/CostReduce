@@ -1,0 +1,17 @@
+{
+    "name": "py-inspect",
+    "description": "Inspect Python module/class internals: list public attributes, print docstrings, call functions, or run extra code, all within an optional venv.",
+    "entrypoint": "main.sh",
+    "parameters": [
+        {"name": "module_path", "type": "string", "required": true, "description": "Python module or class path to inspect (e.g. limits, flask.Flask, limits.storage.MemoryStorage)"},
+        {"name": "--dir=DIR", "type": "string", "required": false, "description": "Working directory to cd into first"},
+        {"name": "--venv=PATH", "type": "string", "required": false, "description": "Path to venv activate script (default: venv/bin/activate)"},
+        {"name": "--env KEY=val", "type": "string", "required": false, "description": "Set environment variable (repeatable, or -e KEY=val)"},
+        {"name": "--attr=ATTR", "type": "string", "required": false, "description": "Print specific attribute(s) with type/value (repeatable)"},
+        {"name": "--call=FUNC", "type": "string", "required": false, "description": "Call a module-level function and print its result"},
+        {"name": "--doc", "type": "bool", "required": false, "description": "Show module/class docstring"},
+        {"name": "--code=CODE", "type": "string", "required": false, "description": "Additional Python code to run after import (receives obj as 'mod' and 'obj')"}
+    ],
+    "examples": [{"call": "/app/.preinstalled_scripts/py-inspect/main.sh --dir=/app --attr=HEADERS flask_limiter.extension", "expected": "HEADERS class contents: LIMIT=3, REMAINING=2, RESET=1, RETRY_AFTER=4"}],
+    "cost_saving_rationale": "Collapses 3+ separate venv-activate+python -c steps (dir, getattr, inspect) into one inspect call, saving 2+ steps per library exploration."
+}

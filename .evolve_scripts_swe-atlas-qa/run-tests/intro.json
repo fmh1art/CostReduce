@@ -1,0 +1,19 @@
+{
+    "name": "run-tests",
+    "description": "Run pytest or jest tests with env vars, auto-detected framework, test filtering, cache bypass, verbosity, and output truncation.",
+    "entrypoint": "main.sh",
+    "parameters": [
+        {"name": "test-path", "type": "string", "required": true, "description": "Path to test file or directory"},
+        {"name": "--dir=DIR", "type": "string", "required": false, "description": "Working directory to cd into first"},
+        {"name": "--env KEY=val", "type": "string", "required": false, "description": "Environment variable to set before running tests (repeatable)"},
+        {"name": "--grep=PATTERN", "type": "string", "required": false, "description": "Filter tests by name/keyword pattern"},
+        {"name": "--pytest", "type": "bool", "required": false, "description": "Force pytest framework"},
+        {"name": "--jest", "type": "bool", "required": false, "description": "Force jest framework"},
+        {"name": "--verbose", "type": "bool", "required": false, "description": "Show verbose test output"},
+        {"name": "--tail=N", "type": "int", "required": false, "description": "Show only last N lines of output"},
+        {"name": "--coverage", "type": "bool", "required": false, "description": "Enable coverage reporting"},
+        {"name": "--no-cache", "type": "bool", "required": false, "description": "Bypass Jest transform cache with --no-cache"}
+    ],
+    "examples": [{"call": "/app/.preinstalled_scripts/run-tests/main.sh --dir=/app --env CONFIG=/app/example.env --grep=test_new_custom_alias --tail=100 tests/api/test_new_custom_alias.py", "expected": "Last 100 lines of pytest results with CONFIG env var set, filtered for test_new_custom_alias"}],
+    "cost_saving_rationale": "Eliminates cd+export+grep+tail+pytest boilerplate and auto-detects framework, saving 2-4 steps per test run, and --no-cache avoids stale-cache re-runs."
+}

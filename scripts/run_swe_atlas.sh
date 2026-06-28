@@ -19,7 +19,29 @@ mapfile -t AGENT_ENV < <(agent_env_args)
 # 生成传给 Harbor agent setup/运行阶段的代理环境变量参数，帮助容器内 apt/curl/pip 访问外网。
 mapfile -t PROXY_ENV < <(proxy_env_args)
 
-# 生成传给 SWE-Atlas verifier 的 LLM judge 配置，使用 OpenAI-compatible Claude 接口评分。
+# SWE-Atlas verifier(evaluator) 改用 _config/deepseekv4_pro.yaml 作为 LLM judge。
+# 解析该 yaml 的 llm_name / key / openai_base_url 覆盖默认 VERIFIER_* 配置。
+eval "$(python - "$ROOT_DIR/_config/deepseekv4_pro.yaml" <<'PY'
+from pathlib import Path
+import shlex
+import sys
+
+data = {}
+for line in Path(sys.argv[1]).read_text().splitlines():
+    if ':' in line and not line.startswith(' '):
+        key, value = line.split(':', 1)
+        data[key.strip()] = value.strip().strip('"\'')
+
+for key, value in {
+    'VERIFIER_API_KEY': data['key'],
+    'VERIFIER_BASE_URL': data['openai_base_url'],
+    'VERIFIER_MODEL': data['llm_name'],
+}.items():
+    print(f'export {key}={shlex.quote(value)}')
+PY
+)"
+
+# 生成传给 SWE-Atlas verifier 的 LLM judge 配置（已切换为 deepseekv4_pro）。
 mapfile -t VERIFIER_ENV < <(verifier_env_args)
 
 # 可选：通过 EVOLVE_SKIP_FILE 跳过指定 case id（默认从 EVOLVE_SCRIPTS_DIR

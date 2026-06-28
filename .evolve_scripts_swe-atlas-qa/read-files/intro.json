@@ -1,0 +1,32 @@
+{
+    "name": "read-files",
+    "description": "Read multiple files or find+grep with line range, head, tail, brief, grep-with-context, line counting, numbering, directory listing, find-by-name, and filtering.",
+    "entrypoint": "main.sh",
+    "parameters": [
+        {"name": "files", "type": "string", "required": false, "description": "One or more file or directory paths (optional with --find-name)"},
+        {"name": "--dir=DIR", "type": "string", "required": false, "description": "Working directory to cd into first"},
+        {"name": "--head=N", "type": "int", "required": false, "description": "Show first N lines only"},
+        {"name": "--tail=N", "type": "int", "required": false, "description": "Show last N lines only"},
+        {"name": "--lines=START-END", "type": "string", "required": false, "description": "Show line range START through END (repeatable)"},
+        {"name": "--brief=NUMS", "type": "string", "required": false, "description": "Show only specific line numbers/ranges like 3,5,10-15"},
+        {"name": "--grep=PATTERN", "type": "string", "required": false, "description": "Search file or directory contents for pattern"},
+        {"name": "--grep-context=N", "type": "int", "required": false, "description": "Show N lines of context before/after each grep match"},
+        {"name": "--include=GLOB", "type": "string", "required": false, "description": "File glob filter for directory grep, like --include=*.ts"},
+        {"name": "--exclude=PATTERN", "type": "string", "required": false, "description": "Exclude path pattern for directory grep"},
+        {"name": "--count", "type": "bool", "required": false, "description": "Show line count(s) instead of file content"},
+        {"name": "--number", "type": "bool", "required": false, "description": "Prefix lines with original line numbers"},
+        {"name": "--ls", "type": "bool", "required": false, "description": "List directory contents instead of reading files"},
+        {"name": "--find-name=PATTERN", "type": "string", "required": false, "description": "Find files by name glob before reading/grepping (repeatable for multiple patterns like --find-name=*.js --find-name=*.ts)"},
+        {"name": "--find-type=f|d", "type": "string", "required": false, "description": "Find type f(file) or d(directory), default f"},
+        {"name": "--max-depth=N", "type": "int", "required": false, "description": "Max directory depth for find or grep"},
+        {"name": "--limit=N", "type": "int", "required": false, "description": "Max results for find mode, default 100"},
+        {"name": "--find-exclude=PATTERN", "type": "string", "required": false, "description": "Exclude path pattern for find mode"},
+        {"name": "--find-ignore-case", "type": "bool", "required": false, "description": "Case-insensitive find by name"},
+        {"name": "--names-only", "type": "bool", "required": false, "description": "List filenames only (for grep mode)"},
+        {"name": "--ignore-case", "type": "bool", "required": false, "description": "Case-insensitive grep"},
+        {"name": "--exclude-dir=PATTERN", "type": "string", "required": false, "description": "Exclude dirs from grep, comma-separated"},
+        {"name": "--exclude-pattern=PATTERN", "type": "string", "required": false, "description": "Exclude matching grep lines"}
+    ],
+    "examples": [{"call": "/app/.preinstalled_scripts/read-files/main.sh --dir=/app --grep=create_app --grep-context=5 --include=*.py server.py", "expected": "5 lines of context around each match of 'create_app' in server.py and recursively in /app"}],
+    "cost_saving_rationale": "Collapses dozens of separate cat/head/tail/sed/nl/ls/wc/grep/find calls into one step, saving N-1 steps per batch."
+}

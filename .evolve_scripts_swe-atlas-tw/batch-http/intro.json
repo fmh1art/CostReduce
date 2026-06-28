@@ -1,0 +1,14 @@
+{
+  "name": "batch-http",
+  "description": "Make multiple HTTP requests (body/headers/summary) in one call, collapsing 3+ sequential curl calls into 1 step.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {"name": "urls", "type": "string", "required": true, "description": "Space-separated URLs to request"},
+    {"name": "--headers", "type": "bool", "required": false, "description": "Show response headers instead of body"},
+    {"name": "--summary", "type": "bool", "required": false, "description": "Show HTTP status, final URL, and redirect count summary"}
+  ],
+  "examples": [
+    {"call": "/app/.preinstalled_scripts/batch-http/main.sh --summary https://wordpress.com/?locale=es https://wordpress.com/?locale=en", "expected": "HTTP 200 | Final: https://wordpress.com/?locale=es | Redirects: 0"}
+  ],
+  "cost_saving_rationale": "Replaces 3+ separate curl calls (headers + code + redirects) with 1 step, saving 2+ agent steps per HTTP check batch."
+}

@@ -1,0 +1,14 @@
+{
+  "name": "batch-replace",
+  "description": "Perform multiple string replacements in a file in one call, saving steps over sequential sed commands.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {"name": "file", "type": "string", "required": true, "description": "File to modify"},
+    {"name": "pairs", "type": "string", "required": true, "description": "Old-string new-string pairs (odd=old, even=new)"},
+    {"name": "--regex", "type": "bool", "required": false, "description": "Treat patterns as regex instead of literal strings"}
+  ],
+  "examples": [
+    {"call": "/app/.preinstalled_scripts/batch-replace/main.sh file.go 'l.fill(' 'l.frame.fill(l.selector, '", "expected": "Both replacements applied in one step"}
+  ],
+  "cost_saving_rationale": "Applies N text replacements in 1 step vs N sequential sed steps, saving N-1 agent steps."
+}

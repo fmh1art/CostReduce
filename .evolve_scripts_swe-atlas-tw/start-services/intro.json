@@ -1,0 +1,14 @@
+{
+  "name": "start-services",
+  "description": "Check and start PostgreSQL and Redis in one step, collapsing 3 separate service checks into 1 call.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {"name": "--check-only", "type": "bool", "required": false, "description": "Only check status, do not start services"},
+    {"name": "--pg-port", "type": "int", "required": false, "description": "PostgreSQL port (default: 5432)"},
+    {"name": "--redis-port", "type": "int", "required": false, "description": "Redis port (default: 6379)"}
+  ],
+  "examples": [
+    {"call": "/app/.preinstalled_scripts/start-services/main.sh", "expected": "Starts PostgreSQL and Redis if not running"}
+  ],
+  "cost_saving_rationale": "Replaces 3 sequential service check/start steps with 1 call, saving 2 agent steps per test setup."
+}

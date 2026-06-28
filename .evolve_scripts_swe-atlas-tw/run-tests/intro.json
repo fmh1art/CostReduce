@@ -1,0 +1,17 @@
+{
+  "name": "run-tests",
+  "description": "Auto-detect project type and run tests, optionally showing only failures with --brief.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {"name": "path", "type": "string", "required": true, "description": "Test file or directory to run"},
+    {"name": "--verbose", "type": "bool", "required": false, "description": "Verbose output"},
+    {"name": "--brief", "type": "bool", "required": false, "description": "Show only failures/errors/summary, omit all PASS lines"},
+    {"name": "--timeout", "type": "int", "required": false, "description": "Test timeout in seconds"},
+    {"name": "--count", "type": "int", "required": false, "description": "Repeat tests N times (Go only)"},
+    {"name": "--grep", "type": "string", "required": false, "description": "Filter tests by name pattern"}
+  ],
+  "examples": [
+    {"call": "/app/.preinstalled_scripts/run-tests/main.sh --brief --timeout=120 ./tests/", "expected": "Runs tests and shows only failure/error lines"}
+  ],
+  "cost_saving_rationale": "Replaces repeated cd+go test/pytest commands with a single auto-detecting call, and --brief shrinks observation by omitting all PASS lines."
+}

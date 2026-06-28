@@ -1,0 +1,15 @@
+{
+  "name": "quick-ls",
+  "description": "List directories with a compact tree view and file sizes, collapsing 18+ ls calls into 1 step.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {"name": "directory", "type": "string", "required": true, "description": "Directory to list"},
+    {"name": "depth", "type": "int", "required": false, "description": "Max depth for tree view (default: 2)"},
+    {"name": "--filter", "type": "string", "required": false, "description": "Show only matching file types (e.g. *.py,*.ts)"},
+    {"name": "--all", "type": "bool", "required": false, "description": "Show hidden files"}
+  ],
+  "examples": [
+    {"call": "/app/.preinstalled_scripts/quick-ls/main.sh /app/src 3", "expected": "3-level tree view of /app/src"}
+  ],
+  "cost_saving_rationale": "Shows directory structure in one call instead of exploring one level at a time with ls/cd, saving many navigation steps."
+}

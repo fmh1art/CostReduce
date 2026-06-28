@@ -1,0 +1,23 @@
+{
+    "name": "run-in-env",
+    "description": "Activate venv, set env vars, set PYTHONPATH, install pip packages, and run a command or inline Python/Node code with optional timeout, all in one step.",
+    "entrypoint": "main.sh",
+    "parameters": [
+        {"name": "command", "type": "string", "required": false, "description": "Command to run (optional if --python-code, --python-stdin, or --node-code is used)"},
+        {"name": "--dir=DIR", "type": "string", "required": false, "description": "Working directory to cd into first"},
+        {"name": "--venv=PATH", "type": "string", "required": false, "description": "Path to venv activate script (default: venv/bin/activate)"},
+        {"name": "--env KEY=val", "type": "string", "required": false, "description": "Set environment variable (repeatable, or -e KEY=val)"},
+        {"name": "--env-file=PATH", "type": "string", "required": false, "description": "Load env vars from .env file"},
+        {"name": "--python-path=DIR", "type": "string", "required": false, "description": "Set PYTHONPATH environment variable for module imports (or --py-path=DIR)"},
+        {"name": "--pip-install=PKG", "type": "string", "required": false, "description": "Install Python package(s) via pip (comma-separated or repeatable)"},
+        {"name": "--pip-requirements=FILE", "type": "string", "required": false, "description": "Install packages from requirements.txt"},
+        {"name": "--pip-only", "type": "bool", "required": false, "description": "Only install packages without running a command"},
+        {"name": "--pip-list=PATTERN", "type": "string", "required": false, "description": "List installed packages matching pattern via grep -i"},
+        {"name": "--python-code=CODE", "type": "string", "required": false, "description": "Inline Python code to run (written to temp file)"},
+        {"name": "--python-stdin", "type": "bool", "required": false, "description": "Read Python script from piped stdin instead of creating temp file"},
+        {"name": "--node-code=CODE", "type": "string", "required": false, "description": "Inline Node code to run instead of a command"},
+        {"name": "--timeout=N", "type": "int", "required": false, "description": "Kill command after N seconds"}
+    ],
+    "examples": [{"call": "/app/.preinstalled_scripts/run-in-env/main.sh --dir=/app --env CONFIG=/app/.env.test --pip-install=dotenv --timeout=10 /app/venv/bin/gunicorn wsgi:app -b 0.0.0.0:7777", "expected": "python-dotenv installed, gunicorn starts with env vars, killed after 10 seconds"}],
+    "cost_saving_rationale": "Collapses cd, venv activation, pip install/listing, env var exports, PYTHONPATH, timeout, and command execution into one step, saving 4-6 steps per command run and 2+ steps per pip-only operation; --python-stdin eliminates temp file creation step when running multi-line Python scripts."
+}

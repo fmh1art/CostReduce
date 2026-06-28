@@ -1,0 +1,18 @@
+{
+  "name": "batch-read",
+  "description": "Read multiple files or line ranges in one native tool call, collapsing 30+ cat calls into 1 step.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {"name": "files", "type": "string", "required": true, "description": "Space-separated file paths or file:start-end ranges"},
+    {"name": "--head", "type": "int", "required": false, "description": "Show first N lines of each file"},
+    {"name": "--tail", "type": "int", "required": false, "description": "Show last N lines of each file"},
+    {"name": "--lines", "type": "string", "required": false, "description": "Line range start-end to apply to all files"},
+    {"name": "--number", "type": "bool", "required": false, "description": "Show line numbers"},
+    {"name": "--dir", "type": "string", "required": false, "description": "Directory path to find files in"},
+    {"name": "--include", "type": "string", "required": false, "description": "Glob pattern for --dir file matching"}
+  ],
+  "examples": [
+    {"call": "/app/.preinstalled_scripts/batch-read/main.sh file1.py file2.py", "expected": "Contents of file1.py and file2.py"}
+  ],
+  "cost_saving_rationale": "Reads multiple files in one step instead of one-at-a-time cat calls, saving N-1 steps per batch."
+}
