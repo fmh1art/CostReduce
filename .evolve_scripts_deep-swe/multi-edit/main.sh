@@ -1,13 +1,39 @@
 #!/usr/bin/env bash
 # multi-edit: Apply edits (replace, insert, delete, append, prepend, pairs, custom transform) to a file in one step,
-# with --stdin for multi-line replacements, and --code for inline Python transforms.
-# Usage: multi-edit <file> <action> <old_or_pattern> [<new_text>]
-#        multi-edit <file> --pairs old1 new1 [old2 new2 ...]
-#        multi-edit <file> --code <inline_python_code>
-#        multi-edit <file> -f <script.py>
+# with --stdin for multi-line replacements, --code for inline Python transforms, and --cd to change directory.
+# Usage: multi-edit [--cd=DIR] <file> <action> <old_or_pattern> [<new_text>]
+#        multi-edit [--cd=DIR] <file> --pairs old1 new1 [old2 new2 ...]
+#        multi-edit [--cd=DIR] <file> --code <inline_python_code>
+#        multi-edit [--cd=DIR] <file> -f <script.py>
 
 set -euo pipefail
 
+# Parse --cd option
+CD_DIR=""
+if [[ $# -ge 1 ]] && [[ "$1" == --help || "$1" == -h ]]; then
+    show_help
+fi
+# Parse --cd=DIR or -C DIR before other arguments
+PASSTHROUGH_ARGS=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --cd=*) CD_DIR="${1#*=}"; shift ;;
+        -C) shift; CD_DIR="$1"; shift ;;
+        --cd) shift; CD_DIR="$1"; shift ;;
+        *) PASSTHROUGH_ARGS+=("$1"); shift ;;
+    esac
+done
+set -- "${PASSTHROUGH_ARGS[@]}"
+
+# Change directory if --cd was specified
+if [[ -n "$CD_DIR" ]]; then
+    if [[ -d "$CD_DIR" ]]; then
+        cd "$CD_DIR"
+    else
+        echo "Error: Directory not found: $CD_DIR" >&2
+        exit 1
+    fi
+fi
 
 # If first arg is --stdin-code, read Python transform from stdin
 if [[ "${1:-}" == "--stdin-code" ]]; then
@@ -60,16 +86,20 @@ fi
 
 show_help() {
     cat << 'EOF'
-Usage: multi-edit <file> <action> <old> [<new>]
-       multi-edit <file> --pairs old1 new1 [old2 new2 ...]
-       multi-edit <file> --code <inline_python_code>
-       multi-edit <file> -f <transform.py>
-       multi-edit --stdin-code <file>   (read Python transform from stdin, matching 'python3 << PYEOF' pattern)
+Usage: multi-edit [--cd=DIR] <file> <action> <old> [<new>]
+       multi-edit [--cd=DIR] <file> --pairs old1 new1 [old2 new2 ...]
+       multi-edit [--cd=DIR] <file> --code <inline_python_code>
+       multi-edit [--cd=DIR] <file> -f <transform.py>
+       multi-edit [--cd=DIR] --stdin-code <file>   (read Python transform from stdin, matching 'python3 << PYEOF' pattern)
+
+Options:
+  --cd=DIR, -C DIR      Change to DIR before editing (replaces cd + edit pattern)
 
 Actions:
   replace <old> <new>        Replace all occurrences of old with new
   insert-before <pattern> <text>  Insert text before first line matching pattern
   insert-after <pattern> <text>   Insert text after first line matching pattern
+  insert-before-next <pattern> <text>  Insert text before the next non-blank/non-comment line after the matching line
   delete-matching <pattern>   Delete all lines matching pattern
   append <text>              Append text to end of file
   prepend <text>             Prepend text to beginning of file
@@ -295,6 +325,48 @@ with open(filepath, 'w') as f:
 print('Prepended to file')
 "
         ;;
+    insert-before-next)
+        [[ $# -lt 2 ]] && { echo "Error: insert-before-next needs pattern and text" >&2; exit 1; }
+        PATTERN="$1"; TEXT="$2"
+        # Write Python transform to a temp file to avoid heredoc escaping issues
+        TMP_SCRIPT="$(mktemp)"
+        trap 'rm -f "$TMP_SCRIPT"' EXIT
+        cat > "$TMP_SCRIPT" << 'PYEOF'
+import os, sys
+filepath = os.environ['EDIT_FILE']
+pattern = os.environ['EDIT_PATTERN']
+raw_text = os.environ['EDIT_TEXT']
+text = raw_text.encode('utf-8').decode('unicode_escape')
+with open(filepath, 'r') as f:
+    lines = f.readlines()
+match_idx = None
+for i, line in enumerate(lines):
+    if pattern in line:
+        match_idx = i
+        break
+if match_idx is None:
+    print('Pattern not found - no changes made')
+    sys.exit(1)
+# Find next non-blank, non-comment-only line after match
+next_idx = None
+for j in range(match_idx + 1, len(lines)):
+    stripped = lines[j].strip()
+    if stripped and not stripped.startswith('//') and not stripped.startswith('#'):
+        next_idx = j
+        break
+if next_idx is None:
+    lines.append(text + (chr(10) if not text.endswith(chr(10)) else ''))
+    print('Inserted at end of file')
+else:
+    lines.insert(next_idx, text + (chr(10) if not text.endswith(chr(10)) else ''))
+    print('Inserted before line ' + str(next_idx + 1))
+with open(filepath, 'w') as f:
+    f.writelines(lines)
+print('Applied insert-before-next')
+PYEOF
+        EDIT_FILE="$FILE" EDIT_PATTERN="$PATTERN" EDIT_TEXT="$TEXT" python3 "$TMP_SCRIPT"
+        ;;
+
     *)
         echo "Error: Unknown action '$ACTION'" >&2
         show_help

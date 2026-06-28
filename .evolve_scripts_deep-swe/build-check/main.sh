@@ -34,12 +34,16 @@ Options:
   --tail=N          Show last N lines of output
   --quiet, --silent Suppress stdout on success (exit 0); always show stderr
   --trim-ansi       Strip ANSI escape codes from output (reduces observation size)
+  --trim-stack      Strip Go stack trace lines (goroutine headers, runtime/reflect frames) from output (reduces observation size)
   --force-exit      Add --forceExit flag to jest or mocha commands
   --build-only      Only build, skip tests
   --vet-only        Only run go vet
   --test-only       Only run tests
   --compile-only    Only compile without running tests
   --list-only, --go-list  Run go list -e on the target (verifies package resolution)
+  --update          Add -update flag to go test (rewrites test data for datadriven tests)
+  --rewrite         Add -rewrite flag to go test (rewrites test data for datadriven tests, alternative to --update)
+  --grep=PATTERN    Filter output through grep -E with the given pattern (e.g. --grep="FAIL|PASS|ok" for test summary only)
   --fail-only       Show only failed tests and their error messages (filters out passing tests)
   --trim-pytest     When used with --pytest, strip durations, snapshot reports, docs links, and other noise; keep only summary line(s) and failure/error info
   --only-errors     Alias for --fail-only
@@ -71,10 +75,14 @@ GO_RUN=""
 NODE_RUN=""
 QUIET=""
 TRIM_ANSI=""
+TRIM_STACK=""
 FORCE_EXIT=""
 FAIL_ONLY=""
 ONLY_ERRORS=""
 TRIM_PYTEST=""
+UPDATE_FLAG=""
+REWRITE_FLAG=""
+GREP=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -104,10 +112,14 @@ while [[ $# -gt 0 ]]; do
         --tail=*) TAIL="${1#*=}" ;;
         --quiet|--silent) QUIET="1" ;;
 --trim-ansi) TRIM_ANSI="1" ;;
+--trim-stack) TRIM_STACK="1" ;;
         --force-exit) FORCE_EXIT="1" ;;
         --fail-only) FAIL_ONLY="1" ;;
         --only-errors) ONLY_ERRORS="1" ;;
         --trim-pytest) TRIM_PYTEST="1" ;;
+        --update) UPDATE_FLAG="1" ;;
+        --rewrite) REWRITE_FLAG="1" ;;
+        --grep=*) GREP="${1#*=}" ;;
         --build-only) MODE="${MODE:-go}-build" ;;
         --vet-only) MODE="${MODE:-go}-vet" ;;
         --test-only) MODE="${MODE:-go}-test" ;;
@@ -130,7 +142,40 @@ run_with_output_opts() {
     fi
     if [[ -n "$TRIM_ANSI" ]]; then
         sed -i -E 's/\x1b\[[0-9;]*[a-zA-Z]//g' "$tmpout" 2>/dev/null || true
+    # --grep: filter output through grep -E
+    if [[ -n "$GREP" ]]; then
+        grep -E "$GREP" "$tmpout" > "${tmpout}_filtered" 2>/dev/null || true
+        mv "${tmpout}_filtered" "$tmpout" 2>/dev/null || true
+    fi
         sed -i -E 's/\x1b\[[0-9;]*[a-zA-Z]//g' "$tmperr" 2>/dev/null || true
+    fi
+    # --trim-stack: strip Go stack trace noise (goroutine headers, runtime/reflect internal frames, ...truncated lines)
+    if [[ -n "$TRIM_STACK" ]]; then
+        python3 -c '
+import sys
+lines = sys.stdin.read().splitlines(True)
+out = []
+skip_next_tabbed = False
+for line in lines:
+    s = line.rstrip("\n")
+    # Skip goroutine headers
+    if s.startswith("goroutine ") and s.endswith("[running]:"):
+        skip_next_tabbed = True
+        continue
+    # Skip lines with Go stdlib source paths
+    if "/usr/local/go/src/" in s:
+        continue
+    # Skip "..." and "...<truncated>" lines
+    if s.strip() in ("...", "...<truncated>", "<truncated>"):
+        continue
+    # Skip blank lines after goroutine header
+    if skip_next_tabbed and not s.strip():
+        continue
+    skip_next_tabbed = False
+    out.append(line)
+sys.stdout.write("".join(out))
+' < "$tmpout" > "${tmpout}_filtered" 2>/dev/null || true
+        mv "${tmpout}_filtered" "$tmpout" 2>/dev/null || true
     fi
     # --fail-only / --only-errors: filter test output to show only failures
     if [[ -n "$FAIL_ONLY" || -n "$ONLY_ERRORS" ]]; then
@@ -469,6 +514,8 @@ case "$MODE" in
         [[ -n "$TAGS" ]] && CMD+=(-tags="$TAGS")
         [[ -n "$FILTER" ]] && CMD+=(-run "$FILTER")
         [[ -n "$VERBOSE" ]] && CMD+=(-v)
+        [[ -n "$UPDATE_FLAG" ]] && CMD+=(-update)
+        [[ -n "$REWRITE_FLAG" ]] && CMD+=(-rewrite)
         CMD+=("$TARGET")
         ;;
     ts)

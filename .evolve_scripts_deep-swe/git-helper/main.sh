@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # git-helper: Common git operations in one step.
-# Usage: git-helper <action> [args...]
+# Usage: git-helper [--cd=DIR] <action> [args...]
 #        git-helper add-commit <message> [directory]
 
 set -euo pipefail
@@ -16,18 +16,20 @@ Actions:
   root [start_dir]              Show git repository root path (comprehensive search via git, upward .git, project markers, and fallback find)
   status                         Show branch + status (git branch -a && git status)
   log [N]                        Show last N commits (default 5)
-  diff [--head=N|--tail=N] [file...]  Show diff for file(s), optionally limited to first/last N lines
+  diff [--stat|--name-only|--cached] [--head=N|--tail=N] [file...]
+                                 Show diff for file(s), optionally with --stat/--name-only/--cached, limited to first/last N lines
   show [--grep=PATTERN] [-A=N] [-B=N] [-C=N] [--head=N|--tail=N] <revision>:<path>
                                  Show file content at a specific revision, optionally grep-filtered with context
-  add-commit <message> [dir]     Stage all changes in [dir] and commit
+  add-commit <message> [dir]     Stage all changes in [dir] and commit (auto-configures git identity if missing)
   stash                          Stash changes
   stash-pop                      Pop stash
   branch [name]                  List branches or create new branch
   checkout <branch>              Switch to existing branch
   checkout-b <name>              Create and switch to new branch
-  checkout-file <file...>        Revert file(s) to last committed state
+  checkout-file|restore [file...]  Revert file(s) (default: all) to last committed state
   log-diff [N]                  Show last N commits + diff --stat (combined)
-  config <key> <value>           Set git config key=value
+  log-status [N]                Show last N commits + status (combined, replaces separate log+status calls)
+  config <key> <value> [key2 value2 ...]  Set git config key=value pairs (supports multiple)
 EOF
     exit 0
 }
@@ -121,32 +123,44 @@ case "$ACTION" in
         git log --oneline -"$N"
         ;;
     diff)
+        DIFF_STAT=""
+        DIFF_NAME_ONLY=""
+        DIFF_CACHED=""
         DIFF_HEAD=""
         DIFF_TAIL=""
         DIFF_ARGS=()
         while [[ $# -gt 0 ]]; do
             case "$1" in
+                --stat) DIFF_STAT="1" ;;
+                --name-only) DIFF_NAME_ONLY="1" ;;
+                --cached) DIFF_CACHED="1" ;;
                 --head=*) DIFF_HEAD="${1#*=}" ;;
                 --tail=*) DIFF_TAIL="${1#*=}" ;;
                 *) DIFF_ARGS+=("$1") ;;
             esac
             shift
         done
+        # Build git diff flags
+        GIT_DIFF_FLAGS=(diff)
+        [[ -n "$DIFF_CACHED" ]] && GIT_DIFF_FLAGS+=(--cached)
+        [[ -n "$DIFF_STAT" ]] && GIT_DIFF_FLAGS+=(--stat)
+        [[ -n "$DIFF_NAME_ONLY" ]] && GIT_DIFF_FLAGS+=(--name-only)
+        
         if [[ ${#DIFF_ARGS[@]} -eq 0 ]]; then
             if [[ -n "$DIFF_HEAD" ]]; then
-                git diff | head -n "$DIFF_HEAD"
+                git "${GIT_DIFF_FLAGS[@]}" | head -n "$DIFF_HEAD" || true
             elif [[ -n "$DIFF_TAIL" ]]; then
-                git diff | tail -n "$DIFF_TAIL"
+                git "${GIT_DIFF_FLAGS[@]}" | tail -n "$DIFF_TAIL" || true
             else
-                git diff
+                git "${GIT_DIFF_FLAGS[@]}"
             fi
         else
             if [[ -n "$DIFF_HEAD" ]]; then
-                git diff "${DIFF_ARGS[@]}" | head -n "$DIFF_HEAD"
+                git "${GIT_DIFF_FLAGS[@]}" "${DIFF_ARGS[@]}" | head -n "$DIFF_HEAD" || true
             elif [[ -n "$DIFF_TAIL" ]]; then
-                git diff "${DIFF_ARGS[@]}" | tail -n "$DIFF_TAIL"
+                git "${GIT_DIFF_FLAGS[@]}" "${DIFF_ARGS[@]}" | tail -n "$DIFF_TAIL" || true
             else
-                git diff "${DIFF_ARGS[@]}"
+                git "${GIT_DIFF_FLAGS[@]}" "${DIFF_ARGS[@]}"
             fi
         fi
         ;;
@@ -222,11 +236,19 @@ case "$ACTION" in
             TARGET_DIR="$1"
             shift
             cd "$TARGET_DIR" || { echo "Error: Cannot cd to $TARGET_DIR" >&2; exit 1; }
-            git add -A
-            git commit -m "$MSG"
-        else
-            git add -A
-            git commit -m "$MSG"
+        fi
+        git add -A
+        # Try to commit, auto-configure git identity on failure
+        if ! git commit -m "$MSG" 2>&1; then
+            # Check if failure was due to missing identity
+            if ! git config user.name &>/dev/null || ! git config user.email &>/dev/null; then
+                echo "Configuring git identity..." >&2
+                git config user.name "agent"
+                git config user.email "agent@coder.com"
+                git commit -m "$MSG"
+            else
+                exit 1
+            fi
         fi
         ;;
     stash)
@@ -256,13 +278,29 @@ case "$ACTION" in
         echo "---"
         git diff --stat HEAD~"$N"
         ;;
-    config)
-        [[ $# -lt 2 ]] && { echo "Error: config needs <key> <value>" >&2; exit 1; }
-        git config "$1" "$2"
+    log-status)
+        N="${1:-5}"
+        git log --oneline -"$N"
+        echo ""
+        echo "=== Status ==="
+        git status
         ;;
-    checkout-file)
-        [[ $# -lt 1 ]] && { echo "Error: checkout-file needs file path(s)" >&2; exit 1; }
-        git checkout "$@"
+    config)
+        [[ $# -lt 2 ]] && { echo "Error: config needs <key> <value> [key2 value2 ...]" >&2; exit 1; }
+        # Process all key-value pairs
+        while [[ $# -ge 2 ]]; do
+            git config "$1" "$2"
+            echo "Set git config $1 = $2"
+            shift 2
+        done
+        ;;
+    checkout-file|restore)
+        if [[ $# -lt 1 ]]; then
+            echo "Reverting all files to last committed state"
+            git checkout -- .
+        else
+            git checkout -- "$@"
+        fi
         ;;
     
     *)

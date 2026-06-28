@@ -1,6 +1,6 @@
 {
   "name": "build-check",
-  "description": "Run build/vet/test for Go, TypeScript, Python, or Node.js in one step with timeout, test filtering, fail-only mode (show only failures), output limiting, quiet mode, ANSI stripping, or run Go/Node/TS code from stdin via --go-run/--node-run/--tsx-run, or run mocha/jest/vitest tests, with --cd to change directory before running, or --trim-stack to strip stack traces from output, or --trim-pytest to filter pytest output to summary/failures only.",
+  "description": "Run build/vet/test for Go, TypeScript, Python, or Node.js in one step with timeout, test filtering, fail-only mode (show only failures), output limiting, quiet mode, ANSI stripping, or run Go/Node/TS code from stdin via --go-run/--node-run/--tsx-run, or run mocha/jest/vitest tests, with --cd to change directory before running, or --trim-stack to strip stack traces from output, or --trim-pytest to filter pytest output to summary/failures only, --rewrite to add -rewrite to go test, or --grep=PATTERN to filter output through grep -E.",
   "entrypoint": "main.sh",
   "parameters": [
     {
@@ -188,12 +188,24 @@
       "type": "bool",
       "required": false,
       "description": "Strip pytest noise (durations, snapshot reports, docs links); keep only summary line(s) and failure info"
+    },
+    {
+      "name": "--rewrite",
+      "type": "bool",
+      "required": false,
+      "description": "Add -rewrite flag to go test (rewrites test data for datadriven tests)"
+    },
+    {
+      "name": "--grep=PATTERN",
+      "type": "string",
+      "required": false,
+      "description": "Filter output through grep -E with the given pattern (e.g. FAIL|PASS|ok)"
     }
   ],
   "examples": [
     {
-      "call": "/app/.preinstalled_scripts/build-check/main.sh --go-run < /tmp/test_snippet.go",
-      "expected": "Compiles and runs Go code from stdin"
+      "call": "/app/.preinstalled_scripts/build-check/main.sh --cd=/app --go-run << 'GOEOF'",
+      "expected": "Writes Go code from stdin to temp file and runs it with go run from /app directory"
     },
     {
       "call": "/app/.preinstalled_scripts/build-check/main.sh --tsx-run << 'EOF'",

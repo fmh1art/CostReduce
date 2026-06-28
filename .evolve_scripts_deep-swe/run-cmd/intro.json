@@ -1,6 +1,6 @@
 {
   "name": "run-cmd",
-  "description": "Run arbitrary commands in a specified directory with optional environment variables, timeout, output limiting via --head/--tail, and stack trace/ANSI trimming.",
+  "description": "Run arbitrary commands in a specified directory with optional environment variables, timeout, output limiting via --head/--tail, stack trace/ANSI trimming, or run Python code inline with --py (auto-activates venv), replacing cd+command, timeout wrapper, python3 heredoc, and pipe-to-head/tail patterns.",
   "entrypoint": "main.sh",
   "parameters": [
     {
@@ -50,6 +50,12 @@
       "type": "bool",
       "required": false,
       "description": "Strip ANSI escape codes from output (reduces observation size)"
+    },
+    {
+      "name": "--py, --python",
+      "type": "bool",
+      "required": false,
+      "description": "Run Python code inline (next arg as code, or read from stdin); auto-activates .venv/venv/env if found"
     }
   ],
   "examples": [
@@ -58,5 +64,5 @@
       "expected": "Pytest test results"
     }
   ],
-  "cost_saving_rationale": "Collapses cd + export + timeout + command into one step, and optionally strips ANSI codes/stack traces or limits output lines to reduce observation size; --head/--tail replace cmd | head/tail two-step pattern."
+  "cost_saving_rationale": "Collapses cd + export + timeout + command into one step, and optionally strips ANSI codes/stack traces or limits output lines to reduce observation size; --head/--tail replace cmd | head/tail two-step pattern; --py replaces python3 heredoc (cd + python3 << PYINPUT) pattern, saving 1+ step per use."
 }

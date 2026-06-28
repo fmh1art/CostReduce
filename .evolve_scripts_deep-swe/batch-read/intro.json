@@ -86,13 +86,33 @@
       "type": "string",
       "required": false,
       "description": "Change to DIR before reading files (replaces cd + read pattern)"
+    },
+    {
+      "name": "--sed=RANGE, --sed-range=RANGE",
+      "type": "string",
+      "required": false,
+      "description": "Accept sed-style range (e.g. '28,80p') - converts to :start-end internally"
+    },
+    {
+      "name": "--sed-multi=RANGES",
+      "type": "string",
+      "required": false,
+      "description": "Space-separated list of sed-style ranges for same file (e.g. '28,80p 100,150p 200,250p')"
     }
   ],
   "examples": [
     {
       "call": "/app/.preinstalled_scripts/batch-read/main.sh --head=50 file1.py file2.py:100-200",
       "expected": "First 50 lines of file1.py, then lines 100-200 of file2.py"
+    },
+    {
+      "call": "/app/.preinstalled_scripts/batch-read/main.sh --cd=/app --sed='28,80p' vm/vmConvertToX.go",
+      "expected": "Lines 28-80 of vm/vmConvertToX.go"
+    },
+    {
+      "call": "/app/.preinstalled_scripts/batch-read/main.sh --cd=/app --sed-multi='280,400p 415,445p 400,420p' vm/vmExprFunction.go",
+      "expected": "Three separate reads of vm/vmExprFunction.go with ranges 280-400, 415-445, 400-420"
     }
   ],
-  "cost_saving_rationale": "Collapses multiple cat/nl/sed-n/wc/grep/code-structure calls into one step, saving step costs and observation size; --cd replaces cd + read two-step pattern."
+  "cost_saving_rationale": "Collapses multiple cat/nl/sed-n/wc/grep/code-structure calls into one step, saving step costs and observation size; --cd replaces cd + read two-step pattern; --sed replaces sed -n 'X,Yp' file pattern directly; --sed-multi merges overlapping range reads."
 }

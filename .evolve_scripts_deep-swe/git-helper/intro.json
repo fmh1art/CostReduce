@@ -1,6 +1,6 @@
 {
   "name": "git-helper",
-  "description": "Common git operations (status, log, diff, show, add-commit, stash, branch, checkout, checkout-file, log-diff, config, root) in one step, with optional directory for add-commit; show action supports --grep, -A/-B/-C context, --head/--tail to filter output in one step, replacing git show + grep pipe pattern, with --cd to change directory before running.",
+  "description": "Common git operations (status, log, diff, show, add-commit, stash, branch, checkout, checkout-file/restore, log-diff, log-status, config, root) in one step, with optional directory for add-commit; config accepts multiple key-value pairs; show action supports --grep, -A/-B/-C context, --head/--tail to filter output in one step, replacing git show + grep pipe pattern; diff supports --stat/--name-only/--cached flags; add-commit auto-configures git identity on failure; restore action reverts file(s) to last committed state using git checkout --, with no args reverts all files (replaces git checkout -- . pattern); log-status combines log + status in one step replacing separate calls; with --cd to change directory before running.",
   "entrypoint": "main.sh",
   "parameters": [
     {
@@ -13,13 +13,13 @@
       "name": "action",
       "type": "string",
       "required": true,
-      "description": "status|log|diff|show|add-commit|stash|stash-pop|branch|checkout|checkout-b|checkout-file|log-diff|config|root"
+      "description": "status|log|diff|show|add-commit|stash|stash-pop|branch|checkout|checkout-b|checkout-file|restore|log-diff|log-status|config|root"
     },
     {
       "name": "args",
       "type": "string[]",
       "required": false,
-      "description": "Additional arguments: file path for diff/show/checkout-file, commit message for add-commit, N for log/log-diff, key+value for config, directory for add-commit, starting directory for root; for show action: --grep=PATTERN, -A=N, -B=N, -C=N, --head=N, --tail=N"
+      "description": "Additional arguments: file path for diff/show/checkout-file/restore (omit for restore-all), commit message for add-commit, N for log/log-diff/log-status, key+value pairs for config, directory for add-commit, starting directory for root; for show action: --grep=PATTERN, -A=N, -B=N, -C=N, --head=N, --tail=N; for diff action: --stat, --name-only, --cached, --head=N, --tail=N"
     }
   ],
   "examples": [
@@ -28,5 +28,5 @@
       "expected": "Lines matching 'func doSource' with 40 lines of after-context"
     }
   ],
-  "cost_saving_rationale": "Collapses git branch/status/log/diff/add-commit/checkout-file/root calls that would otherwise be separate steps; show --grep replaces git show + grep + head/tail pipe chain, saving 2+ steps per use and reducing observation size; --cd replaces cd + git two-step pattern."
+  "cost_saving_rationale": "Collapses git branch/status/log/diff/add-commit/checkout-file/restore calls that would otherwise be separate steps; add-commit auto-configures git identity on failure, avoiding the failed-commit-then-fix two-step pattern; restore with no args replaces git checkout -- . pattern; show --grep replaces git show + grep + head/tail pipe chain, saving 2+ steps per use and reducing observation size; config with multiple pairs saves 1+ step per use; log-status replaces separate log + status steps, saving 1 step per use; diff --stat replaces git diff --stat without needing a separate call; --cd replaces cd + git two-step pattern."
 }

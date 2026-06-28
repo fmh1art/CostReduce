@@ -68,6 +68,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 export ROOT_DIR
+# 必须在 source _bench_common.sh 之前先 export 并发/任务数默认值：_bench_common.sh 用
+# N_CONCURRENT="${N_CONCURRENT:-8}" 读取，若此时已 export，会保留我们的值；否则会被
+# 它设成 8，之后再用 ${N_CONCURRENT:-16} 已经失效（变量非空，:- 不触发）。
+# N_TASKS / N_ATTEMPTS 两边默认值一致，提前 export 只为语义清晰。
+export N_CONCURRENT="${N_CONCURRENT:-16}"
+export N_TASKS="${N_TASKS:-1000}"
+export N_ATTEMPTS="${N_ATTEMPTS:-1}"
 # 复用 _bench_common.sh 里的 ROOT_DIR / RESULTS_DIR / UV_BIN / load_llm_config 等。
 source "${SCRIPT_DIR}/_bench_common.sh"
 
@@ -98,10 +105,9 @@ DRY_RUN="${DRY_RUN:-0}"
 
 # 这些会传给子脚本（run_deep_swe.sh / run_swe_atlas.sh 重新 source _bench_common.sh，
 # 用 ${VAR:-default} 读取，故 export 后子脚本会沿用）。
+# N_CONCURRENT / N_TASKS / N_ATTEMPTS 已在 source _bench_common.sh 之前提前 export
+# （见文件开头），避免被 _bench_common 的默认值 8 覆盖。
 export LLM_CONFIG
-export N_CONCURRENT="${N_CONCURRENT:-16}"
-export N_TASKS="${N_TASKS:-1000}"
-export N_ATTEMPTS="${N_ATTEMPTS:-1}"
 export RESULTS_DIR
 
 TS="$(date +%m%d-%H%M%S)"

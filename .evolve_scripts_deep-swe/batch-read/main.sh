@@ -17,6 +17,8 @@ SUMMARY=""
 CD_DIR=""
 DIR=""
 INCLUDE="*"
+SED_RANGE=""
+SED_MULTI="" # space-separated list of sed-style ranges for a single file
 FILES=()
 
 while [[ $# -gt 0 ]]; do
@@ -34,7 +36,9 @@ while [[ $# -gt 0 ]]; do
             echo "  --code-only      Strip package/import boilerplate from source files"
             echo "  --structure, -s  List functions/classes/structs in source files"
             echo "  --summary        Compact one-line summary with --structure"
-            echo "  --dir=PATH       Read all files in directory (use with --include)"
+            echo "    --sed=RANGE       Accept sed-style range (e.g., '28,80p') - converts to :start-end internally
+  --sed-multi=RANGES Space-separated list of sed-style ranges for same file (e.g., '28,80p 100,150p')
+--dir=PATH       Read all files in directory (use with --include)"
             echo "  --include=GLOB   File glob filter for --dir (default: *)"
             echo "  --cd=DIR     Change to DIR before reading files"
             echo "File format: file:start-end (e.g., file.py:10-30) or just file"
@@ -60,7 +64,9 @@ while [[ $# -gt 0 ]]; do
             CD_DIR="$1"
             ;;
 
-        --dir=*) DIR="${1#*=}" ;;
+                --sed=*|--sed-range=*) SED_RANGE="${1#*=}" ;;
+        --sed-multi=*) SED_MULTI="${1#*=}" ;;
+--dir=*) DIR="${1#*=}" ;;
         --include=*) INCLUDE="${1#*=}" ;;
         *) FILES+=("$1") ;;
     esac
@@ -94,6 +100,33 @@ if [[ -n "$CD_DIR" ]]; then
 fi
 
 [[ ${#FILES[@]} -eq 0 ]] && { echo "Error: No files specified" >&2; exit 1; }
+
+
+# Handle --sed flag: converts sed-style '28,80p' to :28-80 format on the first file
+if [[ -n "$SED_RANGE" ]]; then
+    # Strip trailing 'p' if present (sed -n '28,80p')
+    RANGE_CLEAN="${SED_RANGE%p}"
+    # Replace comma with dash
+    RANGE_CLEAN="${RANGE_CLEAN//,/-}"
+    if [[ ${#FILES[@]} -gt 0 ]]; then
+        FILES[0]="${FILES[0]}:${RANGE_CLEAN}"
+    fi
+fi
+
+# Handle --sed-multi flag: applies multiple sed-style ranges to the first file
+# e.g., --sed-multi='28,80p 100,150p 200,250p' converts to multiple FILE_SPEC entries
+if [[ -n "$SED_MULTI" ]]; then
+    FIRST_FILE="${FILES[0]:-}"
+    if [[ -n "$FIRST_FILE" ]]; then
+        NEW_FILES=()
+        for RANGE_SPEC in $SED_MULTI; do
+            RANGE_CLEAN="${RANGE_SPEC%p}"
+            RANGE_CLEAN="${RANGE_CLEAN//,/-}"
+            NEW_FILES+=("${FIRST_FILE}:${RANGE_CLEAN}")
+        done
+        FILES=("${NEW_FILES[@]}")
+    fi
+fi
 
 
 for FILE_SPEC in "${FILES[@]}"; do
