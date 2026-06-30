@@ -13,8 +13,7 @@
     {"name": "files", "type": "string", "required": false, "description": "Specific files to search (default: all *.py or *.js/*.ts recursively)"}
   ],
   "examples": [
-    {"call": "/app/.preinstalled_scripts/code-read/main.sh --name=get_stats --cd=/app", "expected": "Full body of get_stats function from Python files under /app"},
-    {"call": "/app/.preinstalled_scripts/code-read/main.sh --name=confirmDelete --lang=js --cd=/app/static", "expected": "Full body of confirmDelete function from JS files under /app/static"}
+    {"call": "/app/.preinstalled_scripts/code-read/main.sh --name=get_stats --cd=/app", "expected": "Full body of get_stats function from Python files under /app"}
   ],
   "cost_saving_rationale": "Collapses grep -n for definition + sed -n to read body chains into one step, saving 1-2 agent steps per definition lookup; JS/TS support removes need to switch to grep-search for non-Python files."
 }

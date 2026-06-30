@@ -2,11 +2,13 @@
 # Batch read files - read one or more files with file headers, or all files in a directory
 # Usage: batch-read/main.sh [--cd=DIR] [--lines=START-END[,START2-END2,...]] [--head=N] [--tail=N] [--offset=N] [--number] [--wc] [--dir=DIR] [--name=GLOB] [--try] [--grep=PATTERN] [--grep-after=N] [--grep-before=N] [--grep-invert] <file1> [file2 ...]
 #   --lines: Single range (10-30) or comma-separated ranges (1-200,200-350,350-450) for reading multiple chunks from the same file in one step
+#   Per-file ranges: Append :START-END to a file path (e.g., file.jsx:30-40) to read different ranges from different files in a single call, replacing sed -n 'X,Yp' chains
 #   --try: If a file path does not exist, try common extensions (.js,.ts,.jsx,.tsx,.json,.py,.php,.css,.scss,.yml,.yaml,.md,.txt)
 #   --dir=DIR: Read all files recursively in a directory (useful after find-files)
 #   --name=GLOB: File name glob pattern filter when using --dir (e.g., *.ts, *.js, *.json; repeatable)
 #   --wc: Show line count for each file (like wc -l) instead of file content
 #   --max-depth=N: Max directory depth when using --dir (default: unlimited)
+#   --safe: Auto-limit output to first 50 lines for files over 200 lines (prevents token waste from truncated observations)
 #   --no-header: Suppress file header (===== filename =====) in output
 #   --grep=PATTERN: Filter file content with grep pattern (replaces cat | grep chains)
 #   --grep-context=N: Show N lines of context around each match (grep -C), sets both --grep-after and --grep-before
@@ -27,6 +29,7 @@ files=()
 try_flag=false
 max_depth=""
 no_header=false
+safe_mode=false
 grep_pattern=""
 grep_context=""
 grep_after=""
@@ -52,6 +55,7 @@ for arg in "$@"; do
     --grep-context=*) grep_context="${arg#*=}" ;;
     --max-depth=*) max_depth="${arg#*=}" ;;
     --no-header) no_header=true ;;
+    --safe) safe_mode=true ;;
     *) files+=("$arg") ;;
   esac
 done
@@ -129,7 +133,13 @@ fi
 # Resolve file paths with --try: if exact path not found, try common extensions
 if [ "$try_flag" = true ]; then
   resolved_files=()
-  for f in "${files[@]}"; do
+  # Auto-limit output in safe mode (prevents token waste from truncated observations)
+if [ "$safe_mode" = true ] && [ -z "$head_n" ] && [ -z "$tail_n" ] && [ -z "$lines" ] && [ -z "$offset" ] && [ "$wc_flag" = false ] && [ -z "$grep_pattern" ]; then
+  head_n=50
+fi
+
+
+for f in "${files[@]}"; do
     if [ -f "$f" ]; then
       resolved_files+=("$f")
     else
@@ -156,7 +166,13 @@ fi
 
 # If --wc is specified, just count lines
 if [ "$wc_flag" = true ]; then
-  for f in "${files[@]}"; do
+  # Auto-limit output in safe mode (prevents token waste from truncated observations)
+if [ "$safe_mode" = true ] && [ -z "$head_n" ] && [ -z "$tail_n" ] && [ -z "$lines" ] && [ -z "$offset" ] && [ "$wc_flag" = false ] && [ -z "$grep_pattern" ]; then
+  head_n=50
+fi
+
+
+for f in "${files[@]}"; do
     if [ ! -f "$f" ]; then
       echo "File not found: $f" >&2
       continue
@@ -180,7 +196,42 @@ if [ ${#line_ranges[@]} -gt 1 ]; then
   multi_range=true
 fi
 
+# Auto-limit output in safe mode (prevents token waste from truncated observations)
+if [ "$safe_mode" = true ] && [ -z "$head_n" ] && [ -z "$tail_n" ] && [ -z "$lines" ] && [ -z "$offset" ] && [ "$wc_flag" = false ] && [ -z "$grep_pattern" ]; then
+  head_n=50
+fi
+
+
 for f in "${files[@]}"; do
+  # Check for per-file line range embedded in file path (file:start-end or file:start-end,start2-end2,...)
+  per_file_range=""
+  per_file_multi=false
+  per_file_ranges=()
+  if [[ "$f" =~ ^(.*):([0-9]+)-([0-9]+)(.*)$ ]]; then
+    # Simple single range: file:start-end
+    per_file_range="${BASH_REMATCH[2]}-${BASH_REMATCH[3]}"
+    f="${BASH_REMATCH[1]}${BASH_REMATCH[4]}"
+  elif [[ "$f" =~ ^(.*):([0-9]+-[0-9]+(,[0-9]+-[0-9]+)*)$ ]]; then
+    # Multi range: file:start1-end1,start2-end2,...
+    per_file_range="${BASH_REMATCH[2]}"
+    f="${BASH_REMATCH[1]}"
+    per_file_multi=true
+    IFS=',' read -ra per_file_ranges <<< "$per_file_range"
+  fi
+
+  # Use per-file range if available, otherwise use global --lines
+  active_lines="$lines"
+  active_multi_range=$multi_range
+  active_line_ranges=("${line_ranges[@]}")
+  if [ -n "$per_file_range" ]; then
+    active_lines="$per_file_range"
+    if [ "$per_file_multi" = true ]; then
+      active_multi_range=true
+      active_line_ranges=("${per_file_ranges[@]}")
+    else
+      active_multi_range=false
+    fi
+  fi
   if [ ! -f "$f" ]; then
     if [ "$no_header" != true ]; then
       echo "===== $f ====="
@@ -210,10 +261,10 @@ for f in "${files[@]}"; do
     continue
   fi
 
-  if [ -n "$lines" ]; then
-    if [ "$multi_range" = true ]; then
+  if [ -n "$active_lines" ]; then
+    if [ "$active_multi_range" = true ]; then
       # Multiple line ranges: print each range with its own header
-      for range in "${line_ranges[@]}"; do
+      for range in "${active_line_ranges[@]}"; do
         start="${range%-*}"
         end="${range#*-}"
         if [ -n "$start" ] && [ -n "$end" ]; then
@@ -228,8 +279,8 @@ for f in "${files[@]}"; do
       done
     else
       # Single range (original behavior)
-      start="${lines%-*}"
-      end="${lines#*-}"
+      start="${active_lines%-*}"
+      end="${active_lines#*-}"
       if [ "$no_header" != true ]; then
         echo "===== $f ====="
       fi

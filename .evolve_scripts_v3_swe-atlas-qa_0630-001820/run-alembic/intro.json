@@ -34,6 +34,12 @@
       "description": "Path to alembic.ini file"
     },
     {
+      "name": "--brief",
+      "type": "bool",
+      "required": false,
+      "description": "Filter out verbose app DEBUG/INFO and alembic INFO log lines, showing only migration status"
+    },
+    {
       "name": "--head",
       "type": "int",
       "required": false,
@@ -48,9 +54,9 @@
   ],
   "examples": [
     {
-      "call": "/app/.preinstalled_scripts/run-alembic/main.sh --cd=/app --config=/tmp/test.env --head=50 upgrade head",
-      "expected": "First 50 lines of alembic migration output"
+      "call": "/app/.preinstalled_scripts/run-alembic/main.sh --cd=/app --config=/tmp/test.env --brief upgrade head",
+      "expected": "Migration log with verbose app/alembic INFO lines filtered out"
     }
   ],
-  "cost_saving_rationale": "Collapses cd + CONFIG=export + venv/bin/alembic into one step, saving 1-2 agent steps per migration; --head/--tail collapses | head -N/| tail -N chains reducing observation cost by 80-90% on verbose migration output."
+  "cost_saving_rationale": "Collapses cd + CONFIG=export + venv/bin/alembic into one step, saving 1-2 agent steps per migration; --brief filters verbose log lines reducing observation cost by 80-90% on verbose migration output."
 }

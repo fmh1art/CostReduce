@@ -12,6 +12,10 @@ Actions:
   replace <file> <old> <new>
       Simple text replacement (literal strings, first occurrence only).
 
+  multi-file-replace <old> <new> <file1> [file2...]
+      Apply same text replacement (all occurrences) across multiple files in one call.
+      Replaces N separate batch_edit replace or sed calls with one step.
+
   replace-lines <file> <start> <end> <content>
       Replace lines start-end (1-indexed, inclusive) with new content.
 
@@ -72,6 +76,14 @@ Actions:
       Examples: 's/old/new/' (first per line), 's/old/new/g' (all per line),
       '/pattern/d' (delete matching lines), '3s/old/new/' (line-specific).
 
+  multi-file-sed <expression1> [expression2...] <file1> [file2...]
+      Apply same sed expression(s) across multiple files in one call.
+      Replaces N separate batch_edit sed calls with one step.
+      Examples: 's/old/new/g' (all per line, all files), 's/old/new/' 'file1' 'file2' 'file3'.
+
+      Use -- to separate expressions from files if ambiguous:
+        multi-file-sed 's/old/new/g' -- file1.go file2.go file3.go
+
 Examples:
   /app/.preinstalled_scripts/batch_edit/main.sh replace file.go "old" "new"
   /app/.preinstalled_scripts/batch_edit/main.sh replace-lines file.go 10 20 "new line1\\nnew line2"
@@ -88,6 +100,9 @@ Examples:
   /app/.preinstalled_scripts/batch_edit/main.sh exec file.go /tmp/patch.py
   /app/.preinstalled_scripts/batch_edit/main.sh script file.go 'content = content.replace("old", "new")'
   /app/.preinstalled_scripts/batch_edit/main.sh sed file.go "s/oldFunc/newFunc/" "/TODO/d"
+
+  /app/.preinstalled_scripts/batch_edit/main.sh multi-file-sed "s/old/new/g" file1.go file2.go file3.go
+      Apply sed substitution across multiple files in one step.
   /app/.preinstalled_scripts/batch_edit/main.sh check-balance file.go
       Shows {} () [] balance and reports mismatches.
 
@@ -102,9 +117,23 @@ fi
 
 ACTION="$1"
 FILE="$2"
+if [[ "$ACTION" == "multi-file-replace" ]]; then
+  # multi-file-replace: args are <old> <new> <file1> [file2...]
+  # Save old string before shift and bypass file check
+  MULTI_FILE_OLD="$2"
+  FILE=""
+fi
+
+if [[ "$ACTION" == "multi-file-sed" ]]; then
+  # multi-file-sed: args are <expr1> [expr2...] [--] <file1> [file2...]
+  # Save current $@ before shift so we have access to sed expressions
+  MULTI_FILE_SED_ARGS=("$@")
+  FILE=""
+fi
+
 shift 2
 
-if [[ "$ACTION" != "exec" && "$ACTION" != "script" && ! -f "$FILE" ]]; then
+if [[ "$ACTION" != "exec" && "$ACTION" != "script" && "$ACTION" != "multi-file-replace" && "$ACTION" != "multi-file-sed" && ! -f "$FILE" ]]; then
   echo "Error: file not found: $FILE" >&2
   exit 1
 fi
@@ -127,6 +156,35 @@ with open(f, 'w') as fh:
     fh.write(c)
 print('Replaced in', f)
 " "$FILE" "$1" "$2"
+    ;;
+
+  multi-file-replace)
+    if [[ $# -lt 2 ]]; then
+      echo "Error: multi-file-replace requires <old> <new> <file1> [file2...]" >&2
+      exit 1
+    fi
+    OLD="$MULTI_FILE_OLD"
+    NEW="$1"
+    shift
+    FILES=("$@")
+    python3 -c "
+import sys
+old = sys.argv[1]
+new = sys.argv[2]
+files = sys.argv[3:]
+count = 0
+for f in files:
+    try:
+        with open(f) as fh:
+            c = fh.read()
+        c = c.replace(old, new)
+        with open(f, 'w') as fh:
+            fh.write(c)
+        count += 1
+    except FileNotFoundError:
+        print(f'File not found: {f}', file=sys.stderr)
+print(f'Replaced in {count} file(s): {old} -> {new}')
+" "$OLD" "$NEW" "${FILES[@]}"
     ;;
 
   replace-lines)
@@ -443,26 +501,26 @@ print(f'Transformed {f} with: {expr}')
       echo "Error: script requires inline Python code or stdin pipe" >&2
       exit 1
     fi
+    # Write user code to temp file to avoid shell escaping issues
+    TMPFILE=$(mktemp /tmp/batch_edit_script_XXXXXX.py)
+    trap 'rm -f "$TMPFILE"' EXIT
+    echo "$CODE" > "$TMPFILE"
     python3 -c "
 import sys
-f = sys.argv[1]
-code = sys.argv[2]
-with open(f) as fh:
+filepath = sys.argv[1]
+script_path = sys.argv[2]
+with open(filepath) as fh:
     content = fh.read()
-local_vars = {'content': content, 'f': f, 'result': None}
-try:
-    exec(code, local_vars)
-except Exception as e:
-    print(f'Error executing script: {e}', file=sys.stderr)
-    sys.exit(1)
+local_vars = {'content': content, 'f': filepath, 'result': None}
+exec(compile(open(script_path).read(), script_path, 'exec'), local_vars)
 if 'result' in local_vars and local_vars['result'] is not None:
-    with open(f, 'w') as fh:
+    with open(filepath, 'w') as fh:
         fh.write(str(local_vars['result']))
 elif 'content' in local_vars and local_vars['content'] != content:
-    with open(f, 'w') as fh:
+    with open(filepath, 'w') as fh:
         fh.write(str(local_vars['content']))
-print(f'Applied script to {f}')
-" "$FILE" "$CODE"
+print(f'Applied script to {filepath}')
+" "$FILE" "$TMPFILE"
     ;;
 
   exec)
@@ -510,6 +568,95 @@ print(f'Applied script {script_path} to {f}')
     sed "${SED_ARGS[@]}"
     rm -f "${FILE}.bak"
     echo "Applied sed expressions to $FILE"
+    ;;
+
+
+  multi-file-sed)
+    # Use saved args from before shift
+    SAVED_ARGS=("${MULTI_FILE_SED_ARGS[@]}")
+    unset 'SAVED_ARGS[0]'
+    SAVED_ARGS=("${SAVED_ARGS[@]}")
+    
+    # Find -- separator; if not found, first arg is expression, rest are files
+    EXPRESSIONS=()
+    FILES=()
+    SEEN_DASH=false
+    for arg in "${SAVED_ARGS[@]}"; do
+      if [[ "$arg" == "--" ]]; then
+        SEEN_DASH=true
+      elif $SEEN_DASH; then
+        FILES+=("$arg")
+      else
+        EXPRESSIONS+=("$arg")
+      fi
+    done
+    
+    if [[ ${#FILES[@]} -eq 0 ]]; then
+      # No -- separator; assume first arg(s) are expressions, rest are files
+      TOTAL=${#SAVED_ARGS[@]}
+      # Minimum: need at least 1 expression + 2 files = 3 args
+      if [[ $TOTAL -lt 3 ]]; then
+        echo "Error: multi-file-sed requires at least one sed expression and two files" >&2
+        exit 1
+      fi
+      EXPRESSIONS=()
+      FILES=()
+      # Assume first TOTAL-2 args are expressions, last 2 are files
+      # With more than 1 expression: first TOTAL-2 = expressions, last 2 = files
+      # With 3 total: first 1 = expression, last 2 = files (correct!)
+      # With 4 total (1 expr + 3 files): first 2 = expressions, last 2 = files (wrong! file1 becomes expression)
+      #
+      # Better: find how many expressions by looking for first arg that exists as file
+      split_idx=$TOTAL
+      for ((i=0; i<TOTAL; i++)); do
+        if [[ -f "${SAVED_ARGS[$i]}" ]]; then
+          split_idx=$i
+          break
+        fi
+      done
+      if [[ $split_idx -eq 0 || $split_idx -eq $TOTAL ]]; then
+        # No file found or first arg is file; default to 1 expression
+        split_idx=$((TOTAL - 2))
+      fi
+      if [[ $split_idx -le 0 ]]; then
+        split_idx=1
+      fi
+      if [[ $split_idx -ge $((TOTAL - 1)) ]]; then
+        split_idx=$((TOTAL - 2))
+      fi
+      for ((i=0; i<split_idx; i++)); do
+        EXPRESSIONS+=("${SAVED_ARGS[$i]}")
+      done
+      for ((i=split_idx; i<TOTAL; i++)); do
+        FILES+=("${SAVED_ARGS[$i]}")
+      done
+    fi
+    
+    if [[ ${#FILES[@]} -lt 2 ]]; then
+      echo "Error: multi-file-sed requires at least 2 files" >&2
+      exit 1
+    fi
+    if [[ ${#EXPRESSIONS[@]} -lt 1 ]]; then
+      echo "Error: multi-file-sed requires at least one sed expression" >&2
+      exit 1
+    fi
+    
+    SED_ARGS=(-i.bak)
+    for expr in "${EXPRESSIONS[@]}"; do
+      SED_ARGS+=(-e "$expr")
+    done
+    COUNT=0
+    for f in "${FILES[@]}"; do
+      if [[ ! -f "$f" ]]; then
+        echo "Warning: file not found, skipping: $f" >&2
+        continue
+      fi
+      sed "${SED_ARGS[@]}" "$f" || true
+      rm -f "${f}.bak"
+      COUNT=$((COUNT + 1))
+      echo "Applied sed to $f"
+    done
+    echo "Applied sed expressions to ${COUNT} file(s)"
     ;;
 
 

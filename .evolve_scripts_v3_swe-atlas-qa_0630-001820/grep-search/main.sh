@@ -1,10 +1,11 @@
 #!/bin/bash
 # Search file contents with grep, supporting single files or directories
-# Usage: grep-search/main.sh <pattern> [path...] [--include=GLOB1,GLOB2...] [--exclude=GLOB] [--head=N] [--tail=N] [--context=N] [--after-context=N|-A=N] [--before-context=N|-B=N] [--filter=PATTERN] [--exclude-line=PATTERN]... [--exclude-path=PATTERN]... [--perl-regexp|-P] [--defs] [--classes] [--functions] [--name-only|-l]
+# Usage: grep-search/main.sh <pattern> [path...] [--include=GLOB1,GLOB2...] [--exclude=GLOB] [--head=N] [--tail=N] [--context=N] [--after-context=N|-A=N] [--before-context=N|-B=N] [--filter=PATTERN] [--exclude-line=PATTERN]... [--exclude-path=PATTERN]... [--sort] [--perl-regexp|-P] [--defs] [--classes] [--functions] [--name-only|-l]
 #   --perl-regexp|-P: Use Perl-compatible regex (grep -P) for advanced patterns like lookaheads and \\d shortcuts
 #   --exclude-line: Repeatable; each pattern filters matching lines OUT (replaces | grep -v chains)
 #   --exclude-path: Repeatable; each pattern filters matching path lines OUT
 #   --name-only|-l: Output only filenames (like grep -l) instead of file:line:content
+#   --sort: Sort results alphabetically before applying head/tail (replaces grep -l | sort chains)
 
 # Check for definition-mode flags first (no explicit pattern needed)
 perl_regexp=false
@@ -13,6 +14,7 @@ defs_mode=false
 classes_mode=false
 functions_mode=false
 name_only=false
+sort_flag=false
 remaining_args=()
 for arg in "$@"; do
   case "$arg" in
@@ -20,6 +22,7 @@ for arg in "$@"; do
     --classes) classes_mode=true ;;
     --functions) functions_mode=true ;;
     --name-only|-l) name_only=true ;;
+    --sort) sort_flag=true ;;
     --perl-regexp|-P) perl_regexp=true ;;
 
     *) remaining_args+=("$arg") ;;
@@ -100,37 +103,12 @@ elif [ ${#search_paths[@]} -eq 1 ] && [ -d "${search_paths[0]}" ]; then
   is_dir_search=true
 fi
 
-# Helper: apply exclude_line filters (chain multiple grep -vE)
-filter_exclude_lines() {
-  local data="$1"
-  local tmp
-  for excl in "${exclude_lines[@]}"; do
-    tmp=$(mktemp)
-    grep -vE "$excl" "$data" > "$tmp" 2>/dev/null
-    mv "$tmp" "$data"
-  done
-  cat "$data"
-}
-
-# Helper: apply exclude_path filters
-filter_exclude_paths() {
-  local data="$1"
-  local tmp
-  for exp in "${exclude_paths[@]}"; do
-    tmp=$(mktemp)
-    grep -vE "$exp" "$data" > "$tmp" 2>/dev/null
-    mv "$tmp" "$data"
-  done
-  cat "$data"
-}
-
 # Choose regex flag -E (extended) or -P (Perl)
 if [ "$perl_regexp" = true ]; then
   regex_flag="-P"
 else
   regex_flag="-E"
 fi
-
 
 # Build grep command
 if [ "$is_dir_search" = true ]; then
@@ -199,6 +177,13 @@ if [ "$is_dir_search" = true ]; then
     mv "$tmp2" "$tmpfile"
   done
 
+  # Apply sort before head/tail if --sort is set
+  if [ "$sort_flag" = true ]; then
+    tmp2=$(mktemp)
+    sort "$tmpfile" > "$tmp2" 2>/dev/null
+    mv "$tmp2" "$tmpfile"
+  fi
+
   # Apply head/tail
   if [ -n "$tail_n" ]; then
     tail -n "$tail_n" "$tmpfile"
@@ -257,6 +242,13 @@ else
     grep -vE "$exp" "$tmpfile" > "$tmp2" 2>/dev/null
     mv "$tmp2" "$tmpfile"
   done
+
+  # Apply sort before head/tail if --sort is set
+  if [ "$sort_flag" = true ]; then
+    tmp2=$(mktemp)
+    sort "$tmpfile" > "$tmp2" 2>/dev/null
+    mv "$tmp2" "$tmpfile"
+  fi
 
   # Apply head/tail
   if [ -n "$tail_n" ]; then

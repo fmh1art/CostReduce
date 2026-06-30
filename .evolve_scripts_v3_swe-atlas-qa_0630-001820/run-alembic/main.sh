@@ -1,11 +1,12 @@
 #!/bin/bash
 # Run alembic database migrations with config file, replacing cd + CONFIG= + venv/bin/alembic chains
-# Usage: run-alembic/main.sh [--cd=DIR] [--config=FILE] [--python=PATH] [--alembic-cfg=FILE] [--head=N] [--tail=N] <command> [args...]
+# Usage: run-alembic/main.sh [--cd=DIR] [--config=FILE] [--python=PATH] [--alembic-cfg=FILE] [--head=N] [--tail=N] [--brief] <command> [args...]
 #   command: upgrade head, downgrade -1, current, history, revision --autogenerate -m "msg", etc.
 #   --cd=DIR:        Working directory (default: /app)
 #   --config=FILE:   Path to env config file (sets CONFIG env var for the app)
 #   --python=PATH:   Path to Python interpreter (default: auto-detect venv/bin/python or /app/venv/bin/python)
 #   --alembic-cfg=FILE: Path to alembic.ini (default: alembic.ini in workdir)
+#   --brief:         Filter out verbose INFO/DEBUG log lines from app and alembic, keeping only migration status lines
 #   --head=N:        Show only first N lines of output (replaces | head -N chains)
 #   --tail=N:        Show only last N lines of output (replaces | tail -N chains)
 
@@ -15,6 +16,7 @@ python_bin=""
 alembic_cfg=""
 head_n=""
 tail_n=""
+brief_mode=false
 alembic_args=()
 
 for arg in "$@"; do
@@ -23,6 +25,7 @@ for arg in "$@"; do
     --config=*) config="${arg#*=}" ;;
     --python=*) python_bin="${arg#*=}" ;;
     --alembic-cfg=*) alembic_cfg="${arg#*=}" ;;
+    --brief) brief_mode=true ;;
     --head=*) head_n="${arg#*=}" ;;
     --tail=*) tail_n="${arg#*=}" ;;
     *)
@@ -33,7 +36,7 @@ done
 
 if [ ${#alembic_args[@]} -eq 0 ]; then
   echo "Error: alembic command required (e.g., upgrade head, current, history)" >&2
-  echo "Usage: run-alembic/main.sh [--cd=DIR] [--config=FILE] [--python=PATH] [--head=N] [--tail=N] <command> [args...]" >&2
+  echo "Usage: run-alembic/main.sh [--cd=DIR] [--config=FILE] [--python=PATH] [--head=N] [--tail=N] [--brief] <command> [args...]" >&2
   exit 1
 fi
 
@@ -83,10 +86,24 @@ alembic_bin="${python_dir}/alembic"
 
 # Build the output filtering pipe
 pipe_cmd="cat"
+if [ "$brief_mode" = true ]; then
+  # Filter out verbose app DEBUG/INFO lines and alembic INFO lines, keeping only migration status lines
+  # Also keep error/warning lines for debugging
+  pipe_cmd="grep -v -E '^(DEBUG|INFO).*[-]' | grep -v -E '^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2},[0-9]+ - ' | grep -v -E '(load config|Paddle param|WARNING: Use a temp|Upload files|init logging|load words file)' | grep -v -E '^>>>' | grep . || true"
+fi
+
 if [ -n "$head_n" ]; then
-  pipe_cmd="head -n $head_n"
+  if [ "$brief_mode" = true ]; then
+    pipe_cmd="$pipe_cmd | head -n $head_n"
+  else
+    pipe_cmd="head -n $head_n"
+  fi
 elif [ -n "$tail_n" ]; then
-  pipe_cmd="tail -n $tail_n"
+  if [ "$brief_mode" = true ]; then
+    pipe_cmd="$pipe_cmd | tail -n $tail_n"
+  else
+    pipe_cmd="tail -n $tail_n"
+  fi
 fi
 
 # Run alembic

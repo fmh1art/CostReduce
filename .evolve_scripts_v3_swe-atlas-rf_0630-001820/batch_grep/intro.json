@@ -1,32 +1,94 @@
 {
   "name": "batch_grep",
-  "description": "Search multiple patterns in files with file type filtering, directory exclusion, line exclusion, context, and head limit.",
+  "description": "Search multiple patterns in files with file type filtering, directory exclusion, line exclusion, before/after context, and head limit.",
   "entrypoint": "main.sh",
   "parameters": [
-    {"name": "dir_or_file", "type": "string", "required": false,
-     "description": "Search directory or specific file(s)"},
-    {"name": "pattern", "type": "string", "required": true,
-     "description": "Search pattern (repeatable, combined with OR)"},
-    {"name": "--include=GLOB", "type": "string", "required": false,
-     "description": "File name glob filter (repeatable, OR logic)"},
-    {"name": "--exclude-dir=DIR", "type": "string", "required": false,
-     "description": "Exclude directory name (repeatable, e.g. node_modules .git)"},
-    {"name": "--exclude-name=GLOB", "type": "string", "required": false,
-     "description": "Exclude file names matching glob (repeatable, e.g. *_test.go)"},
-    {"name": "--exclude-pattern=PAT", "type": "string", "required": false,
-     "description": "Exclude lines matching pattern (repeatable, like grep -v)"},
-    {"name": "--ignore-case|-i", "type": "bool", "required": false,
-     "description": "Case-insensitive search"},
-    {"name": "--files-with-matches|-l", "type": "bool", "required": false,
-     "description": "List filenames only"},
-    {"name": "--count|-c", "type": "bool", "required": false,
-     "description": "Count matching lines per file (like grep -c)"},
-    {"name": "--context=N|-C=N", "type": "int", "required": false,
-     "description": "Show N lines of context around matches"},
-    {"name": "--head=N", "type": "int", "required": false,
-     "description": "Show first N matching results"}
+    {
+      "name": "dir_or_file",
+      "type": "string",
+      "required": false,
+      "description": "Search directory or specific file(s)"
+    },
+    {
+      "name": "--dir=DIR",
+      "type": "string",
+      "required": false,
+      "description": "Working directory to cd into before searching (avoids cd + grep pattern)"
+    },
+    {
+      "name": "pattern",
+      "type": "string",
+      "required": true,
+      "description": "Search pattern (repeatable, OR logic)"
+    },
+    {
+      "name": "--include=GLOB",
+      "type": "string",
+      "required": false,
+      "description": "File name glob filter (repeatable, OR logic)"
+    },
+    {
+      "name": "--exclude-dir=DIR",
+      "type": "string",
+      "required": false,
+      "description": "Exclude directory name (repeatable)"
+    },
+    {
+      "name": "--exclude-name=GLOB",
+      "type": "string",
+      "required": false,
+      "description": "Exclude file name glob (repeatable)"
+    },
+    {
+      "name": "--exclude-pattern=PAT",
+      "type": "string",
+      "required": false,
+      "description": "Exclude lines matching pattern (repeatable, like grep -v)"
+    },
+    {
+      "name": "--ignore-case|-i",
+      "type": "bool",
+      "required": false,
+      "description": "Case-insensitive search"
+    },
+    {
+      "name": "--files-with-matches|-l",
+      "type": "bool",
+      "required": false,
+      "description": "List filenames only"
+    },
+    {
+      "name": "--count|-c",
+      "type": "bool",
+      "required": false,
+      "description": "Count matching lines per file"
+    },
+    {
+      "name": "--context=N|-C=N",
+      "type": "int",
+      "required": false,
+      "description": "Show N lines of context (before and after)"
+    },
+    {
+      "name": "--before-context=N|-B=N",
+      "type": "int",
+      "required": false,
+      "description": "Show N lines of context before match"
+    },
+    {
+      "name": "--after-context=N|-A=N",
+      "type": "int",
+      "required": false,
+      "description": "Show N lines of context after match"
+    },
+    {
+      "name": "--head=N",
+      "type": "int",
+      "required": false,
+      "description": "Show first N matching results"
+    }
   ],
-  "examples": [{"call": "/app/.preinstalled_scripts/batch_grep/main.sh . TODO FIXME --include=*.tsx --include=*.ts --exclude-dir=node_modules --head=20",
-                 "expected": "First 20 lines matching TODO or FIXME in .tsx and .ts files, excluding node_modules"}],
-  "cost_saving_rationale": "Combines all patterns into a single grep call and avoids multi-step grep | grep -v | head pipelines, saving 3+ steps per search."
+  "examples": [{"call": "/app/.preinstalled_scripts/batch_grep/main.sh --dir=/src --include=*.go --exclude-name=*_test.go --exclude-dir=vendor --before-context=5 --after-context=10 \"GetTrail|NetTrail\"",
+                 "expected": "Shows lines matching GetTrail or NetTrail in .go files, with 5 lines before and 10 lines after, excluding test files and vendor"}],
+  "cost_saving_rationale": "Replaces multi-pipeline grep patterns (grep | grep -v | head) and separate -A/-B context flags with one call, saving 3+ steps per search."
 }

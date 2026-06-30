@@ -6,6 +6,8 @@ set -euo pipefail
 SHOW_NUMBER=false
 COUNT_ONLY=false
 SHOW_NONPRINTABLE=false
+REPR_MODE=false
+DIFF_FILE=
 HEAD_LINES=
 TAIL_LINES=
 LINES_RANGE=
@@ -17,13 +19,15 @@ FILES=()
 
 usage() {
   cat >&2 <<'EOF'
-Usage: $0 [--head=N|--tail=N] [--lines=start-end|num1,num2,...] [--number|-n] [--count|-c] [--show-nonprintable|-A] file1 [file2...]
+Usage: $0 [--head=N|--tail=N] [--lines=start-end|num1,num2,...] [--number|-n] [--count|-c] [--show-nonprintable|-A] [--repr] [--diff=FILE] file1 [file2...]
        $0 file1:start-end [file2...]
        $0 --dir=PATH [--include=GLOB] [--exclude=GLOB] [--type=f|d]
 
 Read files, optionally with line ranges (range or comma-separated), line numbers, line counts, or directory listing.
 Comma-separated --lines lists multiple individual lines or ranges (e.g. --lines=60,64,100 or --lines=10-20,30,40-50).
 --show-nonprintable|-A shows non-printable characters like cat -A (display $ at line ends, ^I for tabs, ^M for CR).
+--repr shows each line with Python repr() to reveal exact whitespace (\\t, \\n, \\r, trailing spaces) - replaces python3 repr() heredoc debugging patterns.
+--diff=FILE shows unified diff between the main file and a comparison file (replaces diff file1 file2 patterns).
 EOF
   exit 1
 }
@@ -50,6 +54,14 @@ while [[ $# -gt 0 ]]; do
       COUNT_ONLY=true
       shift
       ;;
+    --repr)
+      REPR_MODE=true
+      shift
+      ;;
+    --repr=*)
+      REPR_MODE=true
+      shift
+      ;;
     --show-nonprintable|-A)
       SHOW_NONPRINTABLE=true
       shift
@@ -70,6 +82,10 @@ while [[ $# -gt 0 ]]; do
       DIR_TYPE="${1#*=}"
       shift
       ;;
+    --diff=*)
+      DIFF_FILE="${1#*=}"
+      shift
+      ;;
     --help|-h)
       usage
       ;;
@@ -83,6 +99,20 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+# Handle --diff mode
+if [[ -n "$DIFF_FILE" ]]; then
+  if [[ ! -f "$DIFF_FILE" ]]; then
+    echo "Error: diff file not found: $DIFF_FILE" >&2
+    exit 1
+  fi
+  if [[ ${#FILES[@]} -ne 1 ]]; then
+    echo "Error: --diff requires exactly one source file argument" >&2
+    exit 1
+  fi
+  diff -u "${FILES[0]}" "$DIFF_FILE" 2>/dev/null || true
+  exit 0
+fi
 
 # Handle --dir mode
 if [[ -n "$DIR_PATH" ]]; then
@@ -115,6 +145,7 @@ print_line_or_range() {
   local spec="$2"
   local show_num="$3"
   local show_np="${4:-false}"
+  local repr_mode="${5:-false}"
   local tmp
   if [[ "$spec" =~ ^([0-9]+)-([0-9]+)$ ]]; then
     local start="${BASH_REMATCH[1]}"
@@ -132,7 +163,13 @@ print_line_or_range() {
       tmp=$(sed -n "${lineno}p" "$file" 2>/dev/null)
     fi
   fi
-  if [[ "$show_np" == "true" ]]; then
+  if [[ "$repr_mode" == "true" ]]; then
+    echo "$tmp" | python3 -c "
+import sys
+for line in sys.stdin:
+    sys.stdout.write(repr(line) + '\\n')
+"
+  elif [[ "$show_np" == "true" ]]; then
     echo "$tmp" | cat -A
   else
     echo "$tmp"
@@ -147,6 +184,7 @@ process_file() {
   local head_n="$5"
   local tail_n="$6"
   local show_nonprintable="${7:-false}"
+  local repr_mode="${8:-false}"
 
   if [[ "$count" == "true" ]]; then
     if [[ -n "$range" ]]; then
@@ -175,7 +213,7 @@ process_file() {
   if [[ -n "$range" ]]; then
     IFS=',' read -ra parts <<< "$range"
     for part in "${parts[@]}"; do
-      print_line_or_range "$file" "$part" "$show_num" "$show_nonprintable"
+      print_line_or_range "$file" "$part" "$show_num" "$show_nonprintable" "$repr_mode"
     done
   elif [[ -n "$head_n" ]]; then
     if [[ "$show_num" == "true" ]]; then
@@ -183,7 +221,13 @@ process_file() {
     else
       out=$(head -n "$head_n" "$file" 2>/dev/null)
     fi
-    if [[ "$show_nonprintable" == "true" ]]; then
+    if [[ "$repr_mode" == "true" ]]; then
+      echo "$out" | python3 -c "
+import sys
+for line in sys.stdin:
+    sys.stdout.write(repr(line) + '\n')
+"
+    elif [[ "$show_nonprintable" == "true" ]]; then
       echo "$out" | cat -A
     else
       echo "$out"
@@ -194,7 +238,13 @@ process_file() {
     else
       out=$(tail -n "$tail_n" "$file" 2>/dev/null)
     fi
-    if [[ "$show_nonprintable" == "true" ]]; then
+    if [[ "$repr_mode" == "true" ]]; then
+      echo "$out" | python3 -c "
+import sys
+for line in sys.stdin:
+    sys.stdout.write(repr(line) + '\n')
+"
+    elif [[ "$show_nonprintable" == "true" ]]; then
       echo "$out" | cat -A
     else
       echo "$out"
@@ -205,7 +255,13 @@ process_file() {
     else
       out=$(cat "$file" 2>/dev/null)
     fi
-    if [[ "$show_nonprintable" == "true" ]]; then
+    if [[ "$repr_mode" == "true" ]]; then
+      echo "$out" | python3 -c "
+import sys
+for line in sys.stdin:
+    sys.stdout.write(repr(line) + '\n')
+"
+    elif [[ "$show_nonprintable" == "true" ]]; then
       echo "$out" | cat -A
     else
       echo "$out"
@@ -228,5 +284,5 @@ for arg in "${FILES[@]}"; do
     continue
   fi
 
-  process_file "$file" "$range" "$SHOW_NUMBER" "$COUNT_ONLY" "$HEAD_LINES" "$TAIL_LINES" "$SHOW_NONPRINTABLE"
+  process_file "$file" "$range" "$SHOW_NUMBER" "$COUNT_ONLY" "$HEAD_LINES" "$TAIL_LINES" "$SHOW_NONPRINTABLE" "$REPR_MODE"
 done

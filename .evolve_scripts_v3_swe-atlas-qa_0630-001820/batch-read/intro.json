@@ -1,13 +1,13 @@
 {
   "name": "batch-read",
-  "description": "Read one or more files at once with file headers, supporting single or multiple line ranges, head/tail, offset+head (tail -n +N | head -M), line numbers/nl-mode, wc-like line counts, cd-to-dir, --try for auto-extension resolution, --grep for filtering content with context and invert, or all files in a directory via --dir with optional --name filter.",
+  "description": "Read one or more files at once with file headers, supporting single or multiple line ranges, per-file ranges via file:start-end syntax, head/tail, offset+head (tail -n +N | head -M), line numbers/nl-mode, wc-like line counts, cd-to-dir, --try for auto-extension resolution, --grep for filtering content with context and invert, or all files in a directory via --dir with optional --name filter.",
   "entrypoint": "main.sh",
   "parameters": [
     {
       "name": "files",
       "type": "string",
       "required": true,
-      "description": "One or more file paths to read, or use --dir=DIR to read all files"
+      "description": "One or more file paths to read; append :START-END for per-file line ranges (e.g., file.jsx:30-40), or use --dir=DIR to read all files"
     },
     {
       "name": "--cd",
@@ -116,6 +116,12 @@
       "type": "bool",
       "required": false,
       "description": "Suppress file header (===== filename =====) in output"
+    },
+    {
+      "name": "--safe",
+      "type": "bool",
+      "required": false,
+      "description": "Auto-limit output to 50 lines for files over 200 lines, preventing token waste from truncated observations"
     }
   ],
   "examples": [
@@ -124,5 +130,5 @@
       "expected": "Content of client/blocks/like-button/index.jsx with file header"
     }
   ],
-  "cost_saving_rationale": "Collapses cd, cat, sed, head, tail, find, sort, wc -l, and cat+grep chains into one step, saving N-1 agent steps per batch; multi-range --lines=1-200,200-350,350-450 collapses 3 nl -ba | sed -n calls into 1 step saving 2 agent steps; --dir --name collapses find+cat into one step; --try collapses cat ext || cat ext2 || find fallback chains; --grep collapses cat | grep -n -A/B into one step."
+  "cost_saving_rationale": "Collapses cd, cat, sed, head, tail, find, sort, wc -l, and cat+grep chains into one step, saving N-1 agent steps per batch; multi-range --lines=1-200,200-350,350-450 collapses 3 nl -ba | sed -n calls into 1 step saving 2 agent steps; per-file file:start-end syntax collapses multiple sed -n 'X,Yp' chains on different files into one call; --dir --name collapses find+cat into one step; --try collapses cat ext || cat ext2 || find fallback chains; --grep collapses cat | grep -n -A/B into one step."
 }

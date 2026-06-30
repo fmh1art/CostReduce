@@ -5,12 +5,10 @@
 #   --ports:        Show listening ports only (default: show all)
 #   --processes:    Show running processes only (default: show all)
 #   --numeric:      Show numeric addresses/ports
-
 grep_keywords=()
 show_ports=true
 show_processes=true
 numeric_flag=""
-
 for arg in "$@"; do
   case "$arg" in
     --grep=*) grep_keywords+=("${arg#*=}") ;;
@@ -19,7 +17,6 @@ for arg in "$@"; do
     --numeric|-n) numeric_flag="-n" ;;
   esac
 done
-
 # Build grep filter pipe
 filter_results() {
   if [ ${#grep_keywords[@]} -gt 0 ]; then
@@ -32,13 +29,11 @@ filter_results() {
     cat
   fi
 }
-
 print_header() {
   echo ""
   echo "=== $1 ==="
   echo ""
 }
-
 # ---- Check listening ports ----
 if [ "$show_ports" = true ]; then
   print_header "Listening Ports"
@@ -76,14 +71,12 @@ if [ "$show_ports" = true ]; then
   # When grep keywords are used, also check /proc/net/tcp for additional matches
   # This catches services listening on non-standard ports not shown by ss/netstat
   if [ ${#grep_keywords[@]} -gt 0 ] && [ -f /proc/net/tcp ]; then
-    local proc_ports
     proc_ports=$(cat /proc/net/tcp 2>/dev/null | awk '{print $2}' | cut -d: -f2 | sort -u)
     if [ -n "$proc_ports" ]; then
       for kw in "${grep_keywords[@]}"; do
         # Check if any running process matches the keyword and has an open socket
         if ps aux 2>/dev/null | grep -i -- "$kw" | grep -v grep | grep -q .; then
           # Check if /proc/net/tcp shows any listening port that might relate to this service
-          local listening_count
           listening_count=$(cat /proc/net/tcp 2>/dev/null | grep -c "0A")
           if [ "$listening_count" -eq 0 ]; then
             echo "(Service matching '$kw' is running but may be listening on Unix socket only)"
@@ -93,7 +86,6 @@ if [ "$show_ports" = true ]; then
     fi
   fi
 fi
-
 # ---- Check running processes ----
 if [ "$show_processes" = true ]; then
   print_header "Running Processes"
@@ -112,5 +104,4 @@ if [ "$show_processes" = true ]; then
     fi
   fi
 fi
-
 echo ""

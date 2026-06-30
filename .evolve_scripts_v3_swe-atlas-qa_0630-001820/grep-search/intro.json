@@ -1,6 +1,6 @@
 {
   "name": "grep-search",
-  "description": "Search file contents with grep supporting single files or directories with auto-exclusion, repeatable --exclude-line/--exclude-path filters, definition-finding mode, and Perl regex (-P) for advanced patterns.",
+  "description": "Search file contents with grep supporting single files or directories with auto-exclusion, repeatable --exclude-line/--exclude-path filters, --sort for sorted output, definition-finding mode, and Perl regex (-P) for advanced patterns.",
   "entrypoint": "main.sh",
   "parameters": [
     {
@@ -104,6 +104,12 @@
       "type": "bool",
       "required": false,
       "description": "Find only function/method definitions (def, func, function, fn)"
+    },
+    {
+      "name": "--sort",
+      "type": "bool",
+      "required": false,
+      "description": "Sort results alphabetically before applying head/tail (replaces grep -l | sort chains)"
     }
   ],
   "examples": [
@@ -112,5 +118,5 @@
       "expected": "Up to 5 matches using Perl regex for HTML attribute extraction"
     }
   ],
-  "cost_saving_rationale": "Collapses grep -rn with multiple --include flags, repeatable grep -v pipes (--exclude-line), output limiting, definition searches, and find | xargs grep -l (--name-only) into one step; -P adds Perl regex for HTML extraction patterns that previously required separate grep -oP calls."
+  "cost_saving_rationale": "Collapses grep -rn with multiple --include flags, repeatable grep -v pipes (--exclude-line), output limiting, sort (--sort replacing grep | sort chains), definition searches, and find | xargs grep -l (--name-only) into one step; -P adds Perl regex for HTML extraction patterns."
 }

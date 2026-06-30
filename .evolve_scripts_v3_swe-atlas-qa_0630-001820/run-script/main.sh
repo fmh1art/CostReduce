@@ -2,7 +2,7 @@
 # Run an inline script - create temp file and execute it
 # Usage: run-script/main.sh <interpreter> [--config=<env_file>] [--cd=DIR] [--env KEY=VALUE]... [--head=N] [--tail=N] [--timeout=N] [--quiet] [code...]
 #   or:  echo "code" | run-script/main.sh <interpreter> [--config=<env_file>] [--cd=DIR] [--env KEY=VALUE]... [--head=N] [--tail=N] [--timeout=N] [--quiet]
-#   --quiet:    Suppress stderr (useful for verbose Python debug output from app initialization)
+#   --quiet:    Suppress stderr on success; if command fails (exit != 0), stderr is shown
 #   --timeout=N: Run with timeout (seconds), replaces `timeout N` wrapper
 
 if [ $# -lt 1 ]; then
@@ -54,11 +54,8 @@ if [ -n "$config" ]; then
     echo "Error: config file '$config' not found" >&2
     exit 1
   fi
-  # Parse config file robustly (handle values with special chars like []() that break bash source)
   while IFS='=' read -r key value; do
-    # Skip comments and empty lines
     [[ -z "$key" || "$key" == \#* ]] && continue
-    # Remove surrounding quotes from value if present
     value="${value%\"}"
     value="${value#\"}"
     export "$key=$value"
@@ -70,10 +67,7 @@ for e in "${env_vars[@]}"; do
   export "$e"
 done
 
-# Build the temp script
-# Create temp file in CWD so that node/python can find project modules
-# via parent-directory walk (Node module resolution).
-# Fall back to /tmp if CWD is not writable.
+# Create temp script file
 id="$$_$RANDOM"
 case "$interpreter" in
   node) ext=".js";;
@@ -90,23 +84,20 @@ else
   script_file="/tmp/run_script_${id}${ext}"
 fi
 
-# Clean up any previous cached scripts older than 1 hour (avoid accumulation)
 if [ -d ".run_scripts_cache" ]; then
   find ".run_scripts_cache" -name "run_script_*" -mmin +60 -delete 2>/dev/null || true
 fi
 
 if [ ${#code_args[@]} -gt 0 ]; then
-  # Write inline code (each arg is a line)
   printf '%s\n' "${code_args[@]}" > "$script_file"
 elif [ ! -t 0 ]; then
-  # Read from stdin
   cat > "$script_file"
 else
   echo "Error: no code provided. Pass code as args or pipe to stdin." >&2
   exit 1
 fi
 
-# Auto-detect venv Python when interpreter is python/python3
+# Auto-detect venv Python
 case "$interpreter" in
   python|python3)
     if [ -f "venv/bin/python" ]; then
@@ -117,45 +108,36 @@ case "$interpreter" in
     ;;
 esac
 
-# Build output redirection
-stderr_redir=""
-if [ "$quiet" = true ]; then
-  stderr_redir="2>/dev/null"
-else
-  stderr_redir="2>&1"
-fi
-
-# Build timeout prefix if specified
+# Build timeout prefix
 timeout_prefix=""
 if [ -n "$timeout_n" ]; then
   timeout_prefix="timeout $timeout_n "
 fi
 
-# Execute with optional output limiting
+# Build output filter suffix
+output_filter=""
 if [ -n "$head_n" ] && [ -n "$tail_n" ]; then
-  # Both specified: tail wins (last N lines)
-  eval "${timeout_prefix}\"$interpreter\" \"$script_file\" $stderr_redir | tail -n \"$tail_n\""
+  output_filter=" | tail -n $tail_n"
 elif [ -n "$head_n" ]; then
-  eval "${timeout_prefix}\"$interpreter\" \"$script_file\" $stderr_redir | head -n \"$head_n\""
+  output_filter=" | head -n $head_n"
 elif [ -n "$tail_n" ]; then
-  eval "${timeout_prefix}\"$interpreter\" \"$script_file\" $stderr_redir | tail -n \"$tail_n\""
-else
-  if [ "$quiet" = true ]; then
-    if [ -n "$timeout_n" ]; then
-      timeout "$timeout_n" "$interpreter" "$script_file" 2>/dev/null
-    else
-      "$interpreter" "$script_file" 2>/dev/null
-    fi
-  else
-    if [ -n "$timeout_n" ]; then
-      timeout "$timeout_n" "$interpreter" "$script_file" 2>&1
-    else
-      "$interpreter" "$script_file" 2>&1
-    fi
-  fi
+  output_filter=" | tail -n $tail_n"
 fi
-rc=$?
 
-# Clean up
+if [ "$quiet" = true ]; then
+  # Quiet mode: capture stderr, show only on failure
+  stderr_file=$(mktemp /tmp/run_script_stderr_XXXXXX)
+  eval "${timeout_prefix}\"$interpreter\" \"$script_file\" 2>\"$stderr_file\" $output_filter"
+  rc=$?
+  if [ $rc -ne 0 ] && [ -s "$stderr_file" ]; then
+    cat "$stderr_file" >&2
+  fi
+  rm -f "$stderr_file"
+else
+  # Normal mode: merge stderr with stdout
+  eval "${timeout_prefix}\"$interpreter\" \"$script_file\" 2>&1 $output_filter"
+  rc=$?
+fi
+
 rm -f "$script_file"
 exit $rc

@@ -1,6 +1,6 @@
 {
   "name": "git_ops",
-  "description": "Perform common git operations: diff, diff-tail, status, log, add, commit, checkout, stash, show, summary, and cleanup.",
+  "description": "Perform common git operations: diff (with --stat, --name-only), diff-tail, status, log, add, commit, checkout, stash, show, summary, and cleanup.",
   "entrypoint": "main.sh",
   "parameters": [
     {
@@ -13,10 +13,10 @@
       "name": "args",
       "type": "string",
       "required": false,
-      "description": "Additional arguments for the action; show supports --head=N, --grep=PATTERN, --lines=N-M to filter output"
+      "description": "Additional arguments for the action; diff supports --stat, --name-only, --cached, file paths; show supports --head=N, --grep=PATTERN, --lines=N-M to filter output"
     }
   ],
-  "examples": [{"call": "/app/.preinstalled_scripts/git_ops/main.sh show HEAD:file.go --grep=ClassName --head=10",
-                 "expected": "First 10 lines matching ClassName from file.go in HEAD"}],
+  "examples": [{"call": "/app/.preinstalled_scripts/git_ops/main.sh diff --name-only",
+                 "expected": "Shows list of modified file paths only"}],
   "cost_saving_rationale": "Replaces multiple separate git commands, and show --grep/--lines replaces git-show-piped-to-grep-or-sed patterns, saving 2+ steps per review."
 }
