@@ -1,6 +1,6 @@
 {
   "name": "postgres-ctl",
-  "description": "Control PostgreSQL server (start, stop, restart, recreate, status) and manage databases, users, config, run SQL via inline query, --psql, -f FILE, or stdin pipe, force-start with cleanup, recreate cluster when recovery is stuck, and wait for readiness, set trust auth and restart; with --no-header and --csv for SQL output control, or revert trust back to scram-sha-256 for cleanup.",
+  "description": "Control PostgreSQL server (start, stop, restart, recreate, status) and manage databases, users, config, and SQL queries, replacing pg_ctlcluster + psql chains.",
   "entrypoint": "main.sh",
   "parameters": [
     {
@@ -103,7 +103,7 @@
       "name": "--wait",
       "type": "int",
       "required": false,
-      "description": "Wait up to N seconds for PostgreSQL to become ready (default: 120); replaces sleep+pg_isready polling loops"
+      "description": "Wait up to N seconds for PostgreSQL to become ready (default: 120)"
     },
     {
       "name": "--wait-interval",
@@ -140,11 +140,7 @@
     {
       "call": "/app/.preinstalled_scripts/postgres-ctl/main.sh --trust-auth",
       "expected": "pg_hba.conf updated to use trust authentication, PostgreSQL restarted"
-    },
-    {
-      "call": "/app/.preinstalled_scripts/postgres-ctl/main.sh --reset-auth",
-      "expected": "pg_hba.conf updated: trust replaced with scram-sha-256, PostgreSQL restarted"
     }
   ],
-  "cost_saving_rationale": "Collapses sed + pg_ctlcluster restart + pg_isready into one step; --reset-auth reverts trust auth during cleanup, saving 5-6 agent steps per auth config change."
+  "cost_saving_rationale": "Collapses sed + pg_ctlcluster restart + pg_isready into one step, saving 5-6 agent steps per auth config change."
 }

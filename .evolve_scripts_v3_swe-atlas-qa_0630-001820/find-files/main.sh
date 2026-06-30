@@ -1,6 +1,7 @@
 #!/bin/bash
 # Find files matching name patterns with automatic exclusions
-# Usage: find-files/main.sh <path> [--name=<glob>] [--exclude-name=<glob>] [--max-depth=N] [--type=f|d] [--path=<glob>] [--not-path=<glob>] [--grep=<pattern>] [--sort] [--count] [--head=N] [--tail=N] [--offset=N] [--no-exclude-defaults]
+# Usage: find-files/main.sh <path> [--cd=DIR] [--name=<glob>]
+#   --cd=DIR:       Change to this directory before searching [--exclude-name=<glob>] [--max-depth=N] [--type=f|d] [--path=<glob>] [--not-path=<glob>] [--grep=<pattern>] [--sort] [--count] [--head=N] [--tail=N] [--offset=N] [--no-exclude-defaults]
 #   --path=<glob>:   Positive path glob filter (like find -path, comma-separated for multiple)
 #   --head=N:        Show first N results (default: 200)
 #   --tail=N:        Show last N results instead of first N
@@ -28,8 +29,12 @@ tail_n=""
 offset_n=""
 no_exclude_defaults=false
 
+workdir=""
+
 for arg in "$@"; do
-  if [[ "$arg" =~ ^--name=(.*)$ ]]; then
+  if [[ "$arg" =~ ^--cd=(.*)$ ]]; then
+    workdir="${BASH_REMATCH[1]}"
+  elif [[ "$arg" =~ ^--name=(.*)$ ]]; then
     name_pattern="${BASH_REMATCH[1]}"
   elif [[ "$arg" =~ ^--max-depth=(.*)$ ]]; then
     max_depth="${BASH_REMATCH[1]}"
@@ -43,7 +48,7 @@ for arg in "$@"; do
     grep_pattern="${BASH_REMATCH[1]}"
   elif [[ "$arg" =~ ^--path-grep=(.*)$ ]]; then
     path_grep="${BASH_REMATCH[1]}"
-elif [[ "$arg" =~ ^--exclude-name=(.*)$ ]]; then
+  elif [[ "$arg" =~ ^--exclude-name=(.*)$ ]]; then
     exclude_name="${BASH_REMATCH[1]}"
   elif [[ "$arg" =~ ^--head=(.*)$ ]]; then
     head_n="${BASH_REMATCH[1]}"
@@ -60,6 +65,11 @@ elif [[ "$arg" =~ ^--exclude-name=(.*)$ ]]; then
   fi
 done
 
+# Change to working directory if specified
+if [ -n "$workdir" ]; then
+  cd "$workdir" 2>/dev/null || { echo "Error: directory '$workdir' not found" >&2; exit 1; }
+fi
+
 if [ -z "$search_path" ] || [ "$search_path" = "." ]; then
   search_path="."
 fi
@@ -72,8 +82,15 @@ fi
 # Build find command parts
 cmd_parts=("find" "$search_path")
 
+# maxdepth must come before tests
+if [ -n "$max_depth" ]; then
+  cmd_parts+=("-maxdepth" "$max_depth")
+fi
+
+# Build exclusion parts
+exclude_parts=()
 if [ "$no_exclude_defaults" = false ]; then
-  exclude_parts=("(" "-not" "-path" "*/node_modules/*" "-not" "-path" "*/.git/*" "-not" "-path" "*/.cache/*" "-not" "-path" "*/.husky/*" "-not" "-path" "*/dist/*")
+  exclude_parts+=("(" "-not" "-path" "*/node_modules/*" "-not" "-path" "*/.git/*" "-not" "-path" "*/.cache/*" "-not" "-path" "*/.husky/*" "-not" "-path" "*/dist/*")
 
   # Add user-specified exclusion patterns
   if [ -n "$not_path" ]; then
@@ -84,15 +101,6 @@ if [ "$no_exclude_defaults" = false ]; then
   fi
 
   exclude_parts+=(")")
-fi
-
-# maxdepth must come before tests
-if [ -n "$max_depth" ]; then
-  cmd_parts+=("-maxdepth" "$max_depth")
-fi
-
-# Add exclusions (only if not disabled)
-if [ "$no_exclude_defaults" = false ]; then
   cmd_parts+=("${exclude_parts[@]}")
 fi
 
@@ -135,7 +143,6 @@ if [ -n "$name_pattern" ]; then
   cmd_parts+=(")")
 fi
 
-# Helper to apply path_grep filter if specified
 # Exclude by name pattern
 if [ -n "$exclude_name" ]; then
   IFS="," read -ra exclude_names <<< "$exclude_name"
@@ -143,6 +150,7 @@ if [ -n "$exclude_name" ]; then
     cmd_parts+=("!" -name "$en")
   done
 fi
+
 pipe_path_grep() {
   if [ -n "$path_grep" ]; then
     grep -i "$path_grep"

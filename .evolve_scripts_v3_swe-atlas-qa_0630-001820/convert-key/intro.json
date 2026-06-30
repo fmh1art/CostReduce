@@ -10,8 +10,7 @@
     {"name": "--check", "type": "bool", "required": false, "description": "Show current format without converting"}
   ],
   "examples": [
-    {"call": "/app/.preinstalled_scripts/convert-key/main.sh /app/local_data/dkim.key --check", "expected": "PKCS#8 (-----BEGIN PRIVATE KEY-----)"},
-    {"call": "/app/.preinstalled_scripts/convert-key/main.sh /app/local_data/dkim.key --in-place", "expected": "Converted to pkcs1 format; First line: -----BEGIN RSA PRIVATE KEY-----"}
+    {"call": "/app/.preinstalled_scripts/convert-key/main.sh /app/local_data/dkim.key --check", "expected": "PKCS#8 (-----BEGIN PRIVATE KEY-----)"}
   ],
   "cost_saving_rationale": "Collapses format detection (head -1 + openssl check), conversion attempt (openssl pkey), and verification into one step, saving 4-5 agent steps per key conversion."
 }

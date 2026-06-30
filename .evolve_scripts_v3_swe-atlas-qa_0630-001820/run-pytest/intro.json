@@ -79,7 +79,7 @@
       "name": "--grep",
       "type": "string",
       "required": false,
-      "description": "Filter output lines matching PATTERN (grep -E), e.g. PASSED|FAILED|ERROR"
+      "description": "Filter output lines matching PATTERN (grep -E)"
     },
     {
       "name": "--suppress-warnings",
@@ -91,7 +91,7 @@
       "name": "--python",
       "type": "string",
       "required": false,
-      "description": "Explicit path to Python interpreter, e.g. /app/venv/bin/python"
+      "description": "Explicit path to Python interpreter"
     }
   ],
   "examples": [

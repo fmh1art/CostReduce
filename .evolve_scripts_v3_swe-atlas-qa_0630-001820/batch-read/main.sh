@@ -135,7 +135,7 @@ if [ "$try_flag" = true ]; then
     else
       # Try common extensions
       found=""
-      for ext in .js .ts .jsx .tsx .json .py .php .css .scss .yml .yaml .md .txt .js.jsx .jsx.js; do
+      for ext in .js .ts .jsx .tsx .json .py .php .css .scss .yml .yaml .md .txt; do
         candidate="${f}${ext}"
         if [ -f "$candidate" ]; then
           resolved_files+=("$candidate")

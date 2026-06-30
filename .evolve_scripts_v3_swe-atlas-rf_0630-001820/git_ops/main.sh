@@ -13,7 +13,7 @@ usage() {
   echo "  commit <msg>  - git commit -m <message> (stage all and commit)"
   echo "  checkout <files> - git checkout -- <files>"
   echo "  stash [op]    - git stash [push|pop|list|drop]"
-  echo "  show <ref:path> - git show <ref:path> (view file from git history)"
+  echo "  show <ref:path> [--head=N] [--grep=PATTERN] [--lines=N-M] - git show <ref:path> with optional filtering"
   echo "  summary       - Combined git diff --stat and git status --short"
   echo "  cleanup [files...] - Remove .bak files (or specified files) and show git diff --stat"
   exit 1
@@ -92,12 +92,64 @@ case "$ACTION" in
     git checkout -- "$@" 2>/dev/null || true
     ;;
   show)
-    if [[ $# -lt 1 ]]; then
+    # Parse optional filters: --head=N, --grep=PATTERN, --lines=N-M
+    SHOW_HEAD=
+    SHOW_GREP=
+    SHOW_LINES=
+    SHOW_ARGS=()
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --head=*)
+          SHOW_HEAD="${1#*=}"
+          shift
+          ;;
+        --grep=*)
+          SHOW_GREP="${1#*=}"
+          shift
+          ;;
+        --lines=*)
+          SHOW_LINES="${1#*=}"
+          shift
+          ;;
+        -*)
+          echo "Unknown option: $1" >&2
+          exit 1
+          ;;
+        *)
+          SHOW_ARGS+=("$1")
+          shift
+          ;;
+      esac
+    done
+    if [[ ${#SHOW_ARGS[@]} -lt 1 ]]; then
       echo "Error: show requires a ref:path argument (e.g. HEAD:file.go)" >&2
       exit 1
     fi
-    git show "$@" 2>/dev/null || true
+    output=$(git show "${SHOW_ARGS[@]}" 2>/dev/null) || true
+    if [[ -z "$output" ]]; then
+      exit 0
+    fi
+    # Apply --grep filter
+    if [[ -n "$SHOW_GREP" ]]; then
+      output=$(echo "$output" | grep -E "$SHOW_GREP" 2>/dev/null || true)
+    fi
+    # Apply --lines filter
+    if [[ -n "$SHOW_LINES" ]]; then
+      if [[ "$SHOW_LINES" =~ ^([0-9]+)-([0-9]+)$ ]]; then
+        start="${BASH_REMATCH[1]}"
+        end="${BASH_REMATCH[2]}"
+        output=$(echo "$output" | sed -n "${start},${end}p" 2>/dev/null || true)
+      fi
+    fi
+    # Apply --head filter
+    if [[ -n "$SHOW_HEAD" ]]; then
+      output=$(echo "$output" | head -n "$SHOW_HEAD" 2>/dev/null || true)
+    fi
+    if [[ -n "$output" ]]; then
+      echo "$output"
+    fi
     ;;
+
   summary)
     echo "=== git diff --stat ==="
     git diff --stat 2>/dev/null || true

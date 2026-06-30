@@ -7,7 +7,7 @@
       "name": "interpreter",
       "type": "string",
       "required": true,
-      "description": "Interpreter to use (node, python, bash); auto-detects venv/bin/python for python"
+      "description": "Interpreter to use (node, python, bash)"
     },
     {
       "name": "code",

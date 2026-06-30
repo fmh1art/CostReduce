@@ -15,9 +15,7 @@
     {"name": "--tail", "type": "int", "required": false, "description": "Show last N lines of command output (replaces | tail -N pipe)"}
   ],
   "examples": [
-    {"call": "/app/.preinstalled_scripts/run-with-env/main.sh --env=DB_URI=postgresql://test:test@localhost:5432/test --cd=/app /app/venv/bin/python trace_alias_flow.py", "expected": "Script output with env vars set"},
-    {"call": "/app/.preinstalled_scripts/run-with-env/main.sh --config=/app/.env --get=ALIAS_DOMAINS --value-only", "expected": "domain1.com,domain2.com"},
-    {"call": "/app/.preinstalled_scripts/run-with-env/main.sh --config=/tmp/test.env --cd=/app --head=100 /app/venv/bin/python /tmp/trace_flow.py", "expected": "First 100 lines of script output"}
+    {"call": "/app/.preinstalled_scripts/run-with-env/main.sh --env=DB_URI=postgresql://test:test@localhost:5432/test --cd=/app /app/venv/bin/python trace_alias_flow.py", "expected": "Script output with env vars set"}
   ],
   "cost_saving_rationale": "Collapses cd + inline VAR=val prefix chains and cat+grep env-read steps into one command; --head/--tail collapses | head/tail pipes saving output token cost."
 }

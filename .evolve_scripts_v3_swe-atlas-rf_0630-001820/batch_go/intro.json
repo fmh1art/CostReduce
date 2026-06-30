@@ -1,13 +1,13 @@
 {
   "name": "batch_go",
-  "description": "Run Go build, test, vet, check-syntax, or fmt (gofmt -w) on multiple packages, combining actions with output filtering.",
+  "description": "Run Go build, test, vet, doc, check-syntax, or fmt (gofmt -w) on multiple packages, combining actions with output filtering.",
   "entrypoint": "main.sh",
   "parameters": [
     {
-      "name": "--build|--test|--vet|--test-compile|--check-syntax",
+      "name": "--build|--test|--vet|--test-compile|--check-syntax|--doc",
       "type": "string",
       "required": false,
-      "description": "Actions to perform (repeatable; combine --build --test --check-syntax --fmt to do all)"
+      "description": "Actions to perform (repeatable; combine --build --test --doc --check-syntax --fmt to do all)"
     },
     {
       "name": "--run=PATTERN",
@@ -76,7 +76,11 @@
     {
       "call": "/app/.preinstalled_scripts/batch_go/main.sh --fmt --check-syntax --build ./pkg/...",
       "expected": "Formats, checks syntax, and builds all packages under ./pkg/"
+    },
+    {
+      "call": "/app/.preinstalled_scripts/batch_go/main.sh --doc pkg/writers/buffer Pool",
+      "expected": "Go doc output for buffer.Pool"
     }
   ],
-  "cost_saving_rationale": "Collapses multiple separate go build/test/vet/gofmt commands into a single step and avoids piped grep/head chains, saving 2+ round trips per action."
+  "cost_saving_rationale": "Collapses multiple separate go build/test/vet/doc/gofmt commands into a single step and avoids piped grep/head chains, saving 2+ round trips per action."
 }

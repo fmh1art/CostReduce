@@ -13,22 +13,10 @@
       "name": "args",
       "type": "string",
       "required": false,
-      "description": "Additional arguments for the action"
+      "description": "Additional arguments for the action; show supports --head=N, --grep=PATTERN, --lines=N-M to filter output"
     }
   ],
-  "examples": [
-    {
-      "call": "/app/.preinstalled_scripts/git_ops/main.sh summary",
-      "expected": "Combined git diff --stat and git status --short output"
-    },
-    {
-      "call": "/app/.preinstalled_scripts/git_ops/main.sh diff-tail 5",
-      "expected": "Last 5 lines of each modified file"
-    },
-    {
-      "call": "/app/.preinstalled_scripts/git_ops/main.sh cleanup",
-      "expected": "Removes .bak files and shows git diff --stat"
-    }
-  ],
-  "cost_saving_rationale": "Replaces multiple separate git commands with a single script call, and summary replaces the git-diff-stat-plus-status pattern, saving 2+ steps per change review."
+  "examples": [{"call": "/app/.preinstalled_scripts/git_ops/main.sh show HEAD:file.go --grep=ClassName --head=10",
+                 "expected": "First 10 lines matching ClassName from file.go in HEAD"}],
+  "cost_saving_rationale": "Replaces multiple separate git commands, and show --grep/--lines replaces git-show-piped-to-grep-or-sed patterns, saving 2+ steps per review."
 }

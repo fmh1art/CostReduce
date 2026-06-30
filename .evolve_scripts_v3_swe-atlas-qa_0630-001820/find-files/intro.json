@@ -4,6 +4,12 @@
   "entrypoint": "main.sh",
   "parameters": [
     {
+      "name": "--cd",
+      "type": "string",
+      "required": false,
+      "description": "Change to directory before searching"
+    },
+    {
       "name": "path",
       "type": "string",
       "required": true,
@@ -37,7 +43,7 @@
       "name": "--not-path",
       "type": "string",
       "required": false,
-      "description": "Extra exclusion globs, comma-separated (e.g. *.json,*.md)"
+      "description": "Extra exclusion globs, comma-separated"
     },
     {
       "name": "--grep",

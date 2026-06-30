@@ -19,7 +19,7 @@
       "name": "--include",
       "type": "string",
       "required": false,
-      "description": "Comma-separated file glob patterns (e.g., *.ts,*.tsx,*.js)"
+      "description": "Comma-separated file glob patterns (e.g., *.ts,*.tsx)"
     },
     {
       "name": "--exclude",

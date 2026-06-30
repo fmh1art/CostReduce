@@ -3,13 +3,36 @@
   "description": "Check listening ports and running processes matching a keyword, replacing ss + netstat + ps aux chains.",
   "entrypoint": "main.sh",
   "parameters": [
-    {"name": "--grep", "type": "string", "required": false, "description": "Filter results by keyword (repeatable; default: show all)"},
-    {"name": "--ports", "type": "bool", "required": false, "description": "Show listening ports only"},
-    {"name": "--processes", "type": "bool", "required": false, "description": "Show running processes only"},
-    {"name": "--numeric", "type": "bool", "required": false, "description": "Show numeric addresses/ports (skip DNS resolution)"}
+    {
+      "name": "--grep",
+      "type": "string",
+      "required": false,
+      "description": "Filter results by keyword (repeatable)"
+    },
+    {
+      "name": "--ports",
+      "type": "bool",
+      "required": false,
+      "description": "Show listening ports only"
+    },
+    {
+      "name": "--processes",
+      "type": "bool",
+      "required": false,
+      "description": "Show running processes only"
+    },
+    {
+      "name": "--numeric",
+      "type": "bool",
+      "required": false,
+      "description": "Show numeric addresses/ports (skip DNS resolution)"
+    }
   ],
   "examples": [
-    {"call": "/app/.preinstalled_scripts/check-port/main.sh --grep=postgres", "expected": "Listening ports and processes matching postgres"}
+    {
+      "call": "/app/.preinstalled_scripts/check-port/main.sh --grep=postgres",
+      "expected": "Listening ports and processes matching postgres"
+    }
   ],
   "cost_saving_rationale": "Collapses separate ss, netstat, cat /proc/net/tcp, and ps aux calls into one step, saving 2-3 agent steps per service check."
 }

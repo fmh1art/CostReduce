@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# batch_go - Run Go build, test, vet, fmt, or check-syntax on multiple packages in one call.
-# Supports --fmt (gofmt -w), --run (test filter), --timeout, --count, --grep, --head for output filtering.
+# batch_go - Run Go build, test, vet, fmt, doc, or check-syntax on multiple packages in one call.
+# Supports --fmt (gofmt -w), --doc (go doc), --run (test filter), --timeout, --count, --grep, --head for output filtering.
 
 set -euo pipefail
 
@@ -15,14 +15,15 @@ WORK_DIR=""
 
 usage() {
   cat >&2 <<'EOF'
-Usage: $0 [--dir=DIR] [--build] [--test] [--vet] [--test-compile] [--check-syntax]
+Usage: $0 [--dir=DIR] [--build] [--test] [--vet] [--test-compile] [--check-syntax] [--doc]
           [--tags=TAGS] [--count=N] [--race] [--verbose|-v]
           [--run=PATTERN] [--timeout=DURATION]
           [--grep=PATTERN] [--head=N]
           pkg1 [pkg2...]
 
-Actions (combine multiple): --build, --test, --vet, --test-compile, --check-syntax
+Actions (combine multiple): --build, --test, --vet, --test-compile, --check-syntax, --doc
 Format actions: --fmt (run gofmt -w to format .go files in-place)
+Documentation: --doc (run go doc on package or identifier)
 Test options: --run=PATTERN (e.g. "TestFoo|TestBar"), --timeout=60s, --count=N
 Output filtering: --grep=PATTERN (filter output lines, repeatable), --head=N (first N lines)
 EOF
@@ -70,6 +71,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --fmt)
       ACTIONS+=("fmt")
+      shift
+      ;;
+    --doc)
+      ACTIONS+=("doc")
       shift
       ;;
     --run=*)
@@ -138,6 +143,9 @@ for pkg in "${PACKAGES[@]}"; do
         ;;
       vet)
         output=$(go vet "${EXTRA_ARGS[@]}" "$pkg" 2>&1) || true
+        ;;
+      doc)
+        output=$(go doc "$pkg" 2>&1) || true
         ;;
       check-syntax)
         if [[ -f "$pkg" ]]; then

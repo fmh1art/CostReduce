@@ -67,13 +67,13 @@
       "name": "--name",
       "type": "string",
       "required": false,
-      "description": "File name glob filter when using --dir (e.g., *.ts; repeatable)"
+      "description": "File name glob filter when using --dir (repeatable)"
     },
     {
       "name": "--try",
       "type": "bool",
       "required": false,
-      "description": "Try common extensions (.js,.ts,.jsx,.tsx,.json,.py,.php,.css,.scss,.yml,.yaml,.md,.txt) if exact file not found"
+      "description": "Try common extensions (.js,.ts,.jsx,.tsx,.json,.py) if file not found"
     },
     {
       "name": "--grep",

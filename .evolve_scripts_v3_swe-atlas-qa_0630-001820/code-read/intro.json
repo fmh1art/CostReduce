@@ -1,56 +1,20 @@
 {
   "name": "code-read",
-  "description": "Find Python function/class definitions by name or regex and read their full body, collapsing grep-for-line-number + sed-range into one step.",
+  "description": "Read function/class/interface/type definitions with full body from Python, JavaScript, or TypeScript files, replacing grep-n+sed-n or nl -ba|sed -n chains for finding definition bodies.",
   "entrypoint": "main.sh",
   "parameters": [
-    {
-      "name": "--name",
-      "type": "string",
-      "required": false,
-      "description": "Function or class name to find (searches def/class definitions)"
-    },
-    {
-      "name": "--pattern",
-      "type": "string",
-      "required": false,
-      "description": "Custom regex pattern to match definition lines"
-    },
-    {
-      "name": "--cd",
-      "type": "string",
-      "required": false,
-      "description": "Change to directory before searching"
-    },
-    {
-      "name": "--head",
-      "type": "int",
-      "required": false,
-      "description": "Max output lines from top"
-    },
-    {
-      "name": "--tail",
-      "type": "int",
-      "required": false,
-      "description": "Show last N output lines instead of first N"
-    },
-    {
-      "name": "--context",
-      "type": "int",
-      "required": false,
-      "description": "Decorator/comment lines before definition to include"
-    },
-    {
-      "name": "files",
-      "type": "string",
-      "required": false,
-      "description": "One or more Python files to search (default: all *.py recursively)"
-    }
+    {"name": "--name", "type": "string", "required": true, "description": "Function/class/interface name to find (supports substring match)"},
+    {"name": "--pattern", "type": "string", "required": false, "description": "Custom regex pattern instead of --name"},
+    {"name": "--lang", "type": "string", "required": false, "description": "Language mode: py (default), js, ts, or auto (auto-detect from extension)"},
+    {"name": "--cd", "type": "string", "required": false, "description": "Change to directory before searching"},
+    {"name": "--head", "type": "int", "required": false, "description": "Show first N lines of output"},
+    {"name": "--tail", "type": "int", "required": false, "description": "Show last N lines of output"},
+    {"name": "--context", "type": "int", "required": false, "description": "Show N context lines before definition"},
+    {"name": "files", "type": "string", "required": false, "description": "Specific files to search (default: all *.py or *.js/*.ts recursively)"}
   ],
   "examples": [
-    {
-      "call": "/app/.preinstalled_scripts/code-read/main.sh --name=create_mailbox /app/app/mailbox_utils.py",
-      "expected": "Full body of create_mailbox() function from def line to next def/class"
-    }
+    {"call": "/app/.preinstalled_scripts/code-read/main.sh --name=get_stats --cd=/app", "expected": "Full body of get_stats function from Python files under /app"},
+    {"call": "/app/.preinstalled_scripts/code-read/main.sh --name=confirmDelete --lang=js --cd=/app/static", "expected": "Full body of confirmDelete function from JS files under /app/static"}
   ],
-  "cost_saving_rationale": "Collapses grep -n for definition + sed/batch-read for body range into one step, saving 1-2 agent steps per code exploration."
+  "cost_saving_rationale": "Collapses grep -n for definition + sed -n to read body chains into one step, saving 1-2 agent steps per definition lookup; JS/TS support removes need to switch to grep-search for non-Python files."
 }

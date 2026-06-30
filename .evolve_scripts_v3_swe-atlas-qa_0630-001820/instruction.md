@@ -1,22 +1,22 @@
 # Cost-saving instructions
 
-- Use batch-read --lines=X-Y,Z-W --number instead of nl -ba | sed -n chains; use --dir --name=GLOB --max-depth=N to batch-read files; use --wc for line counts; use --try for auto-extension resolution; use --no-header for cleaner multi-file output.
+- Use batch-read --lines=X-Y,Z-W or --lines=N-M for reading file ranges and multiple chunks (replaces nl -ba|sed -n and cat|sed -n chains); use --dir --name=GLOB --max-depth=N to batch-read files; use --wc for line counts; use --try for auto-extension resolution; use --no-header for cleaner multi-file output.
 - Use find-files --grep=PATTERN --name=GLOB --exclude-name=GLOB --path-grep=PATTERN to find files by content/name/path; use --head/--tail/--offset for pagination.
-- Combine related grep patterns into one grep-search call; use --exclude-line for grep -v, --name-only for find|xargs grep -l.
-- Use code-read --name=FUNC to find Python function/class bodies instead of grep-n+sed-n chains.
+- Use grep-search --include=GLOB1,GLOB2 to filter by file types (e.g., *.scss,*.css); use --filter=PATTERN for secondary grep -i matching; use --exclude-line for grep -v chains; use --name-only for find|xargs grep -l; use --head=N to limit output.
+- Use code-read --name=FUNC/CLASS --lang=py|js|ts|auto to read Python/JS/TS definition bodies instead of grep-n+sed-n or nl -ba|sed -n chains.
 - Use run-script python --config=FILE --cd=DIR for inline Python code (replaces cd + CONFIG= + python heredoc chains).
 - Use run-with-env --config=FILE --head=N/--tail=N for running scripts with env vars and limiting output (replaces cd + CONFIG= + command + | head chains).
-- Use write-file --read=SOURCE --sed='s/old/new/g' TARGET for config edits (replaces cat|sed redirect chains).
+- Use write-file --read=SOURCE --sed='s/old/new/g' --grep-exclude=PATTERN --append-line=LINE TARGET for config edits, collapsing cat|sed|grep -v|echo >> chains into one step.
 - Use serve-app --config --wait instead of cd+export+nohup+gunicorn+sleep+curl health-check chains.
 - Use run-alembic --config --cd with --head/--tail for alembic commands (replaces cd + CONFIG= + venv/bin/alembic chains).
 - Use postgres-ctl --trust-auth/--reset-auth/--force/--wait to manage PostgreSQL setup in one step (not multiple sequential calls).
 - Use cleanup --all-temp --db --tables to clean temp files and DB tables in one step instead of rm-f + psql-DELETE chains.
 - Use api-call --form-data --cookie-jar/--cookie for form-based login flows (replaces curl+grep CSRF extraction chains).
 - Use list-dir --dirs-only/--files-only/--tree with --head/--tail instead of separate ls/find/tree calls.
-- Use extract-json --key=DOT.PATH or --pick=KEYS instead of cat | python3 -c json.load chains.
-- Use multi-query GLOB --grep --json-key --json-keys to batch-query multiple files by glob pattern instead of for-loop chains.
-- Use run-jest --cd --summary to filter build warnings; use run-pytest --suppress-warnings --grep='PASSED|FAILED|ERROR' to cut noise.
+- Use extract-json --key=DOT.PATH or --pick=KEYS instead of cat | python3 -c json.load chains; use multi-query GLOB --grep --json-key --json-keys to batch-query multiple files by glob pattern instead of for-loop chains.
+- Use run-jest --cd --summary --tail=N to filter build warnings and limit output; use run-pytest --suppress-warnings --grep='PASSED|FAILED|ERROR' to cut noise.
 - Use convert-key --check and --in-place to inspect and convert PEM key formats in one step.
-- STOP-PROGRESSING-IF you output full raw command output -- use --head=50 or --tail=30 on batch-read, run-alembic, run-with-env, or run-script to limit output.
+- STOP-PROGRESSING-IF you output full raw command output -- use --head=50 or --tail=30 on batch-read, grep-search, run-jest, run-alembic, run-with-env, or run-script to limit output.
 - STOP-PROGRESSING-IF you write verbose step-by-step comments ('# Let's try...') or re-create the same Python script via cat > heredoc multiple times -- save it and reuse with run-with-env --head=100.
-- STOP-PROGRESSING-IF you chain postgres-ctl calls (trust-auth then --force) when --wait combined with --trust-auth already handles both.
+- STOP-PROGRESSING-IF you use raw find | xargs grep -l chains, find | head chains, grep --include fallback chains, or chain postgres-ctl calls -- use find-files --name=GLOB --grep=PATTERN --head=N or grep-search --include=GLOB --head=N instead; use postgres-ctl --wait instead of chaining start+wait calls.
+- STOP-PROGRESSING-IF you run the same test more than 2 times, use rm -rf on cache dirs, or combine --clear-cache with --no-cache -- run-jest --clear-cache covers cache clearing in one step.
