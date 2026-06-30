@@ -1,0 +1,14 @@
+{
+  "name": "find_repo_root",
+  "description": "Find repository root directory by locating .git, searching common locations and upward from cwd.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {"name": "--max-depth=N", "type": "int", "required": false,
+     "description": "Max directory depth to search (default: 4)"},
+    {"name": "starting_dir", "type": "string", "required": false,
+     "description": "Starting directory to search upward from"}
+  ],
+  "examples": [{"call": "/app/.preinstalled_scripts/find_repo_root/main.sh",
+                 "expected": "/app"}],
+  "cost_saving_rationale": "Replaces multi-step find/cd repo root detection with a single call, saving 1-2 steps per task."
+}

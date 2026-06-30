@@ -1,0 +1,15 @@
+{
+  "name": "quick_map",
+  "description": "Generate a compact tree view of project structure with file sizes and extension stats.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {"name": "directory", "type": "string", "required": false, "description": "Directory to map (default: .)"},
+    {"name": "max_depth", "type": "int", "required": false, "description": "Max depth (default: 4)"},
+    {"name": "--filter=GLOBS", "type": "string", "required": false, "description": "Show only files matching comma-separated globs"}
+  ],
+  "examples": [{
+    "call": "/app/.preinstalled_scripts/quick_map/main.sh src/ 3 --filter=*.go,*.md",
+    "expected": "Shows project tree for src/ with depth 3 filtered to .go and .md files"
+  }],
+  "cost_saving_rationale": "Collapses multiple ls/find/tree calls into a single project overview step."
+}

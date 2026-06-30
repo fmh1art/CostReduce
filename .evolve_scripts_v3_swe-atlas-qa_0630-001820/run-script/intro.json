@@ -1,0 +1,68 @@
+{
+  "name": "run-script",
+  "description": "Create a temp file from inline code or piped stdin and execute it with env config loading, inline env vars, venv auto-detection, timeout, output limiting, and quiet mode, replacing cat-heredoc, -c, and timeout patterns.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {
+      "name": "interpreter",
+      "type": "string",
+      "required": true,
+      "description": "Interpreter to use (node, python, bash); auto-detects venv/bin/python for python"
+    },
+    {
+      "name": "code",
+      "type": "string",
+      "required": false,
+      "description": "Inline code to run (or pipe via stdin)"
+    },
+    {
+      "name": "--config",
+      "type": "string",
+      "required": false,
+      "description": "Path to env config file with KEY=VALUE lines to load before execution"
+    },
+    {
+      "name": "--cd",
+      "type": "string",
+      "required": false,
+      "description": "Change to directory before executing"
+    },
+    {
+      "name": "--env",
+      "type": "string",
+      "required": false,
+      "description": "Set an env var as KEY=VALUE (repeatable, replaces inline VAR=val prefix)"
+    },
+    {
+      "name": "--timeout",
+      "type": "int",
+      "required": false,
+      "description": "Run with timeout in seconds (replaces timeout N wrapper)"
+    },
+    {
+      "name": "--head",
+      "type": "int",
+      "required": false,
+      "description": "Show only first N lines of output"
+    },
+    {
+      "name": "--tail",
+      "type": "int",
+      "required": false,
+      "description": "Show only last N lines of output"
+    },
+    {
+      "name": "--quiet",
+      "type": "bool",
+      "required": false,
+      "description": "Suppress stderr output (useful for verbose Python debug logs from app initialization)"
+    }
+  ],
+  "examples": [
+    {
+      "call": "/app/.preinstalled_scripts/run-script/main.sh python --config=test.env --cd=/app --env=DB_URI=postgresql://test:test@localhost:5432/test --timeout=30 --head=50 --quiet 'import os; print(os.environ[\"DB_URI\"])'",
+      "expected": "postgresql://test:test@localhost:5432/test"
+    }
+  ],
+  "cost_saving_rationale": "Collapses heredoc file creation + config sourcing + env var setting + timeout + execution into one step, saving dozens of script lines and env var declarations as output tokens; --quiet suppresses verbose debug output saving observation tokens."
+}

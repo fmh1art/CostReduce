@@ -1,0 +1,14 @@
+{
+  "name": "batch_json",
+  "description": "Extract values from JSON files by key path without piping through Python.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {"name": "file", "type": "string", "required": true,
+     "description": "JSON file path"},
+    {"name": "key", "type": "string", "required": false,
+     "description": "Key path with dot notation (repeatable); omit to print whole file formatted"}
+  ],
+  "examples": [{"call": "/app/.preinstalled_scripts/batch_json/main.sh package.json scripts jest",
+                 "expected": "Values of keys 'scripts' and 'jest' from package.json"}],
+  "cost_saving_rationale": "Replaces multi-step cat|python3 JSON parsing pattern with a single call, saving steps and reducing command length."
+}

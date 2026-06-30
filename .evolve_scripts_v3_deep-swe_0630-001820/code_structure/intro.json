@@ -1,0 +1,16 @@
+{
+  "name": "code_structure",
+  "description": "List functions, structs, classes, interfaces, traits, enums in source files with --summary for compact counts and --grep=PATTERN to filter by name.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {"name": "--dir=DIR", "type": "string", "required": false, "description": "Working directory to cd into before analyzing"},
+    {"name": "files", "type": "string", "required": true, "description": "One or more source files to analyze"},
+    {"name": "--summary,-s", "type": "bool", "required": false, "description": "Compact one-line summary with counts per category"},
+    {"name": "--grep=PATTERN", "type": "string", "required": false, "description": "Filter definitions by name (case-insensitive)"}
+  ],
+  "examples": [{
+    "call": "/app/.preinstalled_scripts/code_structure/main.sh --dir=/app --summary src/main.go src/util.py",
+    "expected": "Shows compact counts of functions/types per file"
+  }],
+  "cost_saving_rationale": "Collapses repeated grep-for-function/struct calls into a single step; --dir eliminates separate cd step."
+}

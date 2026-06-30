@@ -1,0 +1,2197 @@
+
+==========================================================================================
+[001] tier=core src=evolve yr=2025 cite=0 slug=2410_10762
+TITLE: AFlow: Automating Agentic Workflow Generation
+ARXIV: 2410.10762   URL: https://arxiv.org/abs/2410.10762
+-------------------------------------------------- EXCERPT:
+Published as a conference paper at ICLR 2025
+AFLOW:
+AUTOMATING AGENTIC WORKFLOW GENERATION
+Jiayi Zhang1,2∗, Jinyu Xiang1∗, Zhaoyang Yu3, Fengwei Teng3, Xiong-Hui Chen4,
+Jiaqi Chen5, Mingchen Zhuge6, Xin Cheng3, Sirui Hong1, Jinlin Wang1, Bingnan Zheng5,
+Bang Liu7, Yuyu Luo2,8†, Chenglin Wu1†
+1DeepWisdom, 2The Hong Kong University of Science and Technology (Guangzhou),
+3Renmin University of China, 4Nanjing University, 5Fudan University,
+6King Abdullah University of Science and Technology, 7Universit´e de Montr´eal & Mila,
+8The Hong Kong University of Science and Technology
+ABSTRACT
+Large language models (LLMs) have demonstrated remarkable potential in solv-
+ing complex tasks across diverse domains, typically by employing agentic work-
+flows that follow detailed instructions and operational sequences. However, con-
+structing these workflows requires significant human effort, limiting scalability
+and generalizability. Recent research has sought to automate the generation and
+optimization of these workflows, but existing methods still rely on initial man-
+ual setup and fall short of achieving fully automated and effective workflow gen-
+
+
+==========================================================================================
+[002] tier=core src=evolve yr=2026 cite=0 slug=2511_15915
+TITLE: AccelOpt: A Self-Improving LLM Agentic System for AI Accelerator Kernel Optimization
+ARXIV: 2511.15915   URL: https://arxiv.org/abs/2511.15915
+-------------------------------------------------- EXCERPT:
+ACCELOPT: A SELF-IMPROVING LLM AGENTIC SYSTEM FOR AI
+ACCELERATOR KERNEL OPTIMIZATION
+Genghan Zhang 1 † Shaowei Zhu 2 Anjiang Wei 1 † Zhenyu Song 2 † Allen Nie 2 † Zhen Jia 2
+Nandita Vijaykumar 2 3 Yida Wang 2 Kunle Olukotun 1
+ABSTRACT
+We present AccelOpt, a self-improving large language model (LLM) agentic system that autonomously optimizes
+kernels for emerging AI acclerators, eliminating the need for expert-provided hardware-specific optimization
+knowledge. AccelOpt explores the kernel optimization space through iterative generation, informed by an
+optimization memory that curates experiences and insights from previously encountered slow-fast kernel pairs.
+We build NKIBench, a new benchmark suite of AWS Trainium accelerator kernels with varying complexity
+extracted from real-world LLM workloads to evaluate the effectiveness of AccelOpt. Our evaluation confirms that
+AccelOpt’s capability improves over iterations, boosting the average percentage of peak throughput from 49% to
+61% on Trainium 1 and from 45% to 59% on Trainium 2 for NKIBench kernels. Moreover, AccelOpt is highly
+cost-effective: using open-source models, it matches the 
+
+==========================================================================================
+[003] tier=core src=evolve yr=2025 cite=0 slug=2501_11425
+TITLE: Agent-R: Training Language Model Agents to Reflect via Iterative Self-Training
+ARXIV: 2501.11425   URL: https://arxiv.org/abs/2501.11425
+-------------------------------------------------- EXCERPT:
+Agent-R: Training Language Model Agents to Reflect via
+Iterative Self-Training
+Siyu Yuan1,2,∗,†, Zehui Chen2,∗,†, Zhiheng Xi1,†, Junjie Ye1,2,†, Zhengyin Du2, Jiecao
+Chen2
+1Fudan University, 2ByteDance Seed
+∗Equal contributions, †Work done at ByteDance Seed
+Abstract
+Large Language Models (LLMs) agents are increasingly pivotal for addressing complex tasks in
+interactive and agentic environments. Existing work primarily focuses on enhancing performance
+through behavior cloning from stronger experts, yet such approaches often falter in real-world
+applications, mainly due to the inability to recover from errors. However, step-level critique
+data is notoriously difficult and expensive to collect. Automating and dynamically constructing
+self-critique datasets is thus crucial to empowering models with intelligent agent capabilities. In
+this work, we propose an iterative self-training framework, Agent-R, that enables language Agent
+to Reflect on the fly. Unlike traditional methods that reward or penalize actions solely based on
+correctness, our approach leverages Monte Carlo Tree Search (MCTS) to construct training samples
+that recover corr
+
+==========================================================================================
+[004] tier=core src=evolve yr=2025 cite=0 slug=2511_10395
+TITLE: AgentEvolver: Towards Efficient Self-Evolving Agent System
+ARXIV: 2511.10395   URL: https://arxiv.org/abs/2511.10395
+-------------------------------------------------- EXCERPT:
+2025-11-14
+AgentEvolver: Towards Efficient Self-Evolving Agent System
+Yunpeng Zhai∗, Shuchang Tao∗, Cheng Chen∗, Anni Zou∗, Ziqian Chen∗, Qingxu Fu∗,
+Shinji Mai∗, Li Yu, Jiaji Deng, Zouying Cao, Zhaoyang Liu†, Bolin Ding†, Jingren Zhou
+Tongyi Lab
+, Alibaba Group
+{zhaiyunpeng.zyp, taoshuchang.tsc, chengchen, zouanni.zan, eric.czq,
+fuqingxu.fqx, jingmu.lzy, bolin.ding}@alibaba-inc.com
+https://github.com/modelscope/AgentEvolver
+Abstract
+Autonomous agents powered by large language models (LLMs) have the poten-
+tial to significantly enhance human productivity by reasoning, using tools, and
+executing complex tasks in diverse environments. However, current approaches
+to developing such agents remain costly and inefficient, as they typically require
+manually constructed task datasets and reinforcement learning (RL) pipelines
+with extensive random exploration. These limitations lead to prohibitively high
+data-construction costs, low exploration efficiency, and poor sample utilization.
+To address these challenges, we present AgentEvolver, a self-evolving agent
+system that leverages the semantic understanding and reasoning capabilities
+of LLMs
+
+==========================================================================================
+[005] tier=core src=evolve yr=2026 cite=0 slug=2510_04618
+TITLE: Agentic Context Engineering: Evolving Contexts for Self-Improving Language Models
+ARXIV: 2510.04618   URL: https://arxiv.org/abs/2510.04618
+-------------------------------------------------- EXCERPT:
+Published as a conference paper at ICLR 2026
+AGENTIC CONTEXT ENGINEERING: EVOLVING CON-
+TEXTS FOR SELF-IMPROVING LANGUAGE MODELS
+Qizheng Zhang1∗, Changran Hu2∗, Shubhangi Upasani2, Boyuan Ma2, Fenglu Hong2,
+Vamsidhar Kamanuru2, Jay Rainton2, Chen Wu2, Mengmeng Ji2, Hanchen Li3,
+Urmish Thakker2, James Zou1, Kunle Olukotun1
+1Stanford University
+2SambaNova Systems, Inc.
+3UC Berkeley
+{qizhengz,kunle}@stanford.edu
+changran_hu@berkeley.edu
+§ ace-agent/ace
+ ace-agent.github.io
+∗Equal contribution.
+ABSTRACT
+Large language model (LLM) applications such as agents and domain-specific
+reasoning increasingly rely on context adaptation: modifying inputs with instruc-
+tions, strategies, or evidence, rather than weight updates. Prior approaches im-
+prove usability but often suffer from brevity bias, which drops domain insights for
+concise summaries, and from context collapse, where iterative rewriting erodes
+details over time. We introduce ACE (Agentic Context Engineering), a frame-
+work that treats contexts as evolving playbooks that accumulate, refine, and orga-
+nize strategies through a modular process of generation, reflection, and curation.
+A
+
+==========================================================================================
+[006] tier=core src=evolve yr=2026 cite=0 slug=2601_07641
+TITLE: Beyond Static Tools: Test-Time Tool Evolution for Scientific Reasoning
+ARXIV: 2601.07641   URL: https://arxiv.org/abs/2601.07641
+-------------------------------------------------- EXCERPT:
+Beyond Static Tools: Test-Time Tool Evolution for Scientific Reasoning
+Jiaxuan Lu1,†, Ziyu Kong2,†, Yemin Wang3,†, Rong Fu4, Haiyuan Wan1,5,
+Cheng Yang6, Wenjie Lou1, Haoran Sun1, Lilong Wang1,
+Yankai Jiang1, Xiaosong Wang1, Xiao Sun1, Dongzhan Zhou1,∗
+1Shanghai Artificial Intelligence Laboratory
+2Fudan University
+3Xiamen University
+4University of Macau
+5Tsinghua University
+6Hangzhou Dianzi University
+Abstract
+The central challenge of AI for Science is not
+reasoning alone, but the ability to create com-
+putational methods in an open-ended scientific
+world.
+Existing LLM-based agents rely on
+static, pre-defined tool libraries, a paradigm
+that fundamentally fails in scientific domains
+where tools are sparse, heterogeneous, and
+intrinsically incomplete.
+In this paper, we
+propose Test-Time Tool Evolution (TTE), a
+new paradigm that enables agents to synthe-
+size, verify, and evolve executable tools dur-
+ing inference.
+By transforming tools from
+fixed resources into problem-driven artifacts,
+TTE overcomes the rigidity and long-tail lim-
+itations of static tool libraries. To facilitate
+rigorous evaluation, we introduce SciEvo, a
+benchmark c
+
+==========================================================================================
+[007] tier=core src=cost yr=2023 cite=69 slug=2307_16789
+TITLE: Counterfactually Auditable Lifecycle Certification for Autonomous Agents
+ARXIV: 2307.16789   URL: https://doi.org/10.48550/arxiv.2307.16789
+-------------------------------------------------- EXCERPT:
+Preprint
+TOOLLLM: FACILITATING LARGE LANGUAGE
+MODELS TO MASTER 16000+ REAL-WORLD APIS
+Yujia Qin1∗, Shihao Liang1∗, Yining Ye1, Kunlun Zhu1, Lan Yan1, Yaxi Lu1, Yankai Lin3†,
+Xin Cong1, Xiangru Tang4, Bill Qian4, Sihan Zhao1, Lauren Hong1, Runchu Tian1,
+Ruobing Xie5, Jie Zhou5, Mark Gerstein4, Dahai Li2,6, Zhiyuan Liu1†, Maosong Sun1†
+1Tsinghua University 2ModelBest Inc. 3Renmin University of China
+4Yale University 5WeChat AI, Tencent Inc. 6Zhihu Inc.
+yujiaqin16@gmail.com
+ABSTRACT
+Despite the advancements of open-source large language models (LLMs), e.g.,
+LLaMA, they remain significantly limited in tool-use capabilities, i.e., using exter-
+nal tools (APIs) to fulfill human instructions. The reason is that current instruction
+tuning largely focuses on basic language tasks but ignores the tool-use domain.
+This is in contrast to the excellent tool-use capabilities of state-of-the-art (SOTA)
+closed-source LLMs, e.g., ChatGPT. To bridge this gap, we introduce ToolLLM,
+a general tool-use framework encompassing data construction, model training,
+and evaluation. We first present ToolBench, an instruction-tuning dataset for tool
+use, which is
+
+==========================================================================================
+[008] tier=core src=evolve yr=2026 cite=0 slug=2601_07055
+TITLE: Dr. Zero: Self-Evolving Search Agents without Training Data
+ARXIV: 2601.07055   URL: https://arxiv.org/abs/2601.07055
+-------------------------------------------------- EXCERPT:
+Dr. Zero: Self-Evolving Search Agents without
+Training Data
+Zhenrui Yue1,2∗, Kartikeya Upasani1, Xianjun Yang1, Suyu Ge2, Shaoliang Nie1, Yuning Mao1, Zhe Liu1,
+Dong Wang2
+1Meta Superintelligence Labs, 2University of Illinois Urbana-Champaign
+*Work done while at Meta
+As high-quality data becomes increasingly difficult to obtain, data-free self-evolution has emerged
+as a promising paradigm. This approach allows large language models (LLMs) to autonomously
+generate and solve complex problems, thereby improving their reasoning capabilities. However, multi-
+turn search agents struggle in data-free self-evolution due to the limited question diversity and the
+substantial compute required for multi-step reasoning and tool using. In this work, we introduce
+Dr. Zero, a framework enabling search agents to effectively self-evolve without any training data. In
+particular, we design a self-evolution feedback loop where a proposer generates diverse questions to
+train a solver initialized from the same base model. As the solver evolves, it incentivizes the proposer
+to produce increasingly difficult yet solvable tasks, thus establishing an automate
+
+==========================================================================================
+[009] tier=core src=evolve yr=2026 cite=0 slug=2601_02695
+TITLE: EvoRoute: Experience-Driven Self-Routing LLM Agent Systems
+ARXIV: 2601.02695   URL: https://arxiv.org/abs/2601.02695
+-------------------------------------------------- EXCERPT:
+EvoRoute: Experience-Driven Self-Routing LLM Agent Systems
+Guibin Zhang1, Haiyang Yu2, Kaiming Yang1, Bingli Wu2,
+Fei Huang2, Yongbin Li2†, Shuicheng Yan1†
+1National University of Singapore, 2Tongyi Lab, †Corresponding Authors
+Main Contact: guibinz@outlook.com
+Abstract
+Complex agentic AI systems, powered by a
+coordinated ensemble of Large Language Mod-
+els (LLMs), tool and memory modules, have
+demonstrated remarkable capabilities on intri-
+cate, multi-turn tasks. However, this success is
+shadowed by prohibitive economic costs and
+severe latency, exposing a critical, yet under-
+explored, trade-off. We formalize this chal-
+lenge as the Agent System Trilemma: the in-
+herent tension among achieving state-of-the-
+art performance, minimizing monetary cost,
+and ensuring rapid task completion. To dis-
+mantle this trilemma, we introduce EvoRoute,
+a self-evolving model routing paradigm that
+transcends static, pre-defined model assign-
+ments. Leveraging an ever-expanding knowl-
+edge base of prior experience, EvoRoute dy-
+namically selects Pareto-optimal LLM back-
+bones at each step, balancing accuracy, effi-
+ciency, and resource use, while con
+
+==========================================================================================
+[010] tier=core src=evolve yr=2026 cite=0 slug=2507_19457
+TITLE: GEPA: Reflective Prompt Evolution Can Outperform Reinforcement Learning
+ARXIV: 2507.19457   URL: https://arxiv.org/abs/2507.19457
+-------------------------------------------------- EXCERPT:
+Accepted at ICLR 2026 (Oral).
+GEPA: REFLECTIVE PROMPT EVOLUTION CAN OUTPER-
+FORM REINFORCEMENT LEARNING
+Lakshya A Agrawal1, Shangyin Tan1, Dilara Soylu2, Noah Ziems4,
+Rishi Khare1, Krista Opsahl-Ong5, Arnav Singhvi2,5, Herumb Shandilya2,
+Michael J Ryan2, Meng Jiang4, Christopher Potts2, Koushik Sen1,
+Alexandros G. Dimakis1,3, Ion Stoica1, Dan Klein1, Matei Zaharia1,5, Omar Khattab6
+1UC Berkeley
+2Stanford
+3BespokeLabs.ai
+4Notre Dame
+5Databricks
+6MIT
+ABSTRACT
+Large language models (LLMs) are increasingly adapted to downstream tasks via rein-
+forcement learning (RL) methods like Group Relative Policy Optimization (GRPO), which
+often require thousands of rollouts to learn new tasks. We argue that the interpretable na-
+ture of language often provides a much richer learning medium for LLMs, compared to
+policy gradients derived from sparse, scalar rewards. To test this, we introduce GEPA
+(Genetic-Pareto), a prompt optimizer that thoroughly incorporates natural language re-
+flection to learn high-level rules from trial and error. Given any AI system containing one
+or more LLM prompts, GEPA samples trajectories (e.g., reasoning, tool calls, 
+
+==========================================================================================
+[011] tier=core src=evolve yr=2025 cite=0 slug=2504_06821
+TITLE: Inducing Programmatic Skills for Agentic Tasks
+ARXIV: 2504.06821   URL: https://arxiv.org/abs/2504.06821
+-------------------------------------------------- EXCERPT:
+Published as a conference paper at COLM 2025
+Inducing Programmatic Skills for Agentic Tasks
+Zora Zhiruo Wang
+Apurva Gandhi
+Graham Neubig
+Daniel Fried
+Carnegie Mellon University
+{zhiruow,apurvag,gneubig,dfried}@cs.cmu.edu
+Abstract
+To succeed in common digital tasks such as web navigation, agents must
+carry out a variety of specialized tasks such as searching for products or
+planning a travel route. To tackle these tasks, agents can bootstrap them-
+selves by learning task-specific skills online through interaction with the
+web environment. In this work, we demonstrate that programs are an ef-
+fective representation for skills. We propose agent skill induction (ASI),
+which allows agents to adapt themselves by inducing, verifying, and uti-
+lizing program-based skills on the fly. We start with an evaluation on the
+WebArena agent benchmark and show that ASI outperforms the static
+baseline agent and its text-skill counterpart by 23.5% and 11.3% in success
+rate, mainly thanks to the programmatic verification guarantee during the
+induction phase. ASI also improves efficiency by reducing 10.7–15.3% of
+the steps over baselines, by composing pr
+
+==========================================================================================
+[012] tier=core src=evolve yr=2024 cite=0 slug=2305_17126
+TITLE: Large Language Models as Tool Makers
+ARXIV: 2305.17126   URL: https://arxiv.org/abs/2305.17126
+-------------------------------------------------- EXCERPT:
+Published as a conference paper at ICLR 2024
+LARGE LANGUAGE MODELS AS TOOL MAKERS
+Tianle Cai1,2∗
+Xuezhi Wang1
+Tengyu Ma1,3†
+Xinyun Chen1
+Denny Zhou1
+1Google Deepmind
+2Princeton University
+3Stanford University
+ABSTRACT
+Recent research has highlighted the potential of large language models (LLMs)
+to improve their problem-solving capabilities with the aid of suitable external
+tools. In our work, we further advance this concept by introducing a closed-
+loop framework, referred to as LLMs As Tool Makers (LATM), where LLMs
+create their own reusable tools for problem-solving. Our approach consists of two
+phases: 1) tool making: an LLM acts as the tool maker that crafts tools for a set
+of tasks, where a tool is implemented as a Python utility function. 2) tool using:
+another LLM acts as the tool user, which applies the tool built by the tool maker
+for problem-solving. The tool user can be either the same or a different LLM
+from the tool maker. On the problem-solving server side, tool-making enables
+continual tool generation and caching as new requests emerge. This framework
+enables subsequent requests to access cached tools via their corres
+
+==========================================================================================
+[013] tier=core src=evolve yr=2025 cite=0 slug=2511_13646
+TITLE: Live-SWE-agent: Can Software Engineering Agents Self-Evolve on the Fly?
+ARXIV: 2511.13646   URL: https://arxiv.org/abs/2511.13646
+-------------------------------------------------- EXCERPT:
+LIVE-SWE-AGENT: Can Software Engineering
+Agents Self-Evolve on the Fly?
+Chunqiu Steven Xia Zhe Wang Yan Yang† Yuxiang Wei Lingming Zhang
+University of Illinois Urbana-Champaign
+{chunqiu2, zhe36, ywei40, lingming}@illinois.edu †yanyang826@outlook.com
+Abstract
+Large Language Models (LLMs) are reshaping almost all industries, including
+software engineering. In recent years, a number of LLM agents have been proposed
+to solve real-world software problems. Such software agents are typically equipped
+with a suite of coding tools and can autonomously decide the next actions to form
+complete trajectories to solve end-to-end software tasks. While promising, they
+typically require dedicated design and may still be suboptimal, since it can be
+extremely challenging and costly to exhaust the entire agent scaffold design space.
+Recognizing that software agents are inherently software themselves that can be
+further refined/modified, researchers have proposed a number of self-improving
+software agents recently, including the Darwin-Gödel Machine (DGM). Meanwhile,
+such self-improving agents require costly offline training on specific benchmarks
+and m
+
+==========================================================================================
+[014] tier=core src=evolve yr=2026 cite=0 slug=2601_21557
+TITLE: Meta Context Engineering via Agentic Skill Evolution
+ARXIV: 2601.21557   URL: https://arxiv.org/abs/2601.21557
+-------------------------------------------------- EXCERPT:
+Meta Context Engineering via Agentic Skill Evolution
+Haoran Ye1
+Xuning He1
+Vincent Arak2
+Haonan Dong1
+Guojie Song1, B
+1State Key Laboratory of General Artificial Intelligence, School of Intelligence Science and Technology, Peking University
+2School of Electronics Engineering and Computer Science, Peking University
+Abstract: The operational efficacy of large language models relies heavily on their inference-time context.
+This has established Context Engineering (CE) as a formal discipline for optimizing these inputs. Current CE
+methods rely on manually crafted harnesses, such as rigid generation-reflection workflows and predefined context
+schemas. They impose structural biases and restrict context optimization to a narrow, intuition-bound design
+space. To address this, we introduce Meta Context Engineering (MCE), a bi-level framework that supersedes
+static CE heuristics by co-evolving CE skills and context artifacts. In MCE iterations, a meta-level agent refines
+engineering skills via agentic crossover, a deliberative search over the history of skills, their executions, and
+evaluations. A base-level agent executes these skills, learn
+
+==========================================================================================
+[015] tier=core src=evolve yr=2025 cite=0 slug=2506_11442
+TITLE: ReVeal: Self-Evolving Code Agents via Reliable Self-Verification
+ARXIV: 2506.11442   URL: https://arxiv.org/abs/2506.11442
+-------------------------------------------------- EXCERPT:
+REVEAL: SELF-EVOLVING CODE AGENTS VIA
+RELIABLE SELF-VERIFICATION
+Yiyang Jin2∗
+Kunzhao Xu3∗
+Hang Li1
+Xueting Han1†
+Yanmin Zhou2
+Cheng Li3
+Jing Bai1
+1Microsoft Research Asia
+2Tongji University
+3University of Science and Technology of China
+ABSTRACT
+Reinforcement learning with verifiable rewards (RLVR) has advanced the reasoning
+capabilities of large language models. However, existing methods rely solely on
+outcome rewards, without explicitly optimizing verification or leveraging reliable
+signals from realistic environments, leading to unreliable self-verification and
+limited test-time scaling. To address this, we widen the verification-generation
+asymmetry by explicitly optimizing self-verification, making it a reliable driver
+of deeper test-time scaling. We introduce ReVeal, a multi-turn Reinforcement
+learning framework that evolves code generation through self-Verification and tool-
+based evaluation. ReVeal structures long-horizon reasoning as iterative generation-
+verification turns and incorporates TAPO for turn-level credit assignment, fostering
+the co-evolution of code and test generation. At inference, this strengthened self-
+v
+
+==========================================================================================
+[016] tier=core src=evolve yr=2026 cite=0 slug=2509_25140
+TITLE: ReasoningBank: Scaling Agent Self-Evolving with Reasoning Memory
+ARXIV: 2509.25140   URL: https://arxiv.org/abs/2509.25140
+-------------------------------------------------- EXCERPT:
+ReasoningBank: Scaling Agent
+Self-Evolving with Reasoning Memory
+Siru Ouyang1*, Jun Yan2†, I-Hung Hsu2, Yanfei Chen2, Ke Jiang2, Zifeng Wang2, Rujun Han2, Long T. Le2,
+Samira Daruki2, Xiangru Tang3, Vishy Tirumalashetty2, George Lee2, Mahsan Rofouei4, Hangfei Lin4, Jiawei
+Han1, Chen-Yu Lee2† and Tomas Pfister2
+1University of Illinois Urbana-Champaign, 2Google Cloud AI Research, 3Yale University, 4Google Cloud AI
+With the growing adoption of large language model agents in persistent real-world roles, they naturally
+encounter continuous streams of tasks. A key limitation, however, is their failure to learn from the
+accumulated interaction history, forcing them to discard valuable insights and repeat past errors. We
+propose ReasoningBank, a novel memory framework that distills generalizable reasoning strategies
+from an agent’s self-judged successful and failed experiences. At test time, an agent retrieves relevant
+memories from ReasoningBank to inform its interaction and then integrates new learnings back,
+enabling it to become more capable over time. Building on this powerful experience learner, we further
+introduce memory-aware test-
+
+==========================================================================================
+[017] tier=core src=evolve yr=2026 cite=0 slug=2512_17102
+TITLE: Reinforcement Learning for Self-Improving Agent with Skill Library
+ARXIV: 2512.17102   URL: https://arxiv.org/abs/2512.17102
+-------------------------------------------------- EXCERPT:
+Reinforcement Learning for Self-Improving Agent with Skill Library
+Jiongxiao Wang1*
+Qiaojing Yan2
+Yawei Wang2
+Yijun Tian2
+Soumya Smruti Mishra2
+Zhichao Xu2
+Megha Gandhi2
+Panpan Xu2†
+Lin Lee Cheong2
+1University of Wisconsin–Madison; 2AWS Agentic AI
+jwang2929@wisc.edu; {qiaojiny, yawenwan, yijunt, soumish, xzhichao, ganmegha, xupanpan, lcheong}@amazon.com
+Abstract
+Large Language Model (LLM)-based agents
+have demonstrated remarkable capabilities in
+complex reasoning and multi-turn interactions
+but struggle to continuously improve and adapt
+when deployed in new environments.
+One
+promising approach is implementing skill li-
+braries that allow agents to learn, validate, and
+apply new skills. However, current skill library
+approaches rely primarily on LLM prompting,
+making consistent skill library implementation
+challenging. To overcome these challenges, we
+propose a Reinforcement Learning (RL)-based
+approach to enhance agents’ self-improvement
+capabilities with a skill library. Specifically,
+we introduce Skill Augmented GRPO for self-
+Evolution (SAGE), a novel RL framework that
+systematically incorporates skills into learn-
+ing. The frame
+
+==========================================================================================
+[018] tier=core src=evolve yr=2024 cite=0 slug=2408_03314
+TITLE: Scaling LLM Test-Time Compute Optimally can be More Effective than Scaling Model Parameters
+ARXIV: 2408.03314   URL: https://arxiv.org/abs/2408.03314
+-------------------------------------------------- EXCERPT:
+2024-8-7
+Scaling LLM Test-Time Compute Optimally can
+be More Effective than Scaling Model Parameters
+Charlie Snell♦, 1, Jaehoon Lee2, Kelvin Xu♣, 2 and Aviral Kumar♣, 2
+♣Equal advising, 1UC Berkeley, 2Google DeepMind, ♦Work done during an internship at Google DeepMind
+Enabling LLMs to improve their outputs by using more test-time computation is a critical step towards
+building generally self-improving agents that can operate on open-ended natural language. In this paper,
+we study the scaling of inference-time computation in LLMs, with a focus on answering the question: if an
+LLM is allowed to use a fixed but non-trivial amount of inference-time compute, how much can it improve its
+performance on a challenging prompt? Answering this question has implications not only on the achievable
+performance of LLMs, but also on the future of LLM pretraining and how one should tradeoff inference-time
+and pre-training compute. Despite its importance, little research attempted to understand the scaling
+behaviors of various test-time inference methods. Moreover, current work largely provides negative results
+for a number of these strategies. In thi
+
+==========================================================================================
+[019] tier=core src=cost yr=2025 cite=8 slug=2503_16416
+TITLE: Survey on Evaluation of LLM-based Agents
+ARXIV: 2503.16416   URL: https://doi.org/10.48550/arxiv.2503.16416
+-------------------------------------------------- EXCERPT:
+A Survey on Evaluation of LLM-based Agents
+Asaf Yehudai1,2, Lilach Eden2, Alan Li3, Guy Uziel2,
+Yilun Zhao3, Roy Bar-Haim2, Arman Cohan3, Michal Shmueli-Scheuer2
+1The Hebrew University of Jerusalem 2IBM Research 3Yale University
+{Asaf.Yehudai, Guy.Uziel1}@ibm.com {lilache, roybar, shmueli}@il.ibm.com
+{haoxin.li, yilun.zhao, arman.cohan}@yale.edu
+Abstract
+LLM-based agents represent a paradigm shift
+in AI, enabling autonomous systems to plan,
+reason, and use tools while interacting with
+dynamic environments. This paper provides
+the first comprehensive survey of evaluation
+methods for these increasingly capable agents.
+We analyze the field of agent evaluation across
+five perspectives: (1) Core LLM capabilities
+needed for agentic workflows, like planning,
+and tool use; (2) Application-specific bench-
+marks such as web and SWE agents; (3) Evalu-
+ation of generalist agents; (4) Analysis of agent
+benchmarks’ core dimensions; and (5) Evalu-
+ation frameworks and tools for agent develop-
+ers. Our analysis reveals current trends, includ-
+ing a shift toward more realistic, challenging
+evaluations with continuously updated bench-
+marks. We also 
+
+==========================================================================================
+[020] tier=core src=evolve yr=2026 cite=0 slug=2601_22628
+TITLE: TTCS: Test-Time Curriculum Synthesis for Self-Evolving
+ARXIV: 2601.22628   URL: https://arxiv.org/abs/2601.22628
+-------------------------------------------------- EXCERPT:
+TTCS: Test-Time Curriculum Synthesis for
+Self-Evolving
+Chengyi Yang1, Zhishang Xiang1, Yunbo Tang1, Zongpei Teng1,
+Chengsong Huang2, Fei Long1, Yuhan Liu3∗, Jinsong Su1∗
+1Xiamen University
+2Washington University in St. Louis
+3Renmin University of China
+yangchengyi@stu.xmu.edu.cn
+yuhan.liu@ruc.edu.cn
+jssu@xmu.edu.cn
+Abstract
+Test-Time Training offers a promising way to improve the reasoning ability of
+large language models (LLMs) by adapting the model using only the test questions.
+However, existing methods struggle with difficult reasoning problems for two
+reasons: raw test questions are often too difficult to yield high-quality pseudo-labels,
+and the limited size of test sets makes continuous online updates prone to instability.
+To address these limitations, we propose TTCS, a co-evolving test-time training
+framework. Specifically, TTCS initializes two policies from the same pretrained
+model: a question synthesizer and a reasoning solver. These policies evolve
+through iterative optimization: the synthesizer generates progressively challenging
+question variants conditioned on the test questions, creating a structured curriculum
+tail
+
+==========================================================================================
+[021] tier=core src=evolve yr=2025 cite=0 slug=2509_23285
+TITLE: Toward Effective Tool-Integrated Reasoning via Self-Evolved Preference Learning
+ARXIV: 2509.23285   URL: https://arxiv.org/abs/2509.23285
+-------------------------------------------------- EXCERPT:
+Preprint
+TOWARD EFFECTIVE TOOL-INTEGRATED REASONING
+VIA SELF-EVOLVED PREFERENCE LEARNING
+Yifei Chen, Guanting Dong , Zhicheng Dou∗
+Renmin University of China
+{zhangboguodong, dou}@ruc.edu.cn
+ GitHub: https://github.com/asilverlight/Tool-Light
+ABSTRACT
+Tool-Integrated Reasoning (TIR) enables large language models (LLMs) to im-
+prove their internal reasoning ability by integrating external tools. However, mod-
+els employing TIR often display suboptimal behaviors, such as insufficient or ex-
+cessive tool usage and overthinking after tool calls. The challenge of incentivizing
+LLMs to perform TIR efficiently and accurately, while stabilizing the reasoning
+process, remains an open question. In this paper, we start by exploring the impact
+of tool calls on model reasoning from the perspective of information entropy. Our
+findings indicate that tool call results lead to a distinct change in the information
+entropy of subsequent reasoning, with the overall entropy of the reasoning chain
+varying based on the number of tool calls. Building on these insights, we propose
+Tool-Light, a framework designed to encourage LLMs to perform TIR efficientl
+
+==========================================================================================
+[022] tier=core src=evolve yr=2025 cite=0 slug=2510_14253
+TITLE: Towards Agentic Self-Learning LLMs in Search Environment
+ARXIV: 2510.14253   URL: https://arxiv.org/abs/2510.14253
+-------------------------------------------------- EXCERPT:
+TOWARDS AGENTIC SELF-LEARNING LLMS
+IN SEARCH ENVIRONMENT
+Wangtao Sun1,2, Xiang Cheng3, Jialin Fan6, Xing Yu3,
+Yao Xu1,2, Shizhu He1,2, Jun Zhao1,2, Kang Liu1,2,5∗
+1The Laboratory of Cognition and Decision Intelligence for Complex Systems,
+Institute of Automation, Chinese Academy of Sciences, Beijing, China
+2School of Artificial Intelligence, University of Chinese Academy of Sciences, Beijing, China
+3Xiaohongshu Inc 4Meituan Inc 5Shanghai Artificial Intelligence Laboratory
+6Tsinghua University
+ABSTRACT
+We study whether self-learning can scale LLM-based agents without relying on
+human-curated datasets or predefined rule-based rewards. Through controlled
+experiments in a search-agent setting, we identify two key determinants of scalable
+agent training: the source of reward signals and the scale of agent task data. We find
+that rewards from a Generative Reward Model (GRM) outperform rigid rule-based
+signals for open-domain learning, and that co-evolving the GRM with the policy
+further boosts performance. Increasing the volume of agent task data—even when
+synthetically generated—substantially enhances agentic capabilities. Building on
+th
+
+==========================================================================================
+[023] tier=core src=evolve yr=2025 cite=0 slug=2502_18864
+TITLE: Towards an AI co-scientist
+ARXIV: 2502.18864   URL: https://arxiv.org/abs/2502.18864
+-------------------------------------------------- EXCERPT:
+Towards an AI co-scientist
+Juraj Gottweis∗, ‡, 1, Wei-Hung Weng∗, ‡, 2, Alexander Daryin∗,1, Tao Tu∗,3,
+Anil Palepu2, Petar Sirkovic1, Artiom Myaskovsky1, Felix Weissenberger1,
+Keran Rong3, Ryutaro Tanno3, Khaled Saab3, Dan Popovici2, Jacob Blum7, Fan Zhang2,
+Katherine Chou2, Avinatan Hassidim2, Burak Gokturk1,
+Amin Vahdat1, Pushmeet Kohli3, Yossi Matias2,
+Andrew Carroll2, Kavita Kulkarni2, Nenad Tomasev3, Yuan Guan7,
+Vikram Dhillon4, Eeshit Dhaval Vaishnav5, Byron Lee5,
+Tiago R D Costa6, José R Penadés6, Gary Peltz7,
+Yunhan Xu3, Annalisa Pawlosky1, ‡, Alan Karthikesalingam2, ‡ and Vivek Natarajan2, ‡
+1Google Cloud AI Research, 2Google Research, 3Google DeepMind,
+4Houston Methodist, 5Sequome,
+6Fleming Initiative and Imperial College London,
+7Stanford University School of Medicine
+Scientific discovery relies on scientists generating novel hypotheses that undergo rigorous experimental
+validation. To augment this process, we introduce an AI co-scientist, a multi-agent system built on Gemini
+2.0. The AI co-scientist is intended to help uncover new, original knowledge and to formulate demonstrably
+novel research hypotheses and proposals,
+
+==========================================================================================
+[024] tier=method src=evolve yr= cite=0 slug=-_emnlp23_large_language_models_can_self-improve
+TITLE: - (EMNLP'23) Large language models can self-improve
+-------------------------------------------------- EXCERPT:
+Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing, pages 1051–1068
+December 6-10, 2023 ©2023 Association for Computational Linguistics
+Large Language Models Can Self-Improve
+Jiaxin Huang1∗
+Shixiang Shane Gu2
+Le Hou2†
+Yuexin Wu2
+Xuezhi Wang2
+Hongkun Yu2
+Jiawei Han1
+1University of Illinois at Urbana-Champaign
+2Google
+1{jiaxinh3, hanj}@illinois.edu
+2{shanegu, lehou, crickwu,
+xuezhiw, hongkuny}@google.com
+Abstract
+Large Language Models (LLMs) have achieved
+excellent performances in various tasks. How-
+ever, fine-tuning an LLM requires extensive su-
+pervision. Human, on the other hand, may im-
+prove their reasoning abilities by self-thinking
+without external inputs.
+In this work, we
+demonstrate that an LLM is also capable of
+self-improving with only unlabeled datasets.
+We use a pre-trained LLM to generate “high-
+confidence” rationale-augmented answers for
+unlabeled questions using Chain-of-Though
+(CoT) prompting and self-consistency, and fine-
+tune the LLM using those self-generated so-
+lutions as target outputs. We show that with-
+out any ground truth label, our approach sig-
+nificantly improves the 
+
+==========================================================================================
+[025] tier=method src=evolve yr=2025 cite=0 slug=2508_07407
+TITLE: A Comprehensive Survey of Self-Evolving AI Agents: A New Paradigm Bridging Foundation Models and Lifelong Agentic Systems
+ARXIV: 2508.07407   URL: https://arxiv.org/abs/2508.07407
+-------------------------------------------------- EXCERPT:
+A Comprehensive Survey of Self-Evolving AI Agents
+A New Paradigm Bridging Foundation Models and Lifelong Agentic Systems
+Jinyuan Fang∗1, Yanwen Peng∗2, Xi Zhang∗1, Yingxu Wang3, Xinhao Yi1, Guibin Zhang4, Yi Xu5, Bin Wu6,
+Siwei Liu7, Zihao Li1, Zhaochun Ren8, Nikos Aletras2, Xi Wang2, Han Zhou5, Zaiqiao Meng1✉
+1University of Glasgow, 2University of Sheffield, 3Mohamed bin Zayed University of Artificial
+Intelligence, 4National University of Singapore, 5University of Cambridge, 6University College
+London, 7University of Aberdeen, 8Leiden University
+∗Equal Contributor, ✉Corresponding Author
+Recent advances in large language models (LLMs) have sparked growing interest in AI agents capable
+of solving complex, real-world tasks. However, most existing agent systems rely on manually crafted
+configurations that remain static after deployment, limiting their ability to adapt to dynamic and evolving
+environments. To address this limitation, recent research has explored agent evolution techniques that
+aim to automatically enhance agent systems based on interaction data and environmental feedback. This
+emerging direction lays the foundation for 
+
+==========================================================================================
+[026] tier=method src=evolve yr=2026 cite=0 slug=2507_21046
+TITLE: A Survey of Self-Evolving Agents: What, When, How, and Where to Evolve on the Path to Artificial Super Intelligence
+ARXIV: 2507.21046   URL: https://arxiv.org/abs/2507.21046
+-------------------------------------------------- EXCERPT:
+Published in Transactions on Machine Learning Research (01/2026)
+A Survey of Self-Evolving Agents
+What, When, How, and Where to Evolve on the Path to Artificial Super Intelligence
+Huan-ang Gaoγ†, Jiayi Gengα†, Wenyue Huaϵ†, Mengkang Huω†, Xinzhe Juanσµ†, Hongzhang
+Liuξ†, Shilong Liuα†, Jiahao Qiuαδ†, Xuan Qiγ†, Qihan Renσ†, Yiran Wuρ†, Hongru Wangk†✉,
+Han Xiaoτ†, Yuhang Zhouλ†, Shaokun Zhangρ†, Jiayi Zhangπ, Jinyu Xiang, Yixiong Fangθ,
+Qiwen Zhaoζ, Dongrui Liuσ, Cheng Qianβ, Zhenhailong Wangβ, Minda Huτ, Huazheng
+Wangη, Qingyun Wuρ, Heng Jiβ, Mengdi Wangαδ✉
+αPrinceton University,
+δPrinceton AI Lab,
+γTsinghua University,
+θCarnegie Mellon University,
+ξUniversity
+of Sydney, σShanghai Jiao Tong University, ρPennsylvania State University, µUniversity of Michigan, ηOregon State
+University, τThe Chinese University of Hong Kong, λFudan University, πThe Hong Kong University of Science and
+Technology (Guangzhou), ωThe University of Hong Kong, ϵUniversity of California, Santa Barbara, ζUniversity of
+California San Diego, kUniversity of Edinburgh, βUniversity of Illinois Urbana-Champaign
+Github Repo: https://github.com/CharlesQ9/Self-Evolving-A
+
+==========================================================================================
+[027] tier=method src=evolve yr=2024 cite=0 slug=2404_14387
+TITLE: A Survey on Self-Evolution of Large Language Models
+ARXIV: 2404.14387   URL: https://arxiv.org/abs/2404.14387
+-------------------------------------------------- EXCERPT:
+A Survey on Self-Evolution of Large Language Models
+Zhengwei Tao1,2, Ting-En Lin2, Xiancai Chen1, Hangyu Li2, Yuchuan Wu2, Yongbin Li2*,
+Zhi Jin1*, Fei Huang2, Dacheng Tao3, Jingren Zhou2
+1Key Lab of HCST (PKU), MOE, SCS, Peking University.
+2Alibaba Group.
+3Nanyang Technological University.
+*Corresponding author(s). E-mail(s): shuide.lyb@alibaba-inc.com; zhijin@pku.edu.cn;
+Abstract
+Large language models (LLMs) have significantly advanced in various fields and intelligent agent applications. However, current
+LLMs that learn from human or external model supervision are costly and may face performance ceilings as task complexity and
+diversity increase. To address this issue, self-evolution approaches that enable LLM to autonomously acquire, refine, and learn
+from experiences generated by the model itself are rapidly growing. This new training paradigm inspired by the human experi-
+ential learning process offers the potential to scale LLMs towards superintelligence. In this work, we present a comprehensive
+survey of self-evolution approaches in LLMs. We first propose a conceptual framework for self-evolution and outline the evolv-
+ing p
+
+==========================================================================================
+[028] tier=method src=evolve yr=2026 cite=0 slug=2603_16060
+TITLE: ARISE: Agent Reasoning with Intrinsic Skill Evolution in Hierarchical Reinforcement Learning
+ARXIV: 2603.16060   URL: https://arxiv.org/abs/2603.16060
+-------------------------------------------------- EXCERPT:
+Preprint. Under review.
+ARISE: Agent Reasoning with Intrinsic Skill Evolution in
+Hierarchical Reinforcement Learning
+Yu Li1, Rui Miao2, Zhengling Qi3, Tian Lan1
+1Department of Electrical and Computer Engineering, George Washington University
+2Department of Mathematical Sciences, University of Texas at Dallas
+3School of Business, George Washington University
+{yul, tlan, qizhengling}@gwu.edu, rui.miao@utdallas.edu
+Abstract
+The dominant paradigm for improving mathematical reasoning in language
+models relies on Reinforcement Learning with verifiable rewards. Yet exist-
+ing methods treat each problem instance in isolation without leveraging
+the reusable strategies that emerge and accumulate during training. To this
+end, we introduce ARISE (Agent Reasoning via Intrinsic Skill Evolution),
+a hierarchical reinforcement learning framework in which a shared policy
+operates both as a high-level Skills Manager and a low-level Worker. The
+Manager maintains a tiered skill library through two complementary mech-
+anisms: before execution, a policy-driven selection mechanism retrieves
+relevant skills to condition future rollouts; after execution, a d
+
+==========================================================================================
+[029] tier=method src=evolve yr=2026 cite=0 slug=2510_08558
+TITLE: Agent Learning via Early Experience
+ARXIV: 2510.08558   URL: https://arxiv.org/abs/2510.08558
+-------------------------------------------------- EXCERPT:
+Agent Learning via Early Experience
+Kai Zhang 1 2 Xiangchao Chen 2 Bo Liu 3 Tianci Xue 2 Zeyi Liao 2 Zhihan Liu 1 Xiyao Wang 1 Yuting Ning 2
+Zhaorun Chen 1 Xiaohan Fu 3 Jian Xie 2 Yuxuan Sun 2 Boyu Gou 2 Qi Qi 1 Zihang Meng 1 Jianwei Yang 1
+Ning Zhang 1 Xian Li 3 Ashish Shah 1 Dat Huynh 1 Hengduo Li 1 Zi Yang 1 Sara Cao 1 Lawrence Jang 1
+Shuyan Zhou 1 Jiacheng Zhu 1 Huan Sun 2 Jason Weston 3 Yu Su † 2 Yifan Wu † 1
+Abstract
+A long-term goal of language agents is to learn
+and improve through their own experience in com-
+plex, real-world tasks. However, training agents
+from experience data with reinforcement learning
+remains difficult in many environments, which ei-
+ther lack verifiable rewards (e.g., websites) or re-
+quire inefficient long-horizon rollouts (e.g., multi-
+turn tool use). As a result, most current agents rely
+on supervised fine-tuning on expert data, which is
+challenging to scale and generalizes poorly. This
+limitation stems from the nature of expert demon-
+strations: they capture only a narrow range of
+scenarios, and expose the agent to limited environ-
+ment diversity. We address this limitation with a
+middle-ground par
+
+==========================================================================================
+[030] tier=method src=evolve yr=2026 cite=0 slug=2604_18292
+TITLE: Agent-World: Scaling Real-World Environment Synthesis for Evolving General Agent Intelligence
+ARXIV: 2604.18292   URL: https://arxiv.org/abs/2604.18292
+-------------------------------------------------- EXCERPT:
+Agent-World: Scaling Real-World Environment Synthesis
+for Evolving General Agent Intelligence
+Renmin University of China, ByteDance Seed
+See Contributions section for a full author list.
+Abstract
+Large language models are increasingly expected to serve as general-purpose agents that interact
+with external, stateful tool environments. The Model Context Protocol (MCP) and broader agent
+skills offer a unified interface for connecting agents with scalable real-world services, but training
+robust agents remains limited by the lack of realistic environments and principled mechanisms
+for life-long learning. In this paper, we present Agent-World, a self-evolving training arena for
+advancing general agent intelligence through scalable environments. Agent-World has two main
+components: (1) Agentic Environment-Task Discovery, which autonomously explores topic-aligned
+databases and executable tool ecosystems from thousands of real-world environment themes and
+synthesizes verifiable tasks with controllable difficulty; and (2) Continuous Self-Evolving Agent
+Training, which combines multi-environment reinforcement learning with a self-evolving age
+
+==========================================================================================
+[031] tier=method src=evolve yr=2025 cite=0 slug=2511_16043
+TITLE: Agent0: Unleashing Self-Evolving Agents from Zero Data via Tool-Integrated Reasoning
+ARXIV: 2511.16043   URL: https://arxiv.org/abs/2511.16043
+-------------------------------------------------- EXCERPT:
+Agent0: Unleashing Self-Evolving Agents from Zero Data
+via Tool-Integrated Reasoning
+Peng Xia 1 Kaide Zeng 1 Jiaqi Liu 1 Can Qin 2 Fang Wu 3 Yiyang Zhou 1 Caiming Xiong 2 Huaxiu Yao 1
+Abstract
+Large Language Model (LLM) Agents, often
+trained with Reinforcement Learning (RL), are
+constrained by a dependency on human-curated
+data, limiting scalability and tethering AI to
+human knowledge.
+Existing self-evolution
+frameworks offer an alternative but are typically
+restricted by the model’s inherent capabilities and
+single-round interactions, hindering the devel-
+opment of complex curricula involving tool use
+or dynamic reasoning. We introduce Agent0,
+a fully autonomous framework that evolves
+high-performing agents without external data
+through multi-step co-evolution and seamless
+tool integration. Agent0 establishes a symbiotic
+competition between two agents initialized from
+the same base LLM: a curriculum agent that pro-
+poses increasingly challenging frontier tasks, and
+an executor agent that learns to solve them. We
+integrate external tools to enhance the executor’s
+problem-solving capacity; this improvement, in
+turn, pressures the cur
+
+==========================================================================================
+[032] tier=method src=evolve yr=2025 cite=0 slug=2509_04439
+TITLE: ArcMemo: Abstract Reasoning Composition with Lifelong LLM Memory
+ARXIV: 2509.04439   URL: https://arxiv.org/abs/2509.04439
+-------------------------------------------------- EXCERPT:
+Preprint.
+ARCMEMO: ABSTRACT REASONING
+COMPOSITION WITH LIFELONG LLM MEMORY
+Matthew Ho1, Chen Si1, Zhaoxiang Feng1, Fangxu Yu2,Yichi Yang1
+Zhijian Liu1, Zhiting Hu1, Lianhui Qin1
+1University of California, San Diego, 2University of Maryland
+ABSTRACT
+While inference-time scaling enables LLMs to carry out increasingly long and
+capable reasoning traces, the patterns and insights uncovered during these traces are
+immediately discarded once the context window is reset for a new query. External
+memory is a natural way to persist these discoveries, and recent work has shown
+clear benefits for reasoning-intensive tasks. We see an opportunity to make such
+memories more broadly reusable and scalable by moving beyond instance-based
+memory entries (e.g. exact query/response pairs, or summaries tightly coupled with
+the original problem context) toward concept-level memory: reusable, modular
+abstractions distilled from solution traces and stored in natural language. For future
+queries, relevant concepts are selectively retrieved and integrated into the prompt,
+enabling test-time continual learning without weight updates. Our design introduces
+new 
+
+==========================================================================================
+[033] tier=method src=evolve yr=2025 cite=0 slug=2511_19304
+TITLE: AutoEnv: Automated Environments for Measuring Cross-Environment Agent Learning
+ARXIV: 2511.19304   URL: https://arxiv.org/abs/2511.19304
+-------------------------------------------------- EXCERPT:
+AUTOENV:
+AUTOMATED
+ENVIRONMENTS
+FOR
+MEASURING
+CROSS-ENVIRONMENT AGENT LEARNING
+Jiayi Zhang1,2, Yiran Peng2, Fanqi Kong3, Cheng Yang2, Yifan Wu 1,2, Zhaoyang Yu2,
+Jinyu Xiang, Jianhao Ruan1,2, Jinlin Wang2, Maojia Song4, HongZhang Liu5,
+Xiangru Tang6, Bang Liu7, Chenglin Wu2, Yuyu Luo1∗
+1The Hong Kong University of Science and Technology (Guangzhou) 2DeepWisdom
+3Peking University 4Singapore University of Technology and Design
+5Sydney University 6Yale University 7Universit´e de Montr´eal & Mila
+ABSTRACT
+Humans naturally adapt to diverse environments by learning underlying rules
+across worlds with different dynamics, observations, and reward structures. In
+contrast, existing agents typically demonstrate improvements via self-evolving
+within a single domain, implicitly assuming a fixed environment distribution.
+Cross-environment learning has remained largely unmeasured: there is no stan-
+dard collection of controllable, heterogeneous environments, nor a unified way
+to represent how agents learn. We address these gaps in two steps. First, we
+propose AUTOENV, an automated framework that treats environments as factor-
+izable distributions 
+
+==========================================================================================
+[034] tier=method src=evolve yr=2024 cite=0 slug=2407_12821
+TITLE: AutoFlow: Automated Workflow Generation for Large Language Model Agents
+ARXIV: 2407.12821   URL: https://arxiv.org/abs/2407.12821
+-------------------------------------------------- EXCERPT:
+AutoFlow: Automated Workflow Generation for
+Large Language Model Agents
+Zelong Li
+Rutgers University
+zelong.li@rutgers.edu
+Shuyuan Xu
+Rutgers University
+shuyuan.xu@rutgers.edu
+Kai Mei
+Rutgers University
+kai.mei@rutgers.edu
+Wenyue Hua
+Rutgers University
+wenyue.hua@rutgers.edu
+Balaji Rama
+Independent Researcher
+balajirw10@gmail.com
+Om Raheja
+Independent Researcher
+omr@rslp.org
+Hao Wang
+Rutgers University
+hw488@cs.rutgers.edu
+He Zhu
+Rutgers University
+hz375@cs.rutgers.edu
+Yongfeng Zhang
+Rutgers University
+yongfeng.zhang@rutgers.edu
+Abstract
+Recent advancements in Large Language Models (LLMs) have shown significant
+progress in understanding complex natural language. One important application of
+LLM is LLM-based AI Agent, which leverages the ability of LLM as well as exter-
+nal tools for complex-task solving. To make sure LLM Agents follow an effective
+and reliable procedure to solve the given task, manually designed workflows are
+usually used to guide the working mechanism of agents. However, manually de-
+signing the workflows requires considerable efforts and domain knowledge, making
+it difficult to develop and deploy agents on massive
+
+==========================================================================================
+[035] tier=method src=evolve yr=2026 cite=0 slug=2603_01145
+TITLE: AutoSkill: Experience-Driven Lifelong Learning via Skill Self-Evolution
+ARXIV: 2603.01145   URL: https://arxiv.org/abs/2603.01145
+-------------------------------------------------- EXCERPT:
+AUTOSKILL: EXPERIENCE-DRIVEN LIFELONG LEARNING VIA
+SKILL SELF-EVOLUTION
+Yutao Yang1∗, Junsong Li1∗, Qianjun Pan1∗, Bihao Zhan1, Yuxuan Cai1, Lin Du1, Jie Zhou1,2†, Kai Chen2†,
+Qin Chen1, Xin Li2, Bo Zhang2, Liang He1
+1 School of Computer Science and Technology, East China Normal University, 2 Shanghai AI Laboratory
+{jzhou, qchen, lhe}@cs.ecnu.edu.cn,
+https://github.com/ECNU-ICALK/AutoSkill
+ABSTRACT
+In practical LLM applications, users repeatedly express stable preferences and requirements—such
+as reducing hallucinations, following institutional writing conventions, or avoiding overly tech-
+nical wording—yet such interaction experience is seldom consolidated into reusable knowledge.
+Consequently, LLM agents often fail to accumulate personalized capabilities across sessions. We
+present AutoSkill, an experience-driven lifelong learning framework that enables LLM agents to
+automatically derive, maintain, and reuse skills from dialogue and interaction traces.
+AutoSkill abstracts skills from user experience, supports their continual self-evolution, and dynami-
+cally injects relevant skills into future requests without retraining the under
+
+==========================================================================================
+[036] tier=method src=evolve yr=2025 cite=0 slug=2408_08435
+TITLE: Automated Design of Agentic Systems
+ARXIV: 2408.08435   URL: https://arxiv.org/abs/2408.08435
+-------------------------------------------------- EXCERPT:
+Published as a conference paper at ICLR 2025
+AUTOMATED DESIGN OF AGENTIC SYSTEMS
+Shengran Hu1,2, Cong Lu1,2, Jeff Clune1,2,3
+1University of British Columbia, 2Vector Institute, 3Canada CIFAR AI Chair
+{srhu,conglu}@cs.ubc.ca, jclune@gmail.com
+ABSTRACT
+Researchers are investing substantial effort in developing powerful general-
+purpose agents, wherein Foundation Models are used as modules within agen-
+tic systems (e.g. Chain-of-Thought, Self-Reflection, Toolformer). However, the
+history of machine learning teaches us that hand-designed solutions are eventu-
+ally replaced by learned solutions. We describe a newly forming research area,
+Automated Design of Agentic Systems (ADAS), which aims to automatically cre-
+ate powerful agentic system designs, including inventing novel building blocks
+and/or combining them in new ways. We further demonstrate that there is an un-
+explored yet promising approach within ADAS where agents can be defined in
+code and new agents can be automatically discovered by a meta agent program-
+ming ever better ones in code. Given that most programming languages are Turing
+Complete, this approach theoretically enab
+
+==========================================================================================
+[037] tier=method src=cost yr=2024 cite=2 slug=2402_11443
+TITLE: Benchmark Self-Evolving: A Multi-Agent Framework for Dynamic LLM Evaluation
+ARXIV: 2402.11443   URL: https://doi.org/10.48550/arxiv.2402.11443
+-------------------------------------------------- EXCERPT:
+Benchmark Self-Evolving:
+A Multi-Agent Framework for Dynamic LLM Evaluation
+Siyuan Wang1*, Zhuohan Long2*,
+Zhihao Fan3, Zhongyu Wei1, Xuanjing Huang1
+1Fudan University, 2Tongji University, 3Alibaba Inc.
+wangsy18@fudan.edu.cn; loongnanshine@gmail.com
+Abstract
+This paper presents a benchmark self-evolving
+framework to dynamically evaluate rapidly ad-
+vancing Large Language Models (LLMs), aim-
+ing for a more accurate assessment of their ca-
+pabilities and limitations. We utilize a multi-
+agent system to manipulate the context or ques-
+tion of original instances, reframing new evolv-
+ing instances with high confidence that dynam-
+ically extend existing benchmarks. Towards a
+more scalable, robust and fine-grained evalu-
+ation, we implement six reframing operations
+to construct evolving instances testing LLMs
+against diverse queries, data noise and prob-
+ing their problem-solving sub-abilities. With
+this framework, we extend benchmark datasets
+of four tasks.
+Experimental results show a
+general performance decline in most LLMs
+against their original results. This decline under
+our scalable and robust evaluations, alongside
+our fine-grained
+
+==========================================================================================
+[038] tier=method src=evolve yr=2026 cite=0 slug=2604_01658
+TITLE: CORAL: Towards Autonomous Multi-Agent Evolution for Open-Ended Discovery
+ARXIV: 2604.01658   URL: https://arxiv.org/abs/2604.01658
+-------------------------------------------------- EXCERPT:
+Preprint. Under review.
+CORAL: Towards Autonomous Multi-Agent Evolution
+for Open-Ended Discovery
+Ao Qu1,8∗
+Han Zheng1∗
+Zijian Zhou2,3∗
+Yihao Yan
+Yihong Tang4
+Shao Yong Ong2
+Fenglu Hong5,6
+Kaichen Zhou1
+Chonghe Jiang1,8
+Minwei Kong8
+Jiacheng Zhu7‡
+Xuan Jiang9‡
+Sirui Li10‡
+Cathy Wu1†
+Bryan Kian Hsiang Low2,8†
+Jinhua Zhao1,8†
+Paul Pu Liang1,8†
+1MIT
+2NUS
+3MiniMax
+4McGill
+5Stanford
+6SambaNova
+7Meta
+8Singapore-MIT Alliance for Research and Technology
+9Amazon
+10Microsoft
+∗Equal contribution (alphabetical order)
+† Joint advising
+‡ Work done outside the authors’ employment.
+0.0
+2.5
+5.0
+7.5
+10.0
+12.5
+15.0
+17.5
+Wall-clock time (hours)
+0.50
+0.60
+0.70
+0.80
+0.90
+1.00
+1.10
+1.20
+Score (Best Known = 1.0)
+OpenEvolve
+CORAL (1 agent)
+CORAL (4 agents)
+1350 cycles (109.4x)
+1103 cycles (133.9x)
+2740 cycles (53.9x)
+  Best Known  1363 cycles  (108.4x)  
+0
+10
+0.00
+0.20
+0.40
+0.60
+0.80
+1.00
+1.20
+Full range
+Model
+Evals 
+Best Cycles 
+Speedup 
+Imp. Rate 
+Best Known
+Anthropic
+1363
+108.4x
+OpenEvolve
+Opus 4.6
+363
+2740
+53.9x
+3% (12/363)
+CORAL (1 agent)
+Opus 4.6
+56
+1350
+109.4x
+43% (24/56)
+CORAL (4 agents) Opus 4.6
+596
+1103
+133.9x
+9% (54/596)
+CORAL outperforms previous
+
+==========================================================================================
+[039] tier=method src=evolve yr=2024 cite=0 slug=2309_17428
+TITLE: CRAFT: Customizing LLMs by Creating and Retrieving from Specialized Toolsets
+ARXIV: 2309.17428   URL: https://arxiv.org/abs/2309.17428
+-------------------------------------------------- EXCERPT:
+Published as a conference paper at ICLR 2024
+CRAFT: CUSTOMIZING LLMS BY CREATING
+AND RETRIEVING FROM SPECIALIZED TOOLSETS
+Lifan Yuan∗, Yangyi Chen∗, Xingyao Wang, Yi R. Fung, Hao Peng, Heng Ji
+University of Illinois Urbana-Champaign
+{lievanyuan173}@gmail.com
+{yangyic3,xingyao6,yifung2,haopeng,hengji}@illinois.edu
+ABSTRACT
+Large language models (LLMs) are often augmented with tools to solve complex
+tasks. By generating code snippets and executing them through task-specific Ap-
+plication Programming Interfaces (APIs), they can offload certain functions to
+dedicated external modules, such as image encoding and performing calculations.
+However, most existing approaches to augment LLMs with tools are constrained
+by general-purpose APIs and lack the flexibility for tailoring them to specific tasks.
+In this work, we present CRAFT, a general tool creation and retrieval framework
+for LLMs. It creates toolsets specifically curated for the tasks and equips LLMs
+with a component that retrieves tools from these sets to enhance their capability to
+solve complex tasks. For each task, we collect specific code solutions by prompting
+GPT-4 to solve t
+
+==========================================================================================
+[040] tier=method src=evolve yr=2024 cite=0 slug=2305_11738
+TITLE: CRITIC: Large Language Models Can Self-Correct with Tool-Interactive Critiquing
+ARXIV: 2305.11738   URL: https://arxiv.org/abs/2305.11738
+-------------------------------------------------- EXCERPT:
+Published as a conference paper at ICLR 2024
+CRITIC: LARGE LANGUAGE MODELS CAN SELF-
+CORRECT WITH TOOL-INTERACTIVE CRITIQUING
+Zhibin Gou12∗, Zhihong Shao12∗, Yeyun Gong2, Yelong Shen3,
+Yujiu Yang1†, Nan Duan2, Weizhu Chen3
+1Tsinghua University
+2Microsoft Research Asia, 3Microsoft Azure AI
+{gzb22,szh19}@mails.tsinghua.edu.cn, yang.yujiu@sz.tsinghua.edu.cn
+{yegong, yeshe, nanduan, wzchen}@microsoft.com
+ABSTRACT
+Recent developments in large language models (LLMs) have been impressive.
+However, these models sometimes show inconsistencies and problematic behavior,
+such as hallucinating facts, generating flawed code, or creating offensive and toxic
+content. Unlike these models, humans typically utilize external tools to cross-check
+and refine their initial content, like using a search engine for fact-checking, or a code
+interpreter for debugging. Inspired by this observation, we introduce a framework
+called CRITIC that allows LLMs, which are essentially “black boxes” to validate
+and progressively amend their own outputs in a manner similar to human interaction
+with tools. More specifically, starting with an initial output, CRITIC interact
+
+==========================================================================================
+[041] tier=method src=evolve yr=2023 cite=0 slug=2310_03714
+TITLE: DSPy: Compiling Declarative Language Model Calls into Self-Improving Pipelines
+ARXIV: 2310.03714   URL: https://arxiv.org/abs/2310.03714
+-------------------------------------------------- EXCERPT:
+Preprint
+DSPY:
+COMPILING
+DECLARATIVE
+LANGUAGE
+MODEL CALLS INTO SELF-IMPROVING PIPELINES
+Omar Khattab,1 Arnav Singhvi,2
+Paridhi Maheshwari,4 Zhiyuan Zhang,1
+Keshav Santhanam,1 Sri Vardhamanan,6 Saiful Haq,6
+Ashutosh Sharma,6 Thomas T. Joshi,7 Hanna Moazam,8
+Heather Miller,3,9 Matei Zaharia,2 Christopher Potts1
+1Stanford University, 2UC Berkeley, 3Carnegie Mellon University,
+4Amazon Alexa AI, 5Dashworks Technologies, Inc.,
+6IIT Bombay, 7Calera Capital, 8Microsoft, 9Two Sigma Investments
+okhattab@cs.stanford.edu
+ABSTRACT
+The ML community is rapidly exploring techniques for prompting language mod-
+els (LMs) and for stacking them into pipelines that solve complex tasks. Un-
+fortunately, existing LM pipelines are typically implemented using hard-coded
+“prompt templates”, i.e. lengthy strings discovered via trial and error. Toward a
+more systematic approach for developing and optimizing LM pipelines, we intro-
+duce DSPy, a programming model that abstracts LM pipelines as text transforma-
+tion graphs, i.e. imperative computation graphs where LMs are invoked through
+declarative modules. DSPy modules are parameterized, meaning they can learn
+
+
+==========================================================================================
+[042] tier=method src=evolve yr=2025 cite=0 slug=2506_18096
+TITLE: Deep Research Agents: A Systematic Examination And Roadmap
+ARXIV: 2506.18096   URL: https://arxiv.org/abs/2506.18096
+-------------------------------------------------- EXCERPT:
+DEEP RESEARCH AGENTS:
+A SYSTEMATIC EXAMINATION AND ROADMAP
+Yuxuan Huang†1, Yihang Chen†2, Haozheng Zhang†2, Kang Li3, Huichi Zhou4, Meng Fang1, Linyi Yang4,
+Xiaoguang Li2, Lifeng Shang2, Songcen Xu2, Jianye Hao2, Kun Shao‡2, and Jun Wang‡4
+1 University of Liverpool
+2 Huawei Noah’s Ark Lab
+3 University of Oxford
+4 University College London
+ABSTRACT
+The rapid progress of Large Language Models (LLMs) has given rise to a new category of au-
+tonomous AI systems, referred to as Deep Research (DR) agents. These agents are designed to
+tackle complex, multi-turn informational research tasks by leveraging a combination of dynamic
+reasoning, adaptive long-horizon planning, multi-hop information retrieval, iterative tool use, and
+the generation of structured analytical reports. In this paper, we conduct a detailed analysis of the
+foundational technologies and architectural components that constitute Deep Research agents. We
+begin by reviewing information acquisition strategies, contrasting API-based retrieval methods with
+browser-based exploration. We then examine modular tool-use frameworks, including code execution,
+multimodal input processin
+
+==========================================================================================
+[043] tier=method src=evolve yr=2025 cite=0 slug=2504_07952
+TITLE: Dynamic Cheatsheet: Test-Time Learning with Adaptive Memory
+ARXIV: 2504.07952   URL: https://arxiv.org/abs/2504.07952
+-------------------------------------------------- EXCERPT:
+Dynamic Cheatsheet: Test-Time Learning with Adaptive Memory
+Mirac Suzgun 1 Mert Yuksekgonul 1 Federico Bianchi 2 Dan Jurafsky 1 James Zou 1 2
+Abstract
+Despite their impressive performance on complex tasks, current language models (LMs) typically operate in
+a vacuum: Each input query is processed separately, without retaining insights from previous attempts. Here,
+we present Dynamic Cheatsheet (DC), a lightweight framework that endows a black-box LM with a persistent,
+evolving memory. Rather than repeatedly re-discovering or re-committing the same solutions and mistakes, DC
+enables models to store and reuse accumulated strategies, code snippets, and general problem-solving insights at
+inference time. This test-time learning enhances performance substantially across a range of tasks without needing
+explicit ground-truth labels or human feedback. Leveraging DC, Claude 3.5 Sonnet’s accuracy more than doubled
+on AIME math exams once it began retaining algebraic insights across questions. Similarly, GPT-4o’s success rate
+on the Game of 24 puzzle increased from about 10% to 99% after the model discovered and reused a Python-based
+solution.
+
+==========================================================================================
+[044] tier=method src=evolve yr= cite=0 slug=enabling_self-improving_agents_to_learn_at_test_time_with_human-in-the-loop_guid
+TITLE: Enabling Self-Improving Agents to Learn at Test Time With Human-In-The-Loop Guidance - ACL Anthology
+-------------------------------------------------- EXCERPT:
+Proceedings of the 2025 Conference on Empirical Methods in Natural Language Processing: Industry Track, pages 1625–1653
+November 4-9, 2025 ©2025 Association for Computational Linguistics
+Enabling Self-Improving Agents to Learn at Test Time With
+Human-In-The-Loop Guidance
+Yufei He1*, Ruoyu Li2, Alex Chen2, Yue Liu1, Yulin Chen1, Yuan Sui1,
+Cheng Chen2, Yi Zhu2, Luca Luo2, Frank Yang2, Bryan Hooi1
+1National University of Singapore
+2ByteDance Inc.
+yufei.he@u.nus.edu
+Abstract
+Large language model (LLM) agents often
+struggle in environments where rules and re-
+quired domain knowledge frequently change,
+such as regulatory compliance and user risk
+screening. To address this limitation, we pro-
+pose the Adaptive Reflective Interactive Agent
+(ARIA)1, an LLM agent framework designed
+specifically to continuously learn updated do-
+main knowledge at test time. ARIA assesses
+its own uncertainty through structured self-
+dialogue, proactively identifying knowledge
+gaps and requesting targeted explanations or
+corrections from human experts. It then sys-
+tematically updates an internal, timestamped
+knowledge repository with provided human
+guidance, d
+
+==========================================================================================
+[045] tier=method src=evolve yr=2026 cite=0 slug=2601_16443
+TITLE: Endless Terminals: Scaling RL Environments for Terminal Agents
+ARXIV: 2601.16443   URL: https://arxiv.org/abs/2601.16443
+-------------------------------------------------- EXCERPT:
+Preprint.
+Endless Terminals: Scaling RL Environments
+for Terminal Agents
+Kanishk Gandhi∗
+Stanford University
+Shivam Garg
+Microsoft Research
+Noah D. Goodman
+Stanford University
+Dimitris Papailiopoulos
+Microsoft Research
+UW-Madison
+Abstract
+Environments are the bottleneck for self-improving agents. Current ter-
+minal benchmarks were built for evaluation, not training; reinforcement
+learning requires a scalable pipeline, not just a dataset. We introduce End-
+less Terminals, a fully autonomous pipeline that procedurally generates
+terminal-use tasks without human annotation. The pipeline has four stages:
+generating diverse task descriptions, building and validating container-
+ized environments, producing completion tests, and filtering for solvability.
+From this pipeline we obtain 3255 tasks spanning file operations, log man-
+agement, data processing, scripting, and database operations. We train
+agents using vanilla PPO with binary episode level rewards and a minimal
+interaction loop: no retrieval, multi-agent coordination, or specialized tools.
+Despite this simplicity, models trained on Endless Terminals show sub-
+stantial gains: on our
+
+==========================================================================================
+[046] tier=method src=evolve yr=2026 cite=0 slug=2601_16489
+TITLE: EvoConfig: Self-Evolving Multi-Agent Systems for Efficient Autonomous Environment Configuration
+ARXIV: 2601.16489   URL: https://arxiv.org/abs/2601.16489
+-------------------------------------------------- EXCERPT:
+EvoConfig: Self-Evolving Multi-Agent Systems for Efficient Autonomous
+Environment Configuration
+Xinshuai Guo1*, Jiayi Kuang2∗, Linyue Pan1, Yinghui Li3†, Yangning Li1
+Hai-Tao Zheng1†, Ying Shen2†, Di Yin3, Xing Sun3
+1 Tsinghua University, 2 Sun-Yat Sen University, 3 Tencent Youtu Lab
+gxs25@mails.tsinghua.edu.cn, liyinghuihhh@gmail.com
+Abstract
+A reliable executable environment is the foun-
+dation for ensuring that large language mod-
+els solve software engineering tasks. Due to
+the complex and tedious construction process,
+large-scale configuration is relatively ineffi-
+cient. However, most methods always over-
+look fine-grained analysis of the actions per-
+formed by the agent, making it difficult to han-
+dle complex errors and resulting in configura-
+tion failures. To address this bottleneck, we
+propose EvoConfig, an efficient environment
+configuration framework that optimizes multi-
+agent collaboration to build correct runtime en-
+vironments. EvoConfig features an expert di-
+agnosis module for fine-grained post-execution
+analysis, and a self-evolving mechanism that
+lets expert agents self-feedback and dynami-
+cally adjust error-fi
+
+==========================================================================================
+[047] tier=method src=evolve yr=2026 cite=0 slug=2510_13220
+TITLE: EvoTest: Evolutionary Test-Time Learning for Self-Improving Agentic Systems
+ARXIV: 2510.13220   URL: https://arxiv.org/abs/2510.13220
+-------------------------------------------------- EXCERPT:
+Published as a conference paper at ICLR 2026
+EVOTEST:
+EVOLUTIONARY TEST-TIME LEARNING
+FOR SELF-IMPROVING AGENTIC SYSTEMS
+Yufei He1∗, Juncheng Liu2, Yue Liu1,Yibo Li1, Tri Cao1, Zhiyuan Hu1†, Xinxing Xu2†, Bryan Hooi1†
+1National University of Singapore
+2Microsoft Research
+{yufei.he, yliu, liyibo, zhiyuan hu}@u.nus.com,
+tricao2001vn@gmail.com,
+bhooi@comp.nus.edu.sg,
+{juncheng.liu, xinxingxu}@microsoft.com
+ABSTRACT
+A fundamental limitation of current AI agents is their inability to learn complex
+skills on the fly at test time, often behaving like “clever but clueless interns” in
+novel environments. This severely limits their practical utility. To systemati-
+cally measure and drive progress on this challenge, we first introduce the Jeri-
+cho Test-Time Learning (J-TTL) benchmark. J-TTL is a new evaluation setup
+where an agent must play the same game for several consecutive episodes, at-
+tempting to improve its performance from one episode to the next. On J-TTL,
+we find that existing adaptation methods like reflection, memory, or reinforce-
+ment learning struggle. To address the challenges posed by our benchmark, we
+present EvoTest1, an e
+
+==========================================================================================
+[048] tier=method src=evolve yr=2026 cite=0 slug=2510_16079
+TITLE: EvolveR: Self-Evolving LLM Agents through an Experience-Driven Lifecycle
+ARXIV: 2510.16079   URL: https://arxiv.org/abs/2510.16079
+-------------------------------------------------- EXCERPT:
+Knowledge
+Lab
+EVOLVER: SELF-EVOLVING LLM AGENTS THROUGH
+AN EXPERIENCE-DRIVEN LIFECYCLE
+Rong Wu1,2∗, Xiaoman Wang3∗, Jianbiao Mei1,2, Pinlong Cai2, Daocheng Fu2,4,
+Cheng Yang2,5, Licheng Wen2,6,7, Xuemeng Yang2, Yufan Shen2, Yuxin Wang8, Botian Shi2†
+1 Zhejiang University, 2 Shanghai Artificial Intelligence Laboratory,
+3 East China Normal University, 4 Fudan University, 5 Central South University,
+6 Shanghai Innovation Institute, 7 Shanghai Jiao Tong University,
+8 University of Science and Technology of China
+ABSTRACT
+Current Large Language Model (LLM) agents show strong performance in tool
+use, but lack the crucial capability to systematically learn from their own experi-
+ences. While existing frameworks mainly focus on mitigating external knowledge
+gaps, they fail to address a more fundamental limitation: the inability to itera-
+tively refine problem-solving strategies. In this work, we introduce EvolveR, a
+framework designed to enable agent to self-improve through a complete, closed-
+loop experience lifecycle. This lifecycle comprises two key stages: (1) Offline
+Self-Distillation, where the agent’s interaction trajectories are syn
+
+==========================================================================================
+[049] tier=method src=evolve yr=2026 cite=0 slug=2509_15194
+TITLE: Evolving Language Models without Labels: Majority Drives Selection, Novelty Promotes Variation
+ARXIV: 2509.15194   URL: https://arxiv.org/abs/2509.15194
+-------------------------------------------------- EXCERPT:
+Evolving Language Models without Labels
+Evolving Language Models without Labels:
+Majority Drives Selection, Novelty Promotes Variation
+Yujun Zhou1,2†∗, Zhenwen Liang1 †, Haolin Liu1,3, Wenhao Yu1, Kishan Panaganti1,
+Linfeng Song1, Dian Yu1, Xiangliang Zhang2, Haitao Mi1, Dong Yu1
+1Tencent AI Lab, 2University of Notre Dame, 3University of Virginia
+† Core contributors
+Correspondence to: yzhou25@nd.edu, zhenwzliang@global.tencent.com
+Abstract
+Large language models (LLMs) are increasingly trained with reinforcement learning
+from verifiable rewards (RLVR), yet real-world deployment demands models that can
+self-improve without labels or external judges. Existing self-improvement approaches
+primarily rely on self-confirmation signals (e.g., confidence, entropy, or consistency) to
+generate rewards. This reliance drives models toward over-confident, majority-favored
+solutions, causing an entropy collapse that degrades pass@n and reasoning complexity.
+To address this, we propose EVOL-RL, a label-free framework that mirrors the evolu-
+tionary principle of balancing selection with variation. Concretely, EVOL-RL retains
+the majority-voted answer
+
+==========================================================================================
+[050] tier=method src=evolve yr=2026 cite=0 slug=2603_05860
+TITLE: Evolving Medical Imaging Agents via Experience-driven Self-skill Discovery
+ARXIV: 2603.05860   URL: https://arxiv.org/abs/2603.05860
+-------------------------------------------------- EXCERPT:
+Evolving Medical Imaging Agents via
+Experience-driven Self-skill Discovery
+Lin Fan⋆1 , Pengyu Dai⋆2,3 , Zhipeng Deng4 , Haolin Wang5 , Xun Gong1 ,
+Yefeng Zheng4 , and Yafei Ou⋆⋆3
+1 Southwest Jiaotong University, China
+2 The University of Tokyo, Japan
+3 RIKEN, Japan
+4 Westlake University, China
+5 Hokkaido University, Japan
+Abstract. Clinical image interpretation is inherently multi-step and
+tool-centric: clinicians iteratively combine visual evidence with patient
+context, quantify findings, and refine their decisions through a sequence
+of specialized procedures. While LLM-based agents promise to orches-
+trate such heterogeneous medical tools, existing systems treat tool sets
+and invocation strategies as static after deployment. This design is brit-
+tle under real-world domain shifts, across tasks and evolving diagnos-
+tic requirements, where predefined tool chains frequently degrade and
+demand costly manual re-design. We propose MACRO, a self-evolving,
+experience-augmented medical agent that shifts from static tool com-
+position to experience-driven tool discovery. From verified execution tra-
+jectories, the agent autonomously identi
+
+==========================================================================================
+[051] tier=method src=evolve yr=2026 cite=0 slug=2508_08791
+TITLE: Feedback-Driven Tool-Use Improvements in Large Language Models via Automated Build Environments
+ARXIV: 2508.08791   URL: https://arxiv.org/abs/2508.08791
+-------------------------------------------------- EXCERPT:
+Feedback-Driven Tool-Use Improvements in Large
+Language Models via Automated Build Environments
+Junjie Ye1,2,∗, Changhao Jiang1, Zhengyin Du2, Yufei Xu2, Xuesong Yao2,
+Zhiheng Xi1, Xiaoran Fan1, Qi Zhang1, Tao Gui1, Xuanjing Huang1, Jiecao Chen2
+1Fudan University, 2ByteDance Seed
+∗Work done at ByteDance Seed
+Abstract
+Effective tool use is essential for large language models (LLMs) to interact with their environment.
+However, progress is limited by the lack of efficient reinforcement learning (RL) frameworks
+specifically designed for tool use, due to challenges in constructing stable training environments
+and designing verifiable reward mechanisms. To address this, we propose an automated environment
+construction pipeline, incorporating scenario decomposition, document generation, function
+integration, complexity scaling, and localized deployment. This enables the creation of high-
+quality training environments that provide detailed and measurable feedback without relying on
+external tools. Additionally, we introduce a verifiable reward mechanism that evaluates both the
+precision of tool use and the completeness of task execution. Wh
+
+==========================================================================================
+[052] tier=method src=evolve yr=2025 cite=0 slug=2512_02472
+TITLE: Guided Self-Evolving LLMs with Minimal Human Supervision
+ARXIV: 2512.02472   URL: https://arxiv.org/abs/2512.02472
+-------------------------------------------------- EXCERPT:
+Technical Report
+Guided Self-Evolving LLMs with Minimal Human Supervision
+Wenhao Yu1, Zhenwen Liang1, Chengsong Huang2, Kishan Panaganti1,
+Tianqing Fang1, Haitao Mi1, Dong Yu1
+1Tencent AI Lab in Seattle, 2Washington University in St. Louis
+wenhaowyu@global.tencent.com
+Abstract
+AI self-evolution has long been envisioned as a path toward superintelligence, where
+models autonomously acquire, refine, and internalize knowledge from their own learn-
+ing experiences. Yet in practice, unguided self-evolving systems often plateau quickly
+or even degrade as training progresses. These failures arise from issues such as concept
+drift, diversity collapse, and mis-evolution, as models reinforce their own biases and
+converge toward low-entropy behaviors. To enable models to self-evolve in a stable and
+controllable manner while minimizing reliance on human supervision, we introduce
+R-FEW, a guided Self-Play Challenger–Solver framework that incorporates lightweight
+human oversight through in-context grounding and mixed training. At each iteration,
+the Challenger samples a small set of human-labeled examples to guide synthetic ques-
+tion generation, 
+
+==========================================================================================
+[053] tier=method src=evolve yr= cite=0 slug=gödel_agent_a_self-referential_agent_framework_for_recursively_self-improvement_
+TITLE: Gödel Agent: A Self-Referential Agent Framework for Recursively Self-Improvement - ACL Anthology
+-------------------------------------------------- EXCERPT:
+Proceedings of the 63rd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers), pages 27890–27913
+July 27 - August 1, 2025 ©2025 Association for Computational Linguistics
+G¨odel Agent: A Self-Referential Agent Framework for Recursively
+Self-Improvement
+Xunjian Yin♠, Xinyi Wang♣, Liangming Pan♢, Li Lin♠
+Xiaojun Wan♠, William Yang Wang♣
+♠Peking University
+♣University of California, Santa Barbara
+♢University of Arizona
+{xjyin,wanxiaojun}@pku.edu.cn
+william@cs.ucsb.edu
+Abstract
+The rapid advancement of large language mod-
+els (LLMs) has significantly enhanced the ca-
+pabilities of agents across various tasks. How-
+ever, existing agentic systems, whether based
+on fixed pipeline algorithms or pre-defined
+meta-learning frameworks, cannot search the
+whole agent design space due to the restric-
+tion of human-designed components, and thus
+might miss the more optimal agent design. In
+this paper, we introduce G¨odel Agent, a self-
+evolving framework inspired by the G¨odel ma-
+chine, enabling agents to recursively improve
+themselves without relying on predefined rou-
+tines or fixed optimization algorithms. G¨odel
+
+==========================================================================================
+[054] tier=method src=evolve yr=2025 cite=0 slug=2503_00735
+TITLE: LADDER: Self-Improving LLMs Through Recursive Problem Decomposition
+ARXIV: 2503.00735   URL: https://arxiv.org/abs/2503.00735
+-------------------------------------------------- EXCERPT:
+LADDER: SELF-IMPROVING LLMS THROUGH RECURSIVE
+PROBLEM DECOMPOSITION
+Toby Simonds
+Tufa Labs
+toby@tufalabs.ai
+Akira Yoshiyama
+Tufa Labs
+akira@tufalabs.ai
+March 6, 2025
+ABSTRACT
+We introduce LADDER (Learning through Autonomous Difficulty-Driven Example Recursion), a
+framework which enables Large Language Models to autonomously improve their problem-solving
+capabilities through self-guided learning by recursively generating and solving progressively simpler
+variants of complex problems. Unlike prior approaches that require curated datasets or human
+feedback, LADDER leverages a model’s own capabilities to generate easier question variants. We
+demonstrate LADDER’s effectiveness on the subject of mathematical integration, improving Llama
+3.2 3B’s accuracy from 1% to 82% on undergraduate-level problems and enabling Qwen2.5 7B
+Deepseek-R1 Distilled to achieve 73% on the MIT Integration Bee qualifying examination. We also
+introduce TTRL (Test-Time Reinforcement Learning), where we perform reinforcement learning on
+variants of test problems at inference time. TTRL enables Qwen2.5 7B Deepseek-R1 Distilled to
+achieve a state-of-the-art score of 
+
+==========================================================================================
+[055] tier=method src=evolve yr= cite=0 slug=llm_agents_making_agent_tools_-_acl_anthology
+TITLE: LLM Agents Making Agent Tools - ACL Anthology
+-------------------------------------------------- EXCERPT:
+Proceedings of the 63rd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers), pages 26092–26130
+July 27 - August 1, 2025 ©2025 Association for Computational Linguistics
+LLM Agents Making Agent Tools
+Georg Wölflein1,2,3,†
+Dyke Ferber3,4,‡
+Daniel Truhn5
+Ognjen Arandjelovi´c2
+Jakob N. Kather1,4,6
+1EKFZ for Digital Health, TU Dresden
+2University of St Andrews
+3Synagen AI
+4NCT, Heidelberg University Hospital
+5University Hospital Aachen
+6University Hospital Dresden
+Correspondence: georg@woelflein.de
+Abstract
+Tool use has turned large language models
+(LLMs) into powerful agents that can perform
+complex multi-step tasks by dynamically util-
+ising external software components. However,
+these tools must be implemented in advance
+by human developers, hindering the applic-
+ability of LLM agents in domains demand-
+ing large numbers of highly specialised tools,
+like in life sciences and medicine. Motivated
+by the growing trend of scientific studies ac-
+companied by public code repositories, we
+propose TOOLMAKER, an agentic framework
+that autonomously transforms papers with code
+into LLM-compatible tools. Given a
+
+==========================================================================================
+[056] tier=method src=cost yr=2023 cite=93 slug=2309_03409
+TITLE: Large Language Models as Optimizers
+ARXIV: 2309.03409   URL: https://doi.org/10.48550/arxiv.2309.03409
+-------------------------------------------------- EXCERPT:
+LARGE LANGUAGE MODELS AS OPTIMIZERS
+Chengrun Yang*
+Xuezhi Wang
+Yifeng Lu
+Hanxiao Liu
+Quoc V. Le
+Denny Zhou
+Xinyun Chen*
+{chengrun, xuezhiw, yifenglu, hanxiaol}@google.com
+{qvl, dennyzhou, xinyunchen}@google.com
+Google DeepMind
+* Equal contribution
+ABSTRACT
+Optimization is ubiquitous. While derivative-based algorithms have been powerful
+tools for various problems, the absence of gradient imposes challenges on many
+real-world applications. In this work, we propose Optimization by PROmpting
+(OPRO), a simple and effective approach to leverage large language models (LLMs)
+as optimizers, where the optimization task is described in natural language. In
+each optimization step, the LLM generates new solutions from the prompt that
+contains previously generated solutions with their values, then the new solutions are
+evaluated and added to the prompt for the next optimization step. We first showcase
+OPRO on linear regression and traveling salesman problems, then move on to our
+main application in prompt optimization, where the goal is to find instructions
+that maximize the task accuracy. With a variety of LLMs, we demonstrate that
+the best prom
+
+==========================================================================================
+[057] tier=method src=evolve yr=2025 cite=0 slug=2509_24771
+TITLE: LatentEvolve: Self-Evolving Test-Time Scaling in Latent Space
+ARXIV: 2509.24771   URL: https://arxiv.org/abs/2509.24771
+-------------------------------------------------- EXCERPT:
+LatentEvolve
+LATENTEVOLVE: SELF-EVOLVING TEST-TIME SCAL-
+ING IN LATENT SPACE
+Guibin Zhang
+†, Fanci Meng
+†, Guancheng Wan , Zherui Li ,
+Kun Wang , Zhenfei Yin , Lei Bai , Shuicheng Yan
+NUS
+USTC
+UCLA
+NTU
+Shanghai AI Lab
+†Equal Contribution
+# Main Contact: guibinz@outlook.com
+ABSTRACT
+Test-time Scaling (TTS) has been demonstrated to significantly enhance the rea-
+soning capabilities of Large Language Models (LLMs) during the inference phase
+without altering model parameters. However, existing TTS methods are largely
+independent, implying that LLMs have not yet evolved to progressively learn how
+to scale more effectively. With the objective of evolving LLMs to learn “how to
+scale test-time computation,” we propose LatentEvolve, a self-evolving latent
+TTS framework inspired by the complementary learning system (CLS) theory.
+Analogous to the human brain’s dual system of a fast-recall hippocampus and a
+slow-consolidating neocortex, LatentEvolve comprises two evolutionary com-
+ponents: daytime scaling, which rapidly retrieves historical latent representations
+to better guide current LLM reasoning; and nighttime scaling, which integrates
+pas
+
+==========================================================================================
+[058] tier=method src=evolve yr=2026 cite=0 slug=2603_09206
+TITLE: MM-Zero: Self-Evolving Multi-Model Vision Language Models From Zero Data
+ARXIV: 2603.09206   URL: https://arxiv.org/abs/2603.09206
+-------------------------------------------------- EXCERPT:
+MM-Zero: Self-Evolving Multi-Model Vision Language Models
+From Zero Data
+Zongxia Li1⋆, Hongyang Du2⋆, Chengsong Huang3⋆, Xiyang Wu1
+Lantao Yu4 Yicheng He5, Jing Xie1, Xiaomin Wu1
+Zhichao Liu1, Jiarui Zhang6, Fuxiao Liu7
+1University of Maryland 2Brown University 3Washington University in St. Louis
+4Adobe 5University of Illinois Urbana-Champaign
+6University of Southern California 7NVIDIA
+zli12321@umd.edu
+hongyang_du@brown.edu
+chengsong@wustl.edu
+Abstract. Self-evolving has emerged as a key paradigm for improving foundational models such as
+Large Language Models (LLMs) and Vision Language Models (VLMs) with minimal human interven-
+tion. While recent approaches have demonstrated that LLM agents can self-evolve from scratch with
+little to no data, VLMs introduce an additional visual modality that typically requires at least some
+seed data, such as images, to bootstrap the self-evolution process. In this work, we present Multi-model
+Multimodal Zero (MM-Zero), the first RL-based framework to achieve zero-data self-evolution for
+VLM reasoning. Moving beyond prior dual-role (Proposer and Solver) setups, MM-Zero introduces a
+multi-role self-e
+
+==========================================================================================
+[059] tier=method src=evolve yr=2025 cite=0 slug=2512_18746
+TITLE: MemEvolve: Meta-Evolution of Agent Memory Systems
+ARXIV: 2512.18746   URL: https://arxiv.org/abs/2512.18746
+-------------------------------------------------- EXCERPT:
+MemEvolve: Meta-Evolution of Agent Memory Systems
+OPPO AI Agent Team, LV-NUS lab
+Abstract
+Self-evolving memory systems are unprecedentedly reshaping the evolutionary paradigm of large language
+model (LLM)-based agents. Prior work has predominantly relied on manually engineered memory
+architectures to store trajectories, distill experience, and synthesize reusable tools, enabling agents to
+evolve on the fly within environment interactions. However, this paradigm is fundamentally constrained
+by the staticity of the memory system itself: while memory facilitates agent-level evolving, the underlying
+memory architecture cannot be meta-adapted to diverse task contexts. To address this gap, we propose
+MemEvolve, a meta-evolutionary framework that jointly evolves agents’ experiential knowledge and their
+memory architecture, allowing agent systems not only to accumulate experience but also to progressively
+refine how they learn from it. To ground MemEvolve in prior research and foster openness in future self-
+evolving systems, we introduce EvolveLab, a unified self-evolving memory codebase that distills twelve
+representative memory systems i
+
+==========================================================================================
+[060] tier=method src=evolve yr=2025 cite=0 slug=2509_24704
+TITLE: MemGen: Weaving Generative Latent Memory for Self-Evolving Agents
+ARXIV: 2509.24704   URL: https://arxiv.org/abs/2509.24704
+-------------------------------------------------- EXCERPT:
+MemGen: Weaving Generative Latent Memory for
+Self-Evolving Agents
+Guibin Zhang†, Muxin Fu†, Shuicheng Yan
+National University of Singapore
+†Equal Contribution
+Agent memory shapes how Large Language Model (LLM)-powered agents, akin to the human
+brain, progressively refine themselves through environment interactions. Existing paradigms remain
+constrained: parametric memory forcibly adjusts model parameters, and retrieval-based memory
+externalizes experience into structured databases, yet neither captures the fluid interweaving of
+reasoning and memory that underlies human cognition. To address this gap, we propose MemGen, a
+dynamic generative memory framework that equips agents with a human-esque cognitive faculty. It
+consists of a memory trigger, which monitors the agent’s reasoning state to decide explicit memory
+invocation, and a memory weaver, which takes the agent’s current state as stimulus to construct a
+latent token sequence as machine-native memory to enrich its reasoning. In this way, MemGen enables
+agents to recall and augment latent memory throughout reasoning, producing a tightly interwoven
+cycle of memory and cognition. E
+
+==========================================================================================
+[061] tier=method src=evolve yr=2026 cite=0 slug=2601_03192
+TITLE: MemRL: Self-Evolving Agents via Runtime Reinforcement Learning on Episodic Memory
+ARXIV: 2601.03192   URL: https://arxiv.org/abs/2601.03192
+-------------------------------------------------- EXCERPT:
+MemRL: Self-Evolving Agents via Runtime Reinforcement Learning on
+Episodic Memory
+Shengtao Zhang 1 * Jiaqian Wang 2 * Ruiwen Zhou 3 Junwei Liao 1 4 Yuchen Feng 5 Zhuo Li 1 Yujie Zheng 1
+Weinan Zhang 1 4 Ying Wen 1 4 Zhiyu Li 5 Feiyu Xiong 5 Yutao Qi 2 Bo Tang 6 5 Muning Wen 1
+Abstract
+The hallmark of human intelligence is the self-
+evolving ability to master new skills by learn-
+ing from past experiences. However, current AI
+agents struggle to emulate this self-evolution: fine-
+tuning is computationally expensive and prone to
+catastrophic forgetting, while existing memory-
+based methods rely on passive semantic matching
+that often retrieves noise. To address these chal-
+lenges, we propose MEMRL, a non-parametric
+approach that evolves via reinforcement learning
+on episodic memory. By decoupling stable rea-
+soning from plastic memory, MEMRL employs a
+Two-Phase Retrieval mechanism to filter noise
+and identify high-utility strategies through en-
+vironmental feedback.
+Extensive experiments
+on HLE, BigCodeBench, ALFWorld, and Life-
+long Agent Bench demonstrate that MEMRL sig-
+nificantly outperforms state-of-the-art baselines,
+confirming t
+
+==========================================================================================
+[062] tier=method src=evolve yr=2026 cite=0 slug=2602_02474
+TITLE: MemSkill: Learning and Evolving Memory Skills for Self-Evolving Agents
+ARXIV: 2602.02474   URL: https://arxiv.org/abs/2602.02474
+-------------------------------------------------- EXCERPT:
+MemSkill: Learning and Evolving Memory Skills for Self-Evolving Agents
+Haozhen Zhang 1 Quanyu Long 1 Jianzhu Bao 1 Tao Feng 2 Weizhi Zhang 3 Haodong Yue 4 Wenya Wang 1
+Abstract
+Most Large Language Model (LLM) agent mem-
+ory systems rely on a small set of static, hand-
+designed operations for extracting memory. These
+fixed procedures hard-code human priors about
+what to store and how to revise memory, mak-
+ing them rigid under diverse interaction patterns
+and inefficient on long histories. To this end, we
+present MemSkill, which reframes these opera-
+tions as learnable and evolvable memory skills,
+structured and reusable routines for extracting,
+consolidating, and pruning information from inter-
+action traces. Inspired by the design philosophy of
+agent skills, MemSkill employs a controller that
+learns to select a small set of relevant skills, paired
+with an LLM-based executor that produces skill-
+guided memories. Beyond learning skill selection,
+MemSkill introduces a designer that periodically
+reviews hard cases where selected skills yield
+incorrect or incomplete memories, and evolves
+the skill set by proposing refinements and new
+sk
+
+==========================================================================================
+[063] tier=method src=evolve yr= cite=0 slug=mot_memory-of-thought_enables_chatgpt_to_self-improve_-_acl_anthology
+TITLE: MoT: Memory-of-Thought Enables ChatGPT to Self-Improve - ACL Anthology
+-------------------------------------------------- EXCERPT:
+Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing, pages 6354–6374
+December 6-10, 2023 ©2023 Association for Computational Linguistics
+MoT: Memory-of-Thought Enables ChatGPT to Self-Improve
+Xiaonan Li, Xipeng Qiu
+School of Computer Science, Fudan University
+Shanghai Key Laboratory of Intelligent Information Processing, Fudan University
+{lixn20, xpqiu}@fudan.edu.cn
+Abstract
+Large Language Models (LLMs) have shown
+impressive abilities in various tasks.
+How-
+ever, fundamentally improving them depends
+on high-quality datasets or computationally ex-
+pensive fine-tuning. On the contrary, humans
+can easily improve themselves by self-thinking
+and memory, without external resources. In
+this paper, we propose a framework, MoT, to
+let the LLM self-improve through Memory-of-
+Thought, without annotated datasets and pa-
+rameter updates. Specifically, MoT is divided
+into two stages: 1. before the test stage, the
+LLM pre-thinks on the unlabeled dataset and
+saves the high-confidence thoughts as external
+memory; 2. During the test stage, given a test
+question, the LLM recalls relevant memory to
+help itself reason 
+
+==========================================================================================
+[064] tier=method src=evolve yr=2026 cite=0 slug=2502_02533
+TITLE: Multi-Agent Design: Optimizing Agents with Better Prompts and Topologies
+ARXIV: 2502.02533   URL: https://arxiv.org/abs/2502.02533
+-------------------------------------------------- EXCERPT:
+Multi-Agent Design: Optimizing Agents with
+Better Prompts and Topologies
+Han Zhou1 2 *, Xingchen Wan1, Ruoxi Sun1, Hamid Palangi1, Shariq Iqbal1, Ivan Vulić1 2, Anna Korhonen2 and
+Sercan Ö. Arık1
+1Google, 2University of Cambridge
+Large language models, employed as multiple agents that interact and collaborate with each other,
+have excelled at solving complex tasks. The agents are programmed with prompts that declare their
+functionality, along with the topologies that orchestrate interactions across agents. Designing prompts
+and topologies for multi-agent systems (MAS) is inherently complex. To automate the entire design
+process, we first conduct an in-depth analysis of the design space aiming to understand the factors behind
+building effective MAS. We reveal that prompts together with topologies play critical roles in enabling
+more effective MAS design. Based on the insights, we propose Multi-Agent System Search (Mass), a
+MAS optimization framework that efficiently exploits the complex MAS design space by interleaving its
+optimization stages, from local to global, from prompts to topologies, over three stages: 1) block-level
+(local)
+
+==========================================================================================
+[065] tier=method src=evolve yr=2025 cite=0 slug=2510_23595
+TITLE: Multi-Agent Evolve: LLM Self-Improve through Co-evolution
+ARXIV: 2510.23595   URL: https://arxiv.org/abs/2510.23595
+-------------------------------------------------- EXCERPT:
+Preprint. Under review.
+MULTI-AGENT
+EVOLVE:
+LLM
+SELF-IMPROVE
+THROUGH CO-EVOLUTION
+Yixing Chen1†∗
+Yiding Wang1†∗
+Siqi Zhu1
+Haofei Yu1
+Tao Feng1
+Muhan Zhang2
+Mostofa Patwary3
+Jiaxuan You1,3†
+1 University of Illinois at Urbana-Champaign
+2 Peking University
+3 NVIDIA
+https://github.com/ulab-uiuc/Multi-agent-Evolve
+ABSTRACT
+Reinforcement Learning (RL) has demonstrated significant potential in enhancing
+the reasoning capabilities of large language models (LLMs). However, the suc-
+cess of RL for LLMs heavily relies on human-curated datasets and verifiable re-
+wards, which limit their scalability and generality. Recent Self-Play RL methods,
+inspired by the success of the paradigm in games and Go, aim to enhance LLM
+reasoning capabilities without human-annotated data. However, their methods pri-
+marily depend on a grounded environment for feedback (e.g., a Python interpreter
+or a game engine); extending them to general domains remains challenging. To
+address these challenges, we propose Multi-Agent Evolve (MAE), a framework
+that enables LLMs to self-evolve in solving diverse tasks, including mathematics,
+reasoning, and general knowledge Q&A. 
+
+==========================================================================================
+[066] tier=method src=evolve yr=2026 cite=0 slug=2508_05004
+TITLE: R-Zero: Self-Evolving Reasoning LLM from Zero Data
+ARXIV: 2508.05004   URL: https://arxiv.org/abs/2508.05004
+-------------------------------------------------- EXCERPT:
+Published as a conference paper at ICLR 2026
+R-Zero: SELF-EVOLVING REASONING LLM
+FROM ZERO DATA
+Chengsong Huang1,2†,Wenhao Yu1†, Xiaoyang Wang1,Hongming Zhang1, Zongxia Li1,3,
+Ruosen Li1,4, Jiaxin Huang2, Haitao Mi1, Dong Yu1
+1Tencent AI Seattle Lab, 2Washington University in St. Louis,
+3University of Maryland, College Park, 4The University of Texas at Dallas
+† Core contributors
+chengsong@wustl.edu; wenhaowyu@global.tencent.com
+ABSTRACT
+Self-evolving Large Language Models (LLMs) offer a scalable path toward super-
+intelligence by autonomously generating, refining, and learning from their own
+experiences. However, existing methods for training such models still rely heav-
+ily on vast human curated tasks and labels, typically via fine-tuning or reinforce-
+ment learning, which poses a fundamental bottleneck to advancing AI systems
+toward capabilities beyond human intelligence. To overcome this limitation, we
+introduce R-Zero, a fully autonomous framework that generates its own training
+data from scratch. Starting from a single base LLM, R-Zero initializes two inde-
+pendent models with distinct roles – a Challenger and a Solver. These m
+
+==========================================================================================
+[067] tier=method src=evolve yr=2026 cite=0 slug=2512_10696
+TITLE: Remember Me, Refine Me: A Dynamic Procedural Memory Framework for Experience-Driven Agent Evolution
+ARXIV: 2512.10696   URL: https://arxiv.org/abs/2512.10696
+-------------------------------------------------- EXCERPT:
+Remember Me, Refine Me: A Dynamic Procedural Memory
+Framework for Experience-Driven Agent Evolution
+Zouying Cao1,3,*, Jiaji Deng2, Li Yu2, Weikang Zhou2,
+Zhaoyang Liu2,†, Bolin Ding2, Hai Zhao1,3,†
+1AGI Institute, School of Computer Science, Shanghai Jiao Tong University,
+2Tongyi Lab, Alibaba Group,
+3Key Laboratory of Shanghai Education Commission for Intelligent Interaction
+and Cognitive Engineering, Shanghai Jiao Tong University
+zouyingcao@sjtu.edu.cn, {dengjiaji.djj, jinli.yl, zhouweikang.zwk,
+jingmu.lzy, bolin.ding}@alibaba-inc.com, zhaohai@cs.sjtu.edu.cn
+Abstract
+Procedural memory enables large language
+model (LLM) agents to internalize “how-to”
+knowledge and thus reduce redundant trial-and-
+error. However, existing frameworks predom-
+inantly suffer from a “passive accumulation”
+paradigm, treating memory as a static append-
+only archive. To bridge the gap between static
+storage and dynamic reasoning, we propose
+ReMe (Remember Me, Refine Me), a compre-
+hensive framework for experience-driven agent
+evolution. ReMe manages the memory lifecy-
+cle via three mechanisms: 1) multi-faceted dis-
+tillation, which extracts fine-grained exp
+
+==========================================================================================
+[068] tier=method src=evolve yr=2026 cite=0 slug=2603_08561
+TITLE: RetroAgent: From Solving to Evolving via Retrospective Dual Intrinsic Feedback
+ARXIV: 2603.08561   URL: https://arxiv.org/abs/2603.08561
+-------------------------------------------------- EXCERPT:
+RetroAgent: From Solving to Evolving via Retrospective
+Dual Intrinsic Feedback
+Xiaoying Zhang∗,†
+zhangxycuhk@gmail.com
+Shanghai AI Lab
+Zichen Liu
+National University of Singapore
+Yipeng Zhang
+Independent Researcher
+Xia Hu
+Shanghai AI Lab
+Wenqi Shao†
+Shanghai AI Lab
+https://github.com/zhangxy-2019/RetroAgent
+Abstract
+Standard reinforcement learning (RL) for large language model (LLM) agents primarily
+optimizes extrinsic task rewards, often favoring isolated task completion over continual
+adaptation. This paradigm can cause premature convergence to suboptimal policies and leaves
+useful experience only implicitly encoded in model parameters, limiting its retrieval and reuse
+for future decisions. We introduce RetroAgent, an online RL framework that trains agents
+to master interactive environments not merely by solving tasks, but by evolving across
+episodes. Inspired by human retrospective self-improvement, RetroAgent augments
+extrinsic rewards with hindsight-generated dual intrinsic feedback: (i) Intrinsic Numerical
+Feedback, which rewards beneficial exploration by measuring incremental subtask progress
+relative to prior attempts; and (
+
+==========================================================================================
+[069] tier=method src=evolve yr=2025 cite=0 slug=2509_09498
+TITLE: SEDM: Scalable Self-Evolving Distributed Memory for Agents
+ARXIV: 2509.09498   URL: https://arxiv.org/abs/2509.09498
+-------------------------------------------------- EXCERPT:
+SEDM: Scalable Self-Evolving Distributed Memory
+for Agents
+Haoran Xu*1,2, Jiacong Hu*1,3, Ke Zhang1,4, Lei Yu1,5, Yuxin Tang1,6, Xinyuan Song1,7, Yiqun
+Duan1,8, Lynn Ai1, and Bill Shi†11
+1Gradient
+2Zhejiang University
+3South China University of Technology
+4Waseda University
+5University of Toronto
+6Rice University
+7Emory University
+8University of Technology Sydney
+Abstract
+In long-term multi-agent systems, the accumulation of trajectories and historical
+interactions makes efficient memory management a particularly challenging task,
+with significant implications for both performance and scalability. Existing memory
+management methods typically depend on vector retrieval and hierarchical storage,
+yet they are prone to noise accumulation, uncontrolled memory expansion, and
+limited generalization across domains. To address these challenges, we present
+SEDM (Self-Evolving Distributed Memory), a verifiable and adaptive framework
+that transforms memory from a passive repository into an active, self-optimizing
+component. SEDM integrates verifiable write admission based on reproducible
+replay, a self-scheduling memory controller that dynamica
+
+==========================================================================================
+[070] tier=method src=evolve yr=2024 cite=0 slug=2310_00533
+TITLE: SELF: Self-Evolution with Language Feedback
+ARXIV: 2310.00533   URL: https://arxiv.org/abs/2310.00533
+-------------------------------------------------- EXCERPT:
+Preprint. Work in progress.
+SELF: SELF-EVOLUTION
+WITH LANGUAGE FEED-
+BACK
+Jianqiao Lu1∗†, Wanjun Zhong2∗, Wenyong Huang2∗,
+Yufei Wang2, Qi Zhu2, Fei Mi2, Baojun Wang2, Weichao Wang2, Xingshan Zeng2,
+Lifeng Shang2, Xin Jiang2 & Qun Liu2
+1The University of Hong Kong
+2Huawei Noah’s Ark Lab
+jqlu@cs.hku.hk, {zhongwanjun1,wenyong.huang}@huawei.com
+ABSTRACT
+Large Language Models (LLMs) have shown impressive adaptability in various
+fields, yet the optimal pathway of autonomous model evolution remains under-
+explored. Drawing inspiration from the self-driven learning process of humans,
+we introduce SELF (Self-Evolution with Language Feedback), a novel learning
+framework that empowers LLMs to continually self-improve their abilities. SELF
+initiates with a meta-skill learning process that equips the LLMs with capabili-
+ties for self-feedback and self-refinement. SELF employs language-based feed-
+back for detailed and nuanced evaluations, pinpointing response flaws and sug-
+gesting refinements. Subsequently, the model engages in an iterative process of
+self-evolution: they autonomously generate responses to unlabeled instructions,
+refine these 
+
+==========================================================================================
+[071] tier=method src=evolve yr=2025 cite=0 slug=2509_06283
+TITLE: SFR-DeepResearch: Towards Effective Reinforcement Learning for Autonomously Reasoning Single Agents
+ARXIV: 2509.06283   URL: https://arxiv.org/abs/2509.06283
+-------------------------------------------------- EXCERPT:
+SFR-DeepResearch: Towards Effective Reinforcement
+Learning for Autonomously Reasoning Single Agents
+Xuan-Phi Nguyen∗
+Shrey Pandit
+Revanth Gangi Reddy†
+Austin Xu
+Silvio Savarese
+Caiming Xiong∗
+Shafiq Joty∗
+Salesforce AI Research
+Abstract
+Equipping large language models (LLMs) with complex, interleaved reasoning
+and tool-use capabilities has become a key focus in agentic AI research, especially
+with recent advances in reasoning-oriented (“thinking”) models. Such capabilities
+are key to unlocking a number of important applications. One such application is
+Deep Research (DR), which requires extensive search and reasoning over many
+sources. Our work in this paper focuses on the development of native Autonomous
+Single-Agent models for DR featuring minimal web crawling and Python tool
+integration. Unlike multi-agent systems, where agents take up pre-defined roles and
+are told what to do at each step in a static workflow, an autonomous single-agent
+determines its next action dynamically based on context, without manual directive.
+While prior work has proposed training recipes for base or instruction-tuned LLMs,
+we focus on continual reinfor
+
+==========================================================================================
+[072] tier=method src=evolve yr=2025 cite=0 slug=2512_04797
+TITLE: SIMA 2: A Generalist Embodied Agent for Virtual Worlds
+ARXIV: 2512.04797   URL: https://arxiv.org/abs/2512.04797
+-------------------------------------------------- EXCERPT:
+2025-12-05
+SIMA 2: A Generalist Embodied Agent for
+Virtual Worlds
+SIMA Team, Google DeepMind1
+We introduce SIMA 2, a generalist embodied agent that understands and acts in a wide variety of 3D
+virtual worlds. Built upon a Gemini foundation model, SIMA 2 represents a significant step toward
+active, goal-directed interaction within an embodied environment. Unlike prior work (e.g., SIMA 1)
+limited to simple language commands, SIMA 2 acts as an interactive partner, capable of reasoning about
+high-level goals, conversing with the user, and handling complex instructions given through language
+and images. Across a diverse portfolio of games, SIMA 2 substantially closes the gap with human
+performance and demonstrates robust generalization to previously unseen environments, all while
+retaining the base model’s core reasoning capabilities. Furthermore, we demonstrate a capacity for
+open-ended self-improvement: by leveraging Gemini to generate tasks and provide rewards, SIMA 2 can
+autonomously learn new skills from scratch in a new environment. This work validates a path toward
+creating versatile and continuously learning agents for both virtu
+
+==========================================================================================
+[073] tier=method src=evolve yr=2026 cite=0 slug=2509_23863
+TITLE: SPELL: Self-Play Reinforcement Learning for Evolving Long-Context Language Models
+ARXIV: 2509.23863   URL: https://arxiv.org/abs/2509.23863
+-------------------------------------------------- EXCERPT:
+Published as a conference paper at ICLR 2026
+SPELL: SELF-PLAY REINFORCEMENT LEARNING FOR
+EVOLVING LONG-CONTEXT LANGUAGE MODELS
+Ziyi Yang1,2∗
+Weizhou Shen2
+Chenliang Li2
+Ruijun Chen1
+Fanqi Wan1
+Ming Yan2†
+Xiaojun Quan1,3†
+Fei Huang2
+1Sun Yat-sen University
+2Tongyi Lab, Alibaba Group
+3Shenzhen Loop Area Institute
+yangzy39@mail2.sysu.edu.cn, ym119608@alibaba-inc.com
+xiaojunquan@slai.edu.cn
+ABSTRACT
+Progress in long-context reasoning for large language models (LLMs) has lagged
+behind other recent advances. This gap arises not only from the intrinsic difficulty
+of processing long texts, but also from the scarcity of reliable human annotations
+and programmatically verifiable reward signals. In this paper, we propose SPELL,
+a multi-role self-play reinforcement learning framework that enables scalable,
+label-free optimization for long-context reasoning. SPELL integrates three cyclical
+roles—questioner, responder, and verifier—within a single model to enable con-
+tinual self-improvement. The questioner generates questions from raw documents
+paired with reference answers; the responder learns to solve these questions based
+on the documents; a
+
+==========================================================================================
+[074] tier=method src=evolve yr=2025 cite=0 slug=2511_03773
+TITLE: Scaling Agent Learning via Experience Synthesis
+ARXIV: 2511.03773   URL: https://arxiv.org/abs/2511.03773
+-------------------------------------------------- EXCERPT:
+Scaling Agent Learning via Experience Synthesis
+Zhaorun Chen1,3,∗, Zhuokai Zhao1, Kai Zhang1, Bo Liu2, Qi Qi1, Yifan Wu1, Tarun Kalluri1, Sara Cao1,
+Yuanhao Xiong1, Haibo Tong3, Huaxiu Yao4, Hengduo Li1, Jiacheng Zhu1, Xian Li2, Dawn Song5, Bo Li3,
+Jason Weston2,†, Dat Huynh1,†
+1Meta Superintelligence Labs, 2FAIR at Meta, 3University of Chicago, 4UNC, 5UC Berkeley
+∗Work done at Meta, †Joint last author
+While reinforcement learning (RL) can empower autonomous agents by enabling self-improvement
+through interaction, its practical adoption remains challenging due to costly rollouts, limited task
+diversity, unreliable reward signals, and infrastructure complexity, all of which obstruct the collection
+of scalable experience data. To address these challenges, we introduce DreamGym, the first unified
+framework designed to synthesize diverse experiences with scalability in mind to enable effective online
+RL training for autonomous agents. Rather than relying on expensive real-environment rollouts,
+DreamGym distills environment dynamics into a reasoning-based experience model that derives
+consistent state transitions and feedback signals thr
+
+==========================================================================================
+[075] tier=method src=evolve yr=2026 cite=0 slug=2602_01966
+TITLE: Self-Consolidation for Self-Evolving Agents
+ARXIV: 2602.01966   URL: https://arxiv.org/abs/2602.01966
+-------------------------------------------------- EXCERPT:
+Self-Consolidation for Self-Evolving Agents
+Hongzhuo Yu1*, Fei Zhu2*, Guo-Sen Xie3, Ling Shao1
+1UCAS-Terminus AI Lab, University of Chinese Academy of Sciences
+2Centre for Artificial Intelligence and Robotics, HKISI-CAS
+3School of Computer Science and Engineering, Nanjing University of Science and Technology, Nanjing, China
+yuhongzhuo24@mails.ucas.ac.cn, zhfei2018@gmail.com, gsxiehm@gmail.com, ling.shao@ieee.org
+Abstract
+While large language model (LLM) agents
+have demonstrated impressive problem-solving
+capabilities, they typically operate as static sys-
+tems, lacking the ability to evolve through life-
+long interaction. Existing attempts to bridge
+this gap primarily rely on retrieving success-
+ful past trajectories as demonstrations. How-
+ever, this paradigm faces two critical limita-
+tions.
+First, by focusing solely on success,
+agents overlook the rich pedagogical value
+embedded in failed attempts, preventing them
+from identifying and avoiding recurrent pitfalls.
+Second, continually accumulating textual expe-
+riences not only increases the time consump-
+tion during retrieval but also inevitably intro-
+duces noise and exhausts the
+
+==========================================================================================
+[076] tier=method src=evolve yr=2026 cite=0 slug=2602_08234
+TITLE: SkillRL: Evolving Agents via Recursive Skill-Augmented Reinforcement Learning
+ARXIV: 2602.08234   URL: https://arxiv.org/abs/2602.08234
+-------------------------------------------------- EXCERPT:
+SKILLRL: Evolving Agents via Recursive Skill-Augmented
+Reinforcement Learning
+Peng Xia 1 * Jianwen Chen 1 * Hanyang Wang 1 2 * Jiaqi Liu 1 Kaide Zeng 1 Yu Wang 3 Siwei Han 1
+Yiyang Zhou 1 Xujiang Zhao 4 Haifeng Chen 4 Zeyu Zheng 5 Cihang Xie 6 Huaxiu Yao 1
+Abstract
+Large Language Model (LLM) agents have shown
+stunning results in complex tasks, yet they often
+operate in isolation, failing to learn from past
+experiences. Existing memory-based methods
+primarily store raw trajectories, which are often
+redundant and noise-heavy. This prevents agents
+from extracting high-level, reusable behavioral
+patterns that are essential for generalization. In
+this paper, we propose SKILLRL, a framework
+that bridges the gap between raw experience and
+policy improvement through automatic skill dis-
+covery and recursive evolution. Our approach
+introduces an experience-based distillation mech-
+anism to build a hierarchical skill library SKILL-
+BANK, an adaptive retrieval strategy for general
+and task-specific heuristics, and a recursive evolu-
+tion mechanism that allows the skill library to
+co-evolve with the agent’s policy during rein-
+forcement learnin
+
+==========================================================================================
+[077] tier=method src=evolve yr=2025 cite=0 slug=2504_07079
+TITLE: SkillWeaver: Web Agents can Self-Improve by Discovering and Honing Skills
+ARXIV: 2504.07079   URL: https://arxiv.org/abs/2504.07079
+-------------------------------------------------- EXCERPT:
+SkillWeaver: Web Agents can Self-Improve by Discovering
+and Honing Skills
+Boyuan Zheng1∗, Michael Y. Fatemi2∗, Xiaolong Jin3∗,
+Zora Zhiruo Wang4, Apurva Gandhi4, Yueqi Song,4, Yu Gu1, Jayanth Srinivasa5, Gaowen Liu5,
+Graham Neubig4, Yu Su1
+1 The Ohio State University
+2 University of Virginia
+3 Purdue University
+4 Carnegie Mellon University
+5 Cisco Research
+{zheng.2372, su.809}@osu.edu
+Abstract
+To survive and thrive in complex environments, humans have evolved
+sophisticated self-improvement mechanisms through environment explo-
+ration, hierarchical abstraction of experiences into reuseable skills, and col-
+laborative construction of an ever-growing skill repertoire. Despite recent
+advancements, autonomous web agents still lack crucial self-improvement
+capabilities, struggling with procedural knowledge abstraction, skill re-
+finement, and skill composition.
+In this work, we introduce SKILL-
+WEAVER, a skill-centric framework that enables agents to self-improve
+by autonomously synthesizing reusable skills as APIs. Given a new web-
+site, the agent autonomously discovers skills, executes them for practice,
+and distills practice experience
+
+==========================================================================================
+[078] tier=method src=evolve yr=2026 cite=0 slug=2602_12670
+TITLE: SkillsBench: Benchmarking How Well Agent Skills Work Across Diverse Tasks
+ARXIV: 2602.12670   URL: https://arxiv.org/abs/2602.12670
+-------------------------------------------------- EXCERPT:
+SkillsBench: Benchmarking How Well Agent Skills
+Work Across Diverse Tasks
+Xiangyi Li1,*, Yimin Liu1,2,*, Wenbo Chen3,*,†, Bingran You1,4,*, Zonglin Di5,‡,
+Yifeng He6,‡, Shenghan Zheng7,‡, Kyoung Whan Choe8,‡, Jiankai Sun9,‡, Shuyi Wang9,‡,
+Chujun Tao14,‡, Binxu Li10,‡, Xuandong Zhao4,‡, Hejia Geng11, Xiaojun Wu35, Junwei Zhou9,
+Xiaokun Chen12, Hanwen Xing13, Yubo Li14, Qunhong Zeng9, Di Wang15, Yuanli Wang16,
+Roey Ben Chaim17, Penghao Jiang18, Haotian Shen9, Luyang Kong9, Xinyi Liu9,
+Runhui Wang9, Xuanqing Liu9, Jiachen Li19, Xin Lan20, Yueqian Lin21, Wengao Ye11,
+Junwei He22, Songlin Li12, Yue Zhang23, Yipeng Gao13, Yijiang Li24, Ze Ma25, Liqiang Jing23,
+Tianyu Wang9, Kaixin Li9, Yiqi Xue13, Haoran Lyu9, Yizhuo He14, Yuchen Tian9,
+Shutong Wu26, Bowei Wang9, Yixuan Gao27, Bo Chen9, Litong Liu28, Sikai Cheng28,
+Jiajun Bao14, Shuaicheng Tong28, Shuwen Xu9, Terry Yue Zhuo9, Tinghan Ye28, Qi Qi9,
+Miao Li28, Longtai Liao9, Zelin Tan34, Chang Shi19, Xilin Tang29, Srinath Tankasala3,†,
+Boqin Yuan24, Yaoyao Qian30, Jianhong Tu5, Chenguang Wang5, Yizhou Sun31,
+Wei Wang31, Aaron Taylor33, Ziyue Yang6, Changkun Guan28, Zhikang Dong32,
+Xinyu Zh

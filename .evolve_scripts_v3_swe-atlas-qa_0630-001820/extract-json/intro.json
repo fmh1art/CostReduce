@@ -1,0 +1,18 @@
+{
+  "name": "extract-json",
+  "description": "Extract values from JSON files using dot-separated key paths, pick subset of keys, search matching keys/values, or list keys, replacing cat | python3 -c json.load chains.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {"name": "file", "type": "string", "required": true, "description": "Path to JSON file"},
+    {"name": "--key", "type": "string", "required": false, "description": "Dot-separated path to extract (e.g., scripts.jest)"},
+    {"name": "--pick", "type": "string", "required": false, "description": "Comma-separated top-level keys to extract as subset, e.g. --pick=scripts,jest"},
+    {"name": "--indent", "type": "int", "required": false, "description": "Pretty-print indent (default: 2; use 0 for compact)"},
+    {"name": "--raw", "type": "bool", "required": false, "description": "Print raw string without JSON quoting"},
+    {"name": "--keys", "type": "bool", "required": false, "description": "List top-level key names only"},
+    {"name": "--search", "type": "string", "required": false, "description": "Find keys/values containing string at any depth"}
+  ],
+  "examples": [
+    {"call": "/app/.preinstalled_scripts/extract-json/main.sh /app/package.json --pick=scripts,jest", "expected": "JSON subset with only scripts and jest keys"}
+  ],
+  "cost_saving_rationale": "Collapses cat + python3 -c import sys,json; json.load(sys.stdin) chains into one step; --pick collapses cat + python subset dict comprehension into one step."
+}

@@ -10,6 +10,11 @@ load_llm_config
 # 切换到项目根目录，确保后续相对路径都基于 CostReduce 仓库。
 cd "$ROOT_DIR"
 
+# DeepSWE 任务目录。默认仓库内 tasks 目录；V3 闭环（src/evolve/evolve_v3_cycle.py）
+# 会把 16 个 evolve case 软链到一个临时目录并把该目录赋给 DEEP_SWE_TASKS_PATH，
+# 从而只在 16 个 case 上跑一轮验证。未设置时沿用默认全量 tasks 目录，行为不变。
+DEEP_SWE_TASKS_PATH="${DEEP_SWE_TASKS_PATH:-$ROOT_DIR/benchmark/deep-swe/tasks}"
+
 # 创建 DeepSWE 结果目录，避免 Pier 写入结果时目录不存在。
 mkdir -p "$RESULTS_DIR/deep-swe"
 
@@ -41,7 +46,7 @@ fi
 
 # 使用 Pier 在 DeepSWE 全量任务集上运行 mini-swe-agent，并用 deepseek-v4-flash 作为 LLM。
 "$UV_BIN" tool run --from datacurve-pier pier run \
-  -p "$ROOT_DIR/benchmark/deep-swe/tasks" \
+  -p "$DEEP_SWE_TASKS_PATH" \
   -a mini-swe-agent \
   -m "$MODEL" \
   -e "$HARBOR_ENV" \

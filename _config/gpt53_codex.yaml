@@ -1,0 +1,17 @@
+# gpt-5.3-codex via the bytedance aidp gateway's Responses API.
+# 该网关对这批 GPT 模型只暴露 Responses API（chat-completions 路径全部 404），
+# 因此 api_type: responses：让 src/tools/llm.py 走 AzureOpenAI + responses.create，
+# 让 mini-swe-agent 走 --model-class litellm_response + litellm.responses(azure/...)。
+# openai_base_url 仅为兼容旧解析器（_bench_common.sh 读取它），responses 路径不使用。
+api_type: responses
+api_version: 2024-03-01-preview
+azure_endpoint: https://aidp.bytedance.net/api/modelhub/online/responses
+openai_base_url: https://aidp.bytedance.net/api/modelhub/online/responses
+key: K8Iwh3LaSiScQQX5HQMBFnbH2zXZtQV7
+llm_name: gpt-5.3-codex-2026-02-24
+temperature: 0
+
+price_dollar_per_token:
+  input_token: 0.000015
+  output_token: 0.000120
+  cached_token: 0.0000015

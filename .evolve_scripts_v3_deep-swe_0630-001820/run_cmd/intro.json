@@ -1,0 +1,44 @@
+{
+  "name": "run_cmd",
+  "description": "Run arbitrary commands in a specified directory with optional environment variables, timeout, and --write to write stdin content to a file before running the command.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {
+      "name": "command",
+      "type": "string",
+      "required": true,
+      "description": "Command to run with arguments"
+    },
+    {
+      "name": "--dir=DIR",
+      "type": "string",
+      "required": false,
+      "description": "Working directory"
+    },
+    {
+      "name": "--env=KEY=val",
+      "type": "string",
+      "required": false,
+      "description": "Set environment variable (repeatable)"
+    },
+    {
+      "name": "--timeout=SECONDS",
+      "type": "int",
+      "required": false,
+      "description": "Command timeout"
+    },
+    {
+      "name": "--write=FILEPATH",
+      "type": "string",
+      "required": false,
+      "description": "Write stdin content to FILEPATH before running the command (creates parent dirs)"
+    }
+  ],
+  "examples": [
+    {
+      "call": "/app/.preinstalled_scripts/run_cmd/main.sh --dir=/app --env=DJANGO_SETTINGS_MODULE=paperless.settings python manage.py migrate",
+      "expected": "Runs the command in /app with the specified environment"
+    }
+  ],
+  "cost_saving_rationale": "Collapses cd + env setup + write + command execution into one step; --write combines write_file + run_cmd into one step, saving 1 agent step per write+run pattern."
+}

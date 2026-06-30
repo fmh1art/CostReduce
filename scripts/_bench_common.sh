@@ -36,6 +36,9 @@ EVOLVE_SKIP_FILE="${EVOLVE_SKIP_FILE-auto}"
 
 load_llm_config() {
   # 使用 Python 解析简单 YAML 配置，并输出可被当前 shell eval 的 export 语句。
+  # api_type=responses 时（bytedance aidp 网关只暴露 Responses API）：
+  #   MODEL=azure/<llm_name>，额外导出 AZURE_API_KEY/AZURE_API_BASE/AZURE_API_VERSION，
+  #   litellm.responses(azure/...) 据此路由到网关 responses 端点。
   eval "$(python - "$LLM_CONFIG" <<'PY'
 from pathlib import Path
 import shlex
@@ -47,20 +50,36 @@ for line in Path(sys.argv[1]).read_text().splitlines():
         key, value = line.split(':', 1)
         data[key.strip()] = value.strip().strip('"\'')
 
-model = 'openai/' + data['llm_name']
-base_url = data['openai_base_url']
+api_type = data.get('api_type', '').strip().lower()
 api_key = data['key']
 temperature = data.get('temperature', '0')
-for key, value in {
-    'MODEL': model,
+exports = {
     'OPENAI_API_KEY': api_key,
     'MSWEA_API_KEY': api_key,
-    'OPENAI_BASE_URL': base_url,
-    'OPENAI_API_BASE': base_url,
     'JUDGE_API_KEY': api_key,
-    'JUDGE_BASE_URL': base_url,
     'TEMPERATURE': temperature,
-}.items():
+}
+if api_type == 'responses':
+    azure_endpoint = data['azure_endpoint']
+    exports.update({
+        'MODEL': 'azure/' + data['llm_name'],
+        'AZURE_API_KEY': api_key,
+        'AZURE_API_BASE': azure_endpoint,
+        'AZURE_API_VERSION': data.get('api_version', '2024-03-01-preview'),
+        # 兼容 harbor mini 适配器读取 OPENAI_BASE_URL 并转发；azure 路由实际用 AZURE_API_BASE。
+        'OPENAI_BASE_URL': azure_endpoint,
+        'OPENAI_API_BASE': azure_endpoint,
+        'JUDGE_BASE_URL': azure_endpoint,
+    })
+else:
+    base_url = data['openai_base_url']
+    exports.update({
+        'MODEL': 'openai/' + data['llm_name'],
+        'OPENAI_BASE_URL': base_url,
+        'OPENAI_API_BASE': base_url,
+        'JUDGE_BASE_URL': base_url,
+    })
+for key, value in exports.items():
     print(f'export {key}={shlex.quote(value)}')
 PY
 )"
@@ -73,6 +92,52 @@ agent_env_args() {
     --ae "MSWEA_API_KEY=${MSWEA_API_KEY}" \
     --ae "OPENAI_BASE_URL=${OPENAI_BASE_URL}" \
     --ae "OPENAI_API_BASE=${OPENAI_API_BASE}"
+  # responses 配置额外注入 AZURE_*，让容器内 litellm.responses(azure/...) 路由到网关。
+  if [[ -n "${AZURE_API_KEY:-}" ]]; then
+    printf '%s\n' \
+      --ae "AZURE_API_KEY=${AZURE_API_KEY}" \
+      --ae "AZURE_API_BASE=${AZURE_API_BASE}" \
+      --ae "AZURE_API_VERSION=${AZURE_API_VERSION}"
+  fi
+}
+
+mswea_responses_config_file() {
+  # 入参 $1: 原 mswea run_config yaml 路径。
+  # 非 responses 配置（AZURE_API_KEY 未设）时原样返回原路径。
+  # responses 配置时：复制该 yaml 并把 model.model_class 改成 litellm_response
+  # （让 mini-swe-agent 走 litellm.responses 而非 chat-completions），打印临时文件路径。
+  # 调用方负责在用完后删除返回的临时文件。
+  local src="${1:-}"
+  if [[ -z "${src}" ]]; then return 0; fi
+  if [[ -z "${AZURE_API_KEY:-}" ]]; then printf '%s\n' "${src}"; return 0; fi
+  local tmp
+  tmp="$(mktemp -t mswea_resp_cfg.XXXXXX.yaml)"
+  python - "$src" "$tmp" <<'PY'
+from pathlib import Path
+import sys
+
+src, dst = Path(sys.argv[1]), Path(sys.argv[2])
+lines = src.read_text(encoding="utf-8").splitlines()
+out, replaced = [], False
+for line in lines:
+    stripped = line.lstrip()
+    if stripped.startswith("model_class:") and not replaced:
+        indent = line[: len(line) - len(stripped)]
+        out.append(f"{indent}model_class: litellm_response")
+        replaced = True
+    else:
+        out.append(line)
+if not replaced:
+    for i, line in enumerate(out):
+        if line.rstrip() == "model:":
+            out.insert(i + 1, "  model_class: litellm_response")
+            replaced = True
+            break
+if not replaced:
+    out = ["model:", "  model_class: litellm_response", ""] + out
+dst.write_text("\n".join(out) + "\n", encoding="utf-8")
+PY
+  printf '%s\n' "${tmp}"
 }
 
 proxy_env_args() {

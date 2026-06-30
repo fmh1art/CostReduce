@@ -1,0 +1,16 @@
+{
+    "name": "read_json",
+    "description": "Read specific keys/fields from JSON files with optional filter and --scripts shorthand for package.json.",
+    "entrypoint": "main.sh",
+    "parameters": [
+        {"name": "file", "type": "string", "required": true, "description": "Path to JSON file"},
+        {"name": "keys", "type": "string", "required": false, "description": "One or more dot-separated key paths (e.g., scripts.test)"},
+        {"name": "--filter=STRING", "type": "string", "required": false, "description": "Only show entries containing STRING in key or value"},
+        {"name": "--scripts", "type": "bool", "required": false, "description": "Shorthand to extract scripts object from package.json"}
+    ],
+    "examples": [{
+        "call": "/app/.preinstalled_scripts/read_json/main.sh /app/package.json --scripts --filter=test",
+        "expected": "test: run-s -s test-client test-packages test-server test-build-tools"
+    }],
+    "cost_saving_rationale": "Replaces verbose cat+grep+python3 json parsing with one short command, saving steps and command tokens."
+}

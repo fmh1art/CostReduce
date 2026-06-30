@@ -1,0 +1,18 @@
+{
+    "name": "git_diff",
+    "description": "Show git changes summary including status, diff, and log, or checkout/reset modified files.",
+    "entrypoint": "main.sh",
+    "parameters": [
+        {"name": "directory", "type": "string", "required": false, "description": "Repository directory (default: current dir)"},
+        {"name": "--stat-only|--name-only|--cached|--short", "type": "string", "required": false, "description": "Display mode"},
+        {"name": "--log=N", "type": "int", "required": false, "description": "Show last N commits"},
+        {"name": "--oneline", "type": "bool", "required": false, "description": "One-line commit format"},
+        {"name": "--checkout=FILE", "type": "string", "required": false, "description": "Reset a modified file via git checkout --"},
+        {"name": "--checkout-backup", "type": "bool", "required": false, "description": "Backup file before checkout (appends .bak.TIMESTAMP)"}
+    ],
+    "examples": [{
+        "call": "/app/.preinstalled_scripts/git_diff/main.sh --short",
+        "expected": "Short git status output"
+    }],
+    "cost_saving_rationale": "Replaces multiple git status/diff/log calls with one, saving 2+ steps per check; --checkout eliminates separate git checkout -- FILE step and --checkout-backup prevents data loss by auto-backing up before reset."
+}

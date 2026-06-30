@@ -1,0 +1,110 @@
+{
+    "name": "run_tests",
+    "description": "Run tests for any language/framework with auto-detection, --summary/--brief for compact output, --failed for failure-only output, --tail=N for output length limit, --yarn for yarn scripts, --xvfbrun for E2E tests, --tz for timezone, --dir for changing directory, --env/--env-file for env vars (replaces export KEY=val chains), auto-sets Go environment (PATH, GOPATH, CGO_ENABLED=0) for --go mode, and auto-filters noisy timestamp-warning lines from Go output.",
+    "entrypoint": "main.sh",
+    "parameters": [
+        {
+            "name": "test_path",
+            "type": "string",
+            "required": true,
+            "description": "Test file or directory path"
+        },
+        {
+            "name": "--go|--pytest|--vitest|--jest|--utscapy|--yarn",
+            "type": "string",
+            "required": false,
+            "description": "Force framework and specify test target; --yarn runs a yarn script (e.g., test-packages)"
+        },
+        {
+            "name": "--grep",
+            "type": "string",
+            "required": false,
+            "description": "Filter tests by name pattern or grep UTscapy output"
+        },
+        {
+            "name": "--env-file=PATH",
+            "type": "string",
+            "required": false,
+            "description": "Load env vars from file (KEY=val lines)"
+        },
+        {
+            "name": "--env",
+            "type": "string",
+            "required": false,
+            "description": "Environment variables (repeatable)"
+        },
+        {
+            "name": "--verbose",
+            "type": "bool",
+            "required": false,
+            "description": "Verbose output"
+        },
+        {
+            "name": "--summary|--compact",
+            "type": "bool",
+            "required": false,
+            "description": "Show only test summary lines (PASS/FAIL counts)"
+        },
+        {
+            "name": "--failed",
+            "type": "bool",
+            "required": false,
+            "description": "Show only failure output with error details (all frameworks)"
+        },
+        {
+            "name": "--passed",
+            "type": "bool",
+            "required": false,
+            "description": "UTscapy: show only passed test lines"
+        },
+        {
+            "name": "--dir=DIR",
+            "type": "string",
+            "required": false,
+            "description": "Change to DIR before running tests"
+        },
+        {
+            "name": "--tz=TZ",
+            "type": "string",
+            "required": false,
+            "description": "Set timezone (e.g., UTC, America/New_York)"
+        },
+        {
+            "name": "--xvfbrun",
+            "type": "bool",
+            "required": false,
+            "description": "Wrap with xvfb-run -a and set HEADLESS=true for E2E browser tests"
+        },
+        {
+            "name": "--tail=N",
+            "type": "int",
+            "required": false,
+            "description": "Limit output to N lines (like piping through tail -N)"
+        },
+        {
+            "name": "--",
+            "type": "string",
+            "required": false,
+            "description": "Pass remaining args through to test runner"
+        },
+        {
+            "name": "--brief",
+            "type": "bool",
+            "required": false,
+            "description": "Strip sub-describe headers from jest/vitest verbose output, keeping test lines and section headers"
+        },
+        {
+            "name": "--no-coverage",
+            "type": "bool",
+            "required": false,
+            "description": "Disable test coverage collection (passed through to jest/vitest/pytest)"
+        }
+    ],
+    "examples": [
+        {
+            "call": "/app/.preinstalled_scripts/run_tests/main.sh --jest test/foo.test.js --tz=UTC --dir=/app --summary",
+            "expected": "PASS/FAIL summary with UTC timezone"
+        }
+    ],
+    "cost_saving_rationale": "Replaces verbose cd + export + python -m pytest with one invocation; --utscapy eliminates 150+ chars of -K flags and adds -f text -N for compact output; --yarn replaces cd + yarn test-packages ... | tail -N patterns with one step, saving 2 steps per test run; --xvfbrun replaces HEADLESS=true xvfb-run -a npx jest ... patterns seen in E2E samples, collapsing multi-variable setup into one flag; --tz replaces TZ=UTC prefix; --failed/--passed replaces post-hoc grep pipelines; --summary saves a post-hoc grep; --tail=N replaces manual | tail -N piping; --env-file replaces 20+ export statements with a single flag; --dir eliminates separate cd steps; --go auto-sets PATH/GOPATH/CGO_ENABLED=0, eliminating repeated export PATH=... boilerplate seen in samples, saving hundreds of token chars per invocation; Go mode auto-filters noisy timestamp-warning lines (time=... level=warning) reducing observation size by dozens of lines per run."
+}

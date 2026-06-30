@@ -1,0 +1,21 @@
+{
+  "name": "run-sql",
+  "description": "Run a SQL query against PostgreSQL and output results concisely, replacing separate psql -c calls with connection flags.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {"name": "--db", "type": "string", "required": true, "description": "Database name to connect to"},
+    {"name": "--user", "type": "string", "required": false, "description": "PostgreSQL user (default: PGUSER or postgres)"},
+    {"name": "--host", "type": "string", "required": false, "description": "PostgreSQL host (default: localhost)"},
+    {"name": "--port", "type": "int", "required": false, "description": "PostgreSQL port (default: 5432)"},
+    {"name": "--no-header", "type": "bool", "required": false, "description": "Suppress column headers in output"},
+    {"name": "--csv", "type": "bool", "required": false, "description": "Output in CSV format"},
+    {"name": "--list-dbs", "type": "bool", "required": false, "description": "List all databases"},
+    {"name": "--list-tables", "type": "bool", "required": false, "description": "List all tables in database"},
+    {"name": "--list-users", "type": "bool", "required": false, "description": "List all PostgreSQL users"},
+    {"name": "sql", "type": "string", "required": false, "description": "SQL query string (or pipe via stdin)"}
+  ],
+  "examples": [
+    {"call": "/app/.preinstalled_scripts/run-sql/main.sh --db=simplelogin \"SELECT id, email, activated FROM users;\"", "expected": "Table rows with id, email, activated columns"}
+  ],
+  "cost_saving_rationale": "Collapses psql -h -p -U -d -c connection+query chains into one step, saving 2-3 agent steps per database query."
+}

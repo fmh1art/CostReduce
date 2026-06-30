@@ -1,0 +1,20 @@
+{
+  "name": "multi-query",
+  "description": "Batch-query multiple files matching a glob pattern: grep content, extract JSON keys, list JSON keys, or list paths, replacing iterative for-loop chains.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {"name": "glob_pattern", "type": "string", "required": true, "description": "Glob pattern matching files/dirs to query (e.g., /app/packages/*/package.json)"},
+    {"name": "--cd", "type": "string", "required": false, "description": "Change to directory before resolving glob"},
+    {"name": "--grep", "type": "string", "required": false, "description": "Grep for pattern in each matched file's content"},
+    {"name": "--json-key", "type": "string", "required": false, "description": "Extract dot-separated JSON key from each file"},
+    {"name": "--json-keys", "type": "bool", "required": false, "description": "List top-level JSON keys from each file"},
+    {"name": "--name-only", "type": "bool", "required": false, "description": "Just list matched paths"},
+    {"name": "--head", "type": "int", "required": false, "description": "Show first N results"},
+    {"name": "--tail", "type": "int", "required": false, "description": "Show last N results"},
+    {"name": "--sort", "type": "bool", "required": false, "description": "Sort output alphabetically"}
+  ],
+  "examples": [
+    {"call": "/app/.preinstalled_scripts/multi-query/main.sh /app/packages/*/jest.config.js --grep=testEnvironment --head=20", "expected": "Files with testEnvironment lines (head 20)"}
+  ],
+  "cost_saving_rationale": "Collapses for-pkg-in-glob loops with inline grep, JSON extraction, or listing into one step, saving 1-2 agent steps per batch query and reducing command length."
+}

@@ -1,0 +1,17 @@
+{
+  "name": "cleanup",
+  "description": "Clean up temp files by glob and/or delete rows from database tables in one step, collapsing rm -f + psql DELETE chains.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {"name": "--files", "type": "string", "required": false, "description": "Glob pattern for temp files to delete (repeatable)"},
+    {"name": "--all-temp", "type": "bool", "required": false, "description": "Clean common temp files (/tmp/*.txt, /tmp/*.log, /tmp/*.env, /tmp/cookies*, /tmp/server_output*, /tmp/run_app*)"},
+    {"name": "--db", "type": "string", "required": false, "description": "Database name to clean (requires --tables)"},
+    {"name": "--tables", "type": "string", "required": false, "description": "Comma-separated table names to DELETE FROM"},
+    {"name": "--where", "type": "string", "required": false, "description": "WHERE condition for DELETE (default: all rows)"},
+    {"name": "--dry-run", "type": "bool", "required": false, "description": "Show what would be deleted without actually deleting"}
+  ],
+  "examples": [
+    {"call": "/app/.preinstalled_scripts/cleanup/main.sh --all-temp --db=test --tables=email_log,contact,alias,api_key,account_activation,users", "expected": "Cleaned 12 temp files, Deleted rows from 6 tables, row counts shown"}
+  ],
+  "cost_saving_rationale": "Collapses multiple rm -f + su - postgres psql DELETE chains into one step, saving 5-10 agent steps per cleanup phase."
+}

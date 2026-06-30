@@ -8,13 +8,28 @@ logger = logging.getLogger(__name__)
 class LLM:
     def __init__(self, config_path):
         cfg = self._load_config(config_path)
-        from openai import OpenAI
-
+        # api_type=responses: bytedance aidp 网关对这批 GPT 模型只暴露 Responses API
+        # (chat-completions 路径全部 404)，走 AzureOpenAI + responses.create。
+        self.api_type = (cfg.get("api_type") or "chat").strip().lower()
         self.model = cfg.get("llm_name") or cfg.get("model")
         self.temperature = float(cfg.get("temperature", 0))
-        self.client = OpenAI(api_key=cfg.get("key"), base_url=cfg.get("openai_base_url"))
+        if self.api_type == "responses":
+            from openai import AzureOpenAI
+
+            self.client = AzureOpenAI(
+                api_key=cfg.get("key"),
+                azure_endpoint=cfg.get("azure_endpoint"),
+                api_version=cfg.get("api_version") or "2024-03-01-preview",
+            )
+            self.max_output_tokens = int(cfg.get("max_output_tokens", 4096))
+        else:
+            from openai import OpenAI
+
+            self.client = OpenAI(api_key=cfg.get("key"), base_url=cfg.get("openai_base_url"))
 
     def query(self, system_prompt, history, user_prompt):
+        if self.api_type == "responses":
+            return self._query_responses(system_prompt, history, user_prompt)
         messages = [
             {"role": "system", "content": system_prompt},
         ]
@@ -49,6 +64,51 @@ class LLM:
                 )
                 time.sleep(wait)
         raise RuntimeError(f"LLM call failed after {self._max_retries} retries") from last_exc
+
+    def _query_responses(self, system_prompt, history, user_prompt):
+        text = f"{history}\n\n{user_prompt}" if history else user_prompt
+        inp = [{"role": "user", "content": [{"type": "input_text", "text": text}]}]
+        last_exc = None
+        for attempt in range(self._max_retries):
+            try:
+                rsp = self.client.responses.create(
+                    model=self.model,
+                    input=inp,
+                    instructions=system_prompt or None,
+                    temperature=self.temperature,
+                    max_output_tokens=self.max_output_tokens,
+                    timeout=self._timeout,
+                )
+                return self._extract_responses_text(rsp)
+            except Exception as exc:
+                last_exc = exc
+                if not self._is_retryable(exc):
+                    raise
+                wait = self._backoff_seconds * (2 ** attempt)
+                logger.warning(
+                    "LLM responses call failed (attempt %d/%d): %s; retrying in %.1fs",
+                    attempt + 1,
+                    self._max_retries,
+                    exc,
+                    wait,
+                )
+                time.sleep(wait)
+        raise RuntimeError(f"LLM responses call failed after {self._max_retries} retries") from last_exc
+
+    @staticmethod
+    def _extract_responses_text(rsp):
+        # 优先用 SDK 的 output_text 便捷属性；没有就扫 output 里 message 项的文本。
+        txt = getattr(rsp, "output_text", None)
+        if txt:
+            return txt
+        for item in getattr(rsp, "output", []) or []:
+            if getattr(item, "type", None) != "message":
+                continue
+            for part in getattr(item, "content", []) or []:
+                t = getattr(part, "text", None)
+                if t:
+                    return t
+        raise RuntimeError(f"responses API returned no text: {rsp!r}")
 
     @property
     def _max_retries(self) -> int:

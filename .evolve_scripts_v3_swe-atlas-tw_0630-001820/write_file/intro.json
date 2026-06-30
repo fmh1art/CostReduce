@@ -1,0 +1,16 @@
+{
+    "name": "write_file",
+    "description": "Write or append content to a file atomically, creating parent directories automatically; reads from stdin for heredoc/pipe usage.",
+    "entrypoint": "main.sh",
+    "parameters": [
+        {"name": "filepath", "type": "string", "required": true, "description": "Path to write"},
+        {"name": "content", "type": "string", "required": false, "description": "Content to write, or - to read from stdin (supports heredoc and pipe)"},
+        {"name": "--append", "type": "bool", "required": false, "description": "Append to file instead of overwriting"},
+        {"name": "--quiet", "type": "bool", "required": false, "description": "Suppress confirmation message"}
+    ],
+    "examples": [{
+        "call": "/app/.preinstalled_scripts/write_file/main.sh /app/test/test.js - << 'EOF'\\nconst x = 1;\\nEOF",
+        "expected": "Written to /app/test/test.js"
+    }],
+    "cost_saving_rationale": "Replaces verbose cat/heredoc file creation with one short command; --quiet suppresses echo token cost; stdin mode replaces cat > file << 'EOF' heredoc patterns, saving steps per file write."
+}

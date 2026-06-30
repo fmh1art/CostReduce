@@ -1,0 +1,18 @@
+{
+  "name": "run-alembic",
+  "description": "Run alembic database migrations with config file, replacing cd + CONFIG= + venv/bin/alembic chains.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {"name": "command", "type": "string", "required": true, "description": "Alembic command and args (e.g., upgrade head, downgrade -1, current, history, revision)"},
+    {"name": "--cd", "type": "string", "required": false, "description": "Working directory (default: /app)"},
+    {"name": "--config", "type": "string", "required": false, "description": "Path to env config file with KEY=VALUE lines (sets CONFIG env var)"},
+    {"name": "--python", "type": "string", "required": false, "description": "Path to Python interpreter (default: auto-detect venv/bin/python)"},
+    {"name": "--alembic-cfg", "type": "string", "required": false, "description": "Path to alembic.ini file"},
+    {"name": "--head", "type": "int", "required": false, "description": "Show only first N lines of output (replaces | head -N chains)"},
+    {"name": "--tail", "type": "int", "required": false, "description": "Show only last N lines of output (replaces | tail -N chains)"}
+  ],
+  "examples": [
+    {"call": "/app/.preinstalled_scripts/run-alembic/main.sh --cd=/app --config=/tmp/test.env --head=50 upgrade head", "expected": "First 50 lines of alembic migration output"}
+  ],
+  "cost_saving_rationale": "Collapses cd + CONFIG=export + venv/bin/alembic into one step, saving 1-2 agent steps per migration; --head/--tail collapses | head -N/| tail -N chains reducing observation cost by 80-90% on verbose migration output."
+}

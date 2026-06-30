@@ -1,0 +1,140 @@
+{
+  "name": "run_tests",
+  "description": "Run tests with auto-detected framework, multiple test paths, --brief to strip noise, --stash to handle uncommitted changes, and --head/--tail to truncate output.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {
+      "name": "--dir=DIR",
+      "type": "string",
+      "required": false,
+      "description": "Working directory to cd into before running tests"
+    },
+    {
+      "name": "test_paths",
+      "type": "string",
+      "required": false,
+      "description": "One or more test files, directories, or dotted module paths (space-separated)"
+    },
+    {
+      "name": "--go",
+      "type": "string",
+      "required": false,
+      "description": "Force Go test on package"
+    },
+    {
+      "name": "--vitest",
+      "type": "string",
+      "required": false,
+      "description": "Force vitest on file"
+    },
+    {
+      "name": "--jest",
+      "type": "string",
+      "required": false,
+      "description": "Force jest on file"
+    },
+    {
+      "name": "--pytest",
+      "type": "string",
+      "required": false,
+      "description": "Force pytest on file"
+    },
+    {
+      "name": "--testtools",
+      "type": "bool",
+      "required": false,
+      "description": "Force Python testtools.run with dotted module paths"
+    },
+    {
+      "name": "--all",
+      "type": "bool",
+      "required": false,
+      "description": "Run all available test commands"
+    },
+    {
+      "name": "--grep=PATTERN",
+      "type": "string",
+      "required": false,
+      "description": "Filter tests by name"
+    },
+    {
+      "name": "--count=N",
+      "type": "int",
+      "required": false,
+      "description": "Test repetition (Go)"
+    },
+    {
+      "name": "--env=KEY=val",
+      "type": "string",
+      "required": false,
+      "description": "Set env var (repeatable)"
+    },
+    {
+      "name": "--no-coverage",
+      "type": "bool",
+      "required": false,
+      "description": "Disable coverage"
+    },
+    {
+      "name": "--tags=TAGS",
+      "type": "string",
+      "required": false,
+      "description": "Go build tags"
+    },
+    {
+      "name": "--timeout=SECONDS",
+      "type": "int",
+      "required": false,
+      "description": "Hard timeout via timeout command"
+    },
+    {
+      "name": "--verbose",
+      "type": "bool",
+      "required": false,
+      "description": "Verbose output"
+    },
+    {
+      "name": "--build-command=CMD",
+      "type": "string",
+      "required": false,
+      "description": "Run a build command before tests"
+    },
+    {
+      "name": "--brief",
+      "type": "bool",
+      "required": false,
+      "description": "Strip config/coverage noise, show only failures + summary; works for pytest and Go tests"
+    },
+    {
+      "name": "--head=N",
+      "type": "int",
+      "required": false,
+      "description": "Show only first N lines of output (truncates after N lines)"
+    },
+    {
+      "name": "--tail=N",
+      "type": "int",
+      "required": false,
+      "description": "Show only last N lines of output"
+    },
+    {
+      "name": "--stash",
+      "type": "bool",
+      "required": false,
+      "description": "Stash uncommitted changes before running tests and pop them after"
+    },
+    {
+      "name": "--exitfirst, -x",
+      "type": "bool",
+      "required": false,
+      "description": "Exit on first failure (pytest -x)"
+    }
+  ],
+  "examples": [
+    {
+      "call": "/app/.preinstalled_scripts/run_tests/main.sh --dir=/app --testtools tests.unit.core.test_manager tests.unit.core.test_util tests.functional.test_functional",
+      "expected": "Runs 3 testtools modules in one step, saving 2 steps vs sequential calls"
+    }
+  ],
+  "cost_saving_rationale": "Collapses cd+stash+test+pip+tail into 1 step per framework; --brief strips stdout/stderr/log noise saving observation tokens."
+}

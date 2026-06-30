@@ -13,6 +13,12 @@ cd "$ROOT_DIR/benchmark/SWE-Atlas"
 # 创建结果根目录，后续 qa/tw/rf 三个 split 会分别写入子目录。
 mkdir -p "$RESULTS_DIR"
 
+# SWE-Atlas 数据根目录，其下按 split（qa/tw/rf）分子目录。
+# 默认仓库内 benchmark/SWE-Atlas/data；V3 闭环（src/evolve/evolve_v3_cycle.py）
+# 会把 16 个 evolve case 软链到 <临时目录>/<split>/<case> 并把根目录赋给
+# SWE_ATLAS_DATA_DIR，从而只在 16 个 case 上跑一轮验证。未设置时沿用默认，行为不变。
+SWE_ATLAS_DATA_DIR="${SWE_ATLAS_DATA_DIR:-$ROOT_DIR/benchmark/SWE-Atlas/data}"
+
 # 生成传给 mini-swe-agent 容器/进程的 OpenAI-compatible 环境变量参数。
 mapfile -t AGENT_ENV < <(agent_env_args)
 
@@ -70,9 +76,16 @@ fi
 
 # 依次评测 SWE_ATLAS_SPLITS 指定的 split；默认只跑 qa，便于先做 1 个 case 的 smoke test。
 for split in ${SWE_ATLAS_SPLITS//,/ }; do
+  # responses 配置时用一份把 model.model_class 改成 litellm_response 的临时 mswea 配置，
+  # 让 mini-swe-agent 走 litellm.responses；否则原样使用该 split 的 mswea 配置。
+  MSWEA_CFG="$(mswea_responses_config_file "$ROOT_DIR/benchmark/SWE-Atlas/run_config/${split}/mswea_${split}_config.yaml")"
+  MSWEA_CFG_TMP=""
+  if [[ "$MSWEA_CFG" != "$ROOT_DIR/benchmark/SWE-Atlas/run_config/${split}/mswea_${split}_config.yaml" ]]; then
+    MSWEA_CFG_TMP="$MSWEA_CFG"
+  fi
   # 使用 Harbor 在当前 split 上运行 mini-swe-agent，并加载该 split 专用的 mswea 配置。
   "$UV_BIN" run --directory "$ROOT_DIR/tmp/harbor" harbor run \
-    -p "$ROOT_DIR/benchmark/SWE-Atlas/data/${split}" \
+    -p "${SWE_ATLAS_DATA_DIR}/${split}" \
     -a mini-swe-agent \
     -m "$MODEL" \
     -e "$HARBOR_ENV" \
@@ -82,7 +95,7 @@ for split in ${SWE_ATLAS_SPLITS//,/ }; do
     --n-tasks "$N_TASKS" \
     -o "$RESULTS_DIR/swe-atlas-${split}" \
     --job-name "$RUN_ID" \
-    --ak "config_file=$ROOT_DIR/benchmark/SWE-Atlas/run_config/${split}/mswea_${split}_config.yaml" \
+    --ak "config_file=${MSWEA_CFG}" \
     --yes \
     "${EVOLVE_MOUNTS_ARGS[@]}" \
     "${EVOLVE_PROMPT_ARGS[@]}" \
@@ -90,4 +103,6 @@ for split in ${SWE_ATLAS_SPLITS//,/ }; do
     "${AGENT_ENV[@]}" \
     "${PROXY_ENV[@]}" \
     "${VERIFIER_ENV[@]}"
+  # 清理本 split 生成的临时 responses mswea 配置。
+  [[ -n "${MSWEA_CFG_TMP}" && -f "${MSWEA_CFG_TMP}" ]] && rm -f "${MSWEA_CFG_TMP}"
 done

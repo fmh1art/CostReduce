@@ -1,0 +1,116 @@
+{
+  "name": "grep-search",
+  "description": "Search file contents with grep supporting single files or directories with auto-exclusion, repeatable --exclude-line/--exclude-path filters, definition-finding mode, and Perl regex (-P) for advanced patterns.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {
+      "name": "pattern",
+      "type": "string",
+      "required": false,
+      "description": "Search pattern (not needed with --defs/--classes/--functions)"
+    },
+    {
+      "name": "path",
+      "type": "string",
+      "required": false,
+      "description": "File or directory path to search (default: current dir)"
+    },
+    {
+      "name": "--include",
+      "type": "string",
+      "required": false,
+      "description": "Comma-separated file glob patterns (e.g., *.ts,*.tsx,*.js)"
+    },
+    {
+      "name": "--exclude",
+      "type": "string",
+      "required": false,
+      "description": "File glob pattern to exclude from results"
+    },
+    {
+      "name": "--head",
+      "type": "int",
+      "required": false,
+      "description": "Max result lines from top (default: 100)"
+    },
+    {
+      "name": "--tail",
+      "type": "int",
+      "required": false,
+      "description": "Show last N result lines instead of first N"
+    },
+    {
+      "name": "--context",
+      "type": "int",
+      "required": false,
+      "description": "Show N lines of context around matches"
+    },
+    {
+      "name": "--after-context|-A",
+      "type": "int",
+      "required": false,
+      "description": "Show N lines after each match (replaces grep -A)"
+    },
+    {
+      "name": "--before-context|-B",
+      "type": "int",
+      "required": false,
+      "description": "Show N lines before each match (replaces grep -B)"
+    },
+    {
+      "name": "--filter",
+      "type": "string",
+      "required": false,
+      "description": "Secondary case-insensitive grep pattern to filter results"
+    },
+    {
+      "name": "--exclude-line",
+      "type": "string",
+      "required": false,
+      "description": "Exclude lines matching this regex pattern (repeatable, replaces | grep -v chains)"
+    },
+    {
+      "name": "--exclude-path",
+      "type": "string",
+      "required": false,
+      "description": "Additional path regex pattern to exclude from results (repeatable)"
+    },
+    {
+      "name": "--name-only|-l",
+      "type": "bool",
+      "required": false,
+      "description": "Output only filenames matching the pattern (replaces find | xargs grep -l)"
+    },
+    {
+      "name": "--perl-regexp|-P",
+      "type": "bool",
+      "required": false,
+      "description": "Use Perl-compatible regex (grep -P) for lookaheads, \\d shortcuts, etc."
+    },
+    {
+      "name": "--defs",
+      "type": "bool",
+      "required": false,
+      "description": "Find function, class, struct, interface, trait, enum definitions (replaces grep -n ^def/^class)"
+    },
+    {
+      "name": "--classes",
+      "type": "bool",
+      "required": false,
+      "description": "Find only class/struct/interface/trait/enum definitions"
+    },
+    {
+      "name": "--functions",
+      "type": "bool",
+      "required": false,
+      "description": "Find only function/method definitions (def, func, function, fn)"
+    }
+  ],
+  "examples": [
+    {
+      "call": "/app/.preinstalled_scripts/grep-search/main.sh --perl-regexp 'name=\"csrf_token\"[^>]*value=\"([^\"]*)\"' /tmp/page.html --head=5",
+      "expected": "Up to 5 matches using Perl regex for HTML attribute extraction"
+    }
+  ],
+  "cost_saving_rationale": "Collapses grep -rn with multiple --include flags, repeatable grep -v pipes (--exclude-line), output limiting, definition searches, and find | xargs grep -l (--name-only) into one step; -P adds Perl regex for HTML extraction patterns that previously required separate grep -oP calls."
+}

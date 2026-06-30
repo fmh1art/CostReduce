@@ -1,0 +1,17 @@
+{
+  "name": "write-file",
+  "description": "Write a file with automatic parent directory creation, supporting append mode, backup before edit, or read+transform a source file with sed for config file edits.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {"name": "--append", "type": "bool", "required": false, "description": "Append to file instead of overwriting"},
+    {"name": "--backup", "type": "bool", "required": false, "description": "Create a .bak backup before overwriting an existing file"},
+    {"name": "--read", "type": "string", "required": false, "description": "Source file to read from instead of stdin/args"},
+    {"name": "--sed", "type": "string", "required": false, "description": "Sed expression to transform source file, e.g. s/old/new/g"},
+    {"name": "filepath", "type": "string", "required": true, "description": "Path to the file to write"},
+    {"name": "content", "type": "string", "required": false, "description": "File content (as arguments or piped stdin)"}
+  ],
+  "examples": [
+    {"call": "/app/.preinstalled_scripts/write-file/main.sh --backup --read=/app/config/app.env --sed='s/8080/9090/g' /app/config/app.env", "expected": "Backup created: /app/config/app.env.bak then Written N bytes to /app/config/app.env"}
+  ],
+  "cost_saving_rationale": "Combines mkdir -p, cp backup, and cat/sed write into one step; --read --sed collapses cp + sed -i into one step, saving N-1 agent steps per config file edit."
+}

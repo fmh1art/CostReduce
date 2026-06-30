@@ -1,0 +1,44 @@
+{
+  "name": "file_patch",
+  "description": "Modify files with structured actions: replace (with --stdin for multi-line heredoc), batch-replace --stdin (multiple old/new pairs in one read-write), multi-replace, insert-before/after, delete-matching, append, prepend, and replace-block, delete-lines START END for line-number deletions.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {
+      "name": "--dir=DIR",
+      "type": "string",
+      "required": false,
+      "description": "Working directory to cd into before patching"
+    },
+    {
+      "name": "file",
+      "type": "string",
+      "required": true,
+      "description": "Path to the file to modify"
+    },
+    {
+      "name": "action",
+      "type": "string",
+      "required": true,
+      "description": "replace, batch-replace --stdin, multi-replace, insert-before, insert-after, delete-matching, append, prepend, or replace-block"
+    },
+    {
+      "name": "args",
+      "type": "string",
+      "required": true,
+      "description": "Action-specific arguments; batch-replace --stdin reads multiple old/new pairs from stdin with --- and === delimiters"
+    },
+    {
+      "name": "delete-lines <start> <end>",
+      "type": "string",
+      "required": false,
+      "description": "Delete lines from start to end by line number (1-indexed, inclusive)"
+    }
+  ],
+  "examples": [
+    {
+      "call": "/app/.preinstalled_scripts/file_patch/main.sh --dir=/app evaluator/evaluator.go batch-replace --stdin << 'EOF'",
+      "expected": "Applies multiple replacements in one read-write cycle, saving N-1 steps vs sequential replace calls"
+    }
+  ],
+  "cost_saving_rationale": "Collapses N sequential read-edit-write cycles on the same file into 1 step; --dir eliminates separate cd step."
+}

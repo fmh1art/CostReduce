@@ -1,0 +1,23 @@
+{
+  "name": "find_files",
+  "description": "Find files by name pattern with filtering, sorting, depth, exclusion, and working directory options.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {"name": "--dir=DIR", "type": "string", "required": false, "description": "Working directory to search in (alternative to first positional arg)"},
+    {"name": "directory", "type": "string", "required": false, "description": "Search root directory (default: .)"},
+    {"name": "--name=PATTERN", "type": "string", "required": false, "description": "Name glob to match (repeatable)"},
+    {"name": "--type=TYPE", "type": "string", "required": false, "description": "f=file, d=dir"},
+    {"name": "--max-depth=N", "type": "int", "required": false, "description": "Max search depth"},
+    {"name": "--limit=N", "type": "int", "required": false, "description": "Max results (default 100)"},
+    {"name": "--path=PATTERN", "type": "string", "required": false, "description": "Path glob filter"},
+    {"name": "--exclude=PATTERN", "type": "string", "required": false, "description": "Exclude path pattern"},
+    {"name": "--case-insensitive", "type": "bool", "required": false, "description": "Case-insensitive matching"},
+    {"name": "--sort", "type": "bool", "required": false, "description": "Sort results alphabetically"},
+    {"name": "--no-exclude-defaults", "type": "bool", "required": false, "description": "Don't auto-exclude .git/node_modules"}
+  ],
+  "examples": [{
+    "call": "/app/.preinstalled_scripts/find_files/main.sh --dir=/app --name=*.go --name=*.py --max-depth=3 --sort",
+    "expected": "Lists Go and Python files in /app up to 3 levels deep, sorted"
+  }],
+  "cost_saving_rationale": "Collapses multiple find commands into one step, saving N-1 agent steps."
+}

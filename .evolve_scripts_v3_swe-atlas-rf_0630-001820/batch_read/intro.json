@@ -1,0 +1,32 @@
+{
+  "name": "batch_read",
+  "description": "Read multiple files or line ranges in one call, with head/tail, line numbers, line counts, directory listing, or show-nonprintable whitespace inspection.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {"name": "file", "type": "string", "required": false,
+     "description": "File path(s) to read"},
+    {"name": "--head=N", "type": "int", "required": false,
+     "description": "First N lines"},
+    {"name": "--tail=N", "type": "int", "required": false,
+     "description": "Last N lines"},
+    {"name": "--lines=range", "type": "string", "required": false,
+     "description": "Line range (start-end) or comma-separated ranges/numbers"},
+    {"name": "--number|-n", "type": "bool", "required": false,
+     "description": "Show line numbers"},
+    {"name": "--count|-c", "type": "bool", "required": false,
+     "description": "Count lines"},
+    {"name": "--show-nonprintable|-A", "type": "bool", "required": false,
+     "description": "Show non-printable characters like cat -A"},
+    {"name": "--dir=PATH", "type": "string", "required": false,
+     "description": "List files in directory"},
+    {"name": "--include=GLOB", "type": "string", "required": false,
+     "description": "File name glob filter for --dir mode"},
+    {"name": "--exclude=GLOB", "type": "string", "required": false,
+     "description": "Exclude path glob for --dir mode"},
+    {"name": "--type=f|d", "type": "string", "required": false,
+     "description": "File type filter for --dir mode: f (file) or d (directory)"}
+  ],
+  "examples": [{"call": "/app/.preinstalled_scripts/batch_read/main.sh --lines=10-20,30,40-50 --number file.go",
+                 "expected": "Lines 10-20, 30, and 40-50 of file.go with line numbers"}],
+  "cost_saving_rationale": "Replaces multi-step cat/nl/sed/cat-A/od-c patterns with a single call, saving 2+ steps per file read operation."
+}

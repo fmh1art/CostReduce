@@ -1,0 +1,56 @@
+{
+  "name": "code-read",
+  "description": "Find Python function/class definitions by name or regex and read their full body, collapsing grep-for-line-number + sed-range into one step.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {
+      "name": "--name",
+      "type": "string",
+      "required": false,
+      "description": "Function or class name to find (searches def/class definitions)"
+    },
+    {
+      "name": "--pattern",
+      "type": "string",
+      "required": false,
+      "description": "Custom regex pattern to match definition lines"
+    },
+    {
+      "name": "--cd",
+      "type": "string",
+      "required": false,
+      "description": "Change to directory before searching"
+    },
+    {
+      "name": "--head",
+      "type": "int",
+      "required": false,
+      "description": "Max output lines from top"
+    },
+    {
+      "name": "--tail",
+      "type": "int",
+      "required": false,
+      "description": "Show last N output lines instead of first N"
+    },
+    {
+      "name": "--context",
+      "type": "int",
+      "required": false,
+      "description": "Decorator/comment lines before definition to include"
+    },
+    {
+      "name": "files",
+      "type": "string",
+      "required": false,
+      "description": "One or more Python files to search (default: all *.py recursively)"
+    }
+  ],
+  "examples": [
+    {
+      "call": "/app/.preinstalled_scripts/code-read/main.sh --name=create_mailbox /app/app/mailbox_utils.py",
+      "expected": "Full body of create_mailbox() function from def line to next def/class"
+    }
+  ],
+  "cost_saving_rationale": "Collapses grep -n for definition + sed/batch-read for body range into one step, saving 1-2 agent steps per code exploration."
+}

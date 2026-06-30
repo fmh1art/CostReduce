@@ -1,0 +1,30 @@
+{
+  "name": "batch_find",
+  "description": "Find files by name pattern, path glob, type, with filtering, exclusion, and sorting.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {"name": "dir", "type": "string", "required": false,
+     "description": "Search root directory (default: .)"},
+    {"name": "--name=GLOB", "type": "string", "required": false,
+     "description": "Name glob pattern (repeatable, OR logic)"},
+    {"name": "--path=PATH_GLOB", "type": "string", "required": false,
+     "description": "Path glob filter"},
+    {"name": "--type=f|d", "type": "string", "required": false,
+     "description": "File type: f (file) or d (directory)"},
+    {"name": "--exclude=PATTERN", "type": "string", "required": false,
+     "description": "Exclude path pattern (repeatable)"},
+    {"name": "--exclude-dir=DIR", "type": "string", "required": false,
+     "description": "Exclude directory by name (repeatable, e.g. node_modules)"},
+    {"name": "--exclude-name=GLOB", "type": "string", "required": false,
+     "description": "Exclude file name glob (repeatable, e.g. *_test.go)"},
+    {"name": "--max-depth=N", "type": "int", "required": false,
+     "description": "Max search depth"},
+    {"name": "--limit=N", "type": "int", "required": false,
+     "description": "Max results"},
+    {"name": "--sort", "type": "bool", "required": false,
+     "description": "Sort results alphabetically"}
+  ],
+  "examples": [{"call": "/app/.preinstalled_scripts/batch_find/main.sh . --name=*.ts --name=*.tsx --exclude-dir=node_modules --exclude-name=*test* --sort",
+                 "expected": "Sorted list of .ts and .tsx files excluding node_modules and test files"}],
+  "cost_saving_rationale": "Replaces separate find commands, grep -v pipelines, and sort steps with one call, saving 3+ steps per file search."
+}

@@ -1,0 +1,44 @@
+{
+    "name": "batch_edit",
+    "description": "Edit files with Python-powered operations: replace, line range replace/delete/insert, pattern-based delete/insert, Python transform/script (inline or stdin), sed expressions, indent analysis, brace/paren/bracket balance check, and prepend/append.",
+    "entrypoint": "main.sh",
+    "parameters": [
+        {
+            "name": "action",
+            "type": "string",
+            "required": true,
+            "description": "replace, replace-lines, delete-lines, delete-pattern, insert, insert-at-line, insert-before, insert-after, fix-indent, show-indent, check-balance, append, prepend, multi-replace, transform, script, sed, or exec"
+        },
+        {
+            "name": "file",
+            "type": "string",
+            "required": true,
+            "description": "File to edit or analyze"
+        },
+        {
+            "name": "args",
+            "type": "string",
+            "required": false,
+            "description": "Action-specific arguments: old/new content, line numbers, patterns, Python expression, inline script code (or pipe code via stdin)"
+        }
+    ],
+    "examples": [
+        {
+            "call": "/app/.preinstalled_scripts/batch_edit/main.sh script /src/main.go \"content = content.replace('oldFunc', 'newFunc')\"",
+            "expected": "Applies inline Python script to transform file content"
+        },
+        {
+            "call": "/app/.preinstalled_scripts/batch_edit/main.sh show-indent /src/main.go 868 898",
+            "expected": "Shows tab/space indentation for lines 868-898"
+        },
+        {
+            "call": "/app/.preinstalled_scripts/batch_edit/main.sh delete-pattern /src/file.go \"ReactElement|ReactNode\"",
+            "expected": "Deleted 1 line(s) matching patterns in /src/file.go"
+        },
+        {
+            "call": "/app/.preinstalled_scripts/batch_edit/main.sh check-balance /src/file.tsx",
+            "expected": "Shows brace/paren/bracket balance for /src/file.tsx"
+        }
+    ],
+    "cost_saving_rationale": "Replaces multi-step heredoc+python3 file edit and analysis patterns with a single inline or stdin script call, saving 3+ steps per complex edit."
+}

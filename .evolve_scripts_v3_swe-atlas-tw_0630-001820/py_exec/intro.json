@@ -1,0 +1,78 @@
+{
+    "name": "py_exec",
+    "description": "Run Python or Node.js inline code or scripts with auto-venv activation, --cd, --venv, --pythonpath, and environment variables.",
+    "entrypoint": "main.sh",
+    "parameters": [
+        {
+            "name": "code|script",
+            "type": "string",
+            "required": true,
+            "description": "Inline code string or -f script path; -f - reads from stdin for heredoc/pipe"
+        },
+        {
+            "name": "-f",
+            "type": "string",
+            "required": false,
+            "description": "Run a script file with args; use - to read from stdin (heredoc/pipe)"
+        },
+        {
+            "name": "--cd=DIR",
+            "type": "string",
+            "required": false,
+            "description": "Change to DIR before executing"
+        },
+        {
+            "name": "--venv=PATH",
+            "type": "string",
+            "required": false,
+            "description": "Activate Python venv from PATH/bin/activate before executing"
+        },
+        {
+            "name": "--pythonpath=PATH",
+            "type": "string",
+            "required": false,
+            "description": "Set PYTHONPATH before executing (e.g., --pythonpath=/app for app module imports)"
+        },
+        {
+            "name": "--node",
+            "type": "bool",
+            "required": false,
+            "description": "Execute code with Node.js instead of Python"
+        },
+        {
+            "name": "--check",
+            "type": "string",
+            "required": false,
+            "description": "Syntax check file(s)"
+        },
+        {
+            "name": "--env",
+            "type": "string",
+            "required": false,
+            "description": "Set env var KEY=val (repeatable)"
+        },
+        {
+            "name": "--env-file=PATH",
+            "type": "string",
+            "required": false,
+            "description": "Load env vars from file (KEY=val lines)"
+        },
+        {
+            "name": "--save-env=PATH",
+            "type": "string",
+            "required": false,
+            "description": "Save --env vars to KEY=val file for reuse"
+        }
+    ],
+    "examples": [
+        {
+            "call": "/app/.preinstalled_scripts/py_exec/main.sh --cd=/app --venv=/app/venv --pythonpath=/app --env=DB_URI=postgresql://test:test@localhost:5432/test \"import psycopg2; print(psycopg2.connect())\"",
+            "expected": "Connects with venv-activated psycopg2 and PYTHONPATH set"
+        },
+        {
+            "call": "/app/.preinstalled_scripts/py_exec/main.sh --cd=/app --node \"console.log('hello world')\"",
+            "expected": "hello world"
+        }
+    ],
+    "cost_saving_rationale": "Replaces verbose cd+node -e or python3 -c pipelines with one short command; -f - reads heredoc scripts from stdin (replaces cat > /tmp/script.py + python3 /tmp/script.py two-step patterns), saving 2+ steps per inline script; --cd eliminates separate cd steps; --node eliminates separate node invocation steps; --venv=PATH replaces . venv/bin/activate + cd + python3 three-step patterns seen in samples, saving 2 steps per invocation; --pythonpath=PATH replaces --env=PYTHONPATH=... shortening commands and eliminating repetitive PYTHONPATH exports seen in samples; --env-file/--save-env avoid repeating long export chains, saving hundreds of token chars per repeated invocation."
+}

@@ -230,7 +230,7 @@ class MiniSweAgentRunner(AgentRunner):
         self.timeout = int(timeout)
 
     def run(self, prompt: str, prompt_path: Path, output_path: Path, cwd: Path) -> None:
-        env, model, temperature = self._load_llm_env()
+        env, model, temperature, model_class = self._load_llm_env()
         task = (
             f"Read the full evolution instruction from {prompt_path}. "
             "Then modify, add, or remove scripts (each with an intro.json) and update instruction.md in the current working directory as requested. "
@@ -240,7 +240,7 @@ class MiniSweAgentRunner(AgentRunner):
             "uv", "run", "--directory", str(self.mini_swe_agent_dir),
             "mini",
             "-m", model,
-            "--model-class", "litellm",
+            "--model-class", model_class,
             "--environment-class", "local",
             "-y", "--exit-immediately",
             "--cost-limit", "0",
@@ -293,18 +293,29 @@ class MiniSweAgentRunner(AgentRunner):
 
     def _load_llm_env(self):
         cfg = LLM._load_config(self.llm_config)
+        api_type = (cfg.get("api_type") or "chat").strip().lower()
+        try:
+            temperature = float(cfg.get("temperature", 0))
+        except (TypeError, ValueError):
+            temperature = None
+        name = cfg.get("llm_name") or cfg.get("model")
+        if api_type == "responses":
+            # 网关只暴露 Responses API：mini-swe-agent 走 litellm_response +
+            # litellm.responses(azure/...)，由 AZURE_API_BASE/API_VERSION/API_KEY 路由。
+            env = {
+                "AZURE_API_KEY": cfg.get("key", ""),
+                "AZURE_API_BASE": cfg.get("azure_endpoint", ""),
+                "AZURE_API_VERSION": cfg.get("api_version") or "2024-03-01-preview",
+                "MSWEA_COST_TRACKING": "ignore_errors",
+            }
+            return env, f"azure/{name}", temperature, "litellm_response"
         env = {
             "OPENAI_API_KEY": cfg.get("key", ""),
             "OPENAI_BASE_URL": cfg.get("openai_base_url", ""),
             "OPENAI_API_BASE": cfg.get("openai_base_url", ""),
             "MSWEA_COST_TRACKING": "ignore_errors",
         }
-        model = f"openai/{cfg.get('llm_name') or cfg.get('model')}"
-        try:
-            temperature = float(cfg.get("temperature", 0))
-        except (TypeError, ValueError):
-            temperature = None
-        return env, model, temperature
+        return env, f"openai/{name}", temperature, "litellm"
 
 
 # ---------------------------------------------------------------------------

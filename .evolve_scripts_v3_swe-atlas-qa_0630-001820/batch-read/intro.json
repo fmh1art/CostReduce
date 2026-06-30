@@ -1,0 +1,128 @@
+{
+  "name": "batch-read",
+  "description": "Read one or more files at once with file headers, supporting single or multiple line ranges, head/tail, offset+head (tail -n +N | head -M), line numbers/nl-mode, wc-like line counts, cd-to-dir, --try for auto-extension resolution, --grep for filtering content with context and invert, or all files in a directory via --dir with optional --name filter.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {
+      "name": "files",
+      "type": "string",
+      "required": true,
+      "description": "One or more file paths to read, or use --dir=DIR to read all files"
+    },
+    {
+      "name": "--cd",
+      "type": "string",
+      "required": false,
+      "description": "Change to directory before reading"
+    },
+    {
+      "name": "--lines",
+      "type": "string",
+      "required": false,
+      "description": "Line range(s) to read: single (10-30) or comma-separated (1-200,200-350,350-450) to read multiple chunks from the same file in one step, collapsing nl -ba | sed -n chains"
+    },
+    {
+      "name": "--head",
+      "type": "int",
+      "required": false,
+      "description": "Read first N lines"
+    },
+    {
+      "name": "--tail",
+      "type": "int",
+      "required": false,
+      "description": "Read last N lines"
+    },
+    {
+      "name": "--offset",
+      "type": "int",
+      "required": false,
+      "description": "Start reading from line N (combine with --head for tail -n +N | head -M)"
+    },
+    {
+      "name": "--number",
+      "type": "bool",
+      "required": false,
+      "description": "Show line numbers (also --nl)"
+    },
+    {
+      "name": "--nl",
+      "type": "bool",
+      "required": false,
+      "description": "Alias for --number, matches nl -ba output format"
+    },
+    {
+      "name": "--wc",
+      "type": "bool",
+      "required": false,
+      "description": "Show line count for each file (replaces wc -l) instead of file content"
+    },
+    {
+      "name": "--dir",
+      "type": "string",
+      "required": false,
+      "description": "Read all files recursively in this directory (auto-excludes node_modules, .git)"
+    },
+    {
+      "name": "--name",
+      "type": "string",
+      "required": false,
+      "description": "File name glob filter when using --dir (e.g., *.ts; repeatable)"
+    },
+    {
+      "name": "--try",
+      "type": "bool",
+      "required": false,
+      "description": "Try common extensions (.js,.ts,.jsx,.tsx,.json,.py,.php,.css,.scss,.yml,.yaml,.md,.txt) if exact file not found"
+    },
+    {
+      "name": "--grep",
+      "type": "string",
+      "required": false,
+      "description": "Grep pattern to filter file content (replaces cat | grep chains)"
+    },
+    {
+      "name": "--grep-context",
+      "type": "int",
+      "required": false,
+      "description": "Lines of context around each match (grep -C), overrides --grep-after/--grep-before"
+    },
+    {
+      "name": "--grep-after",
+      "type": "int",
+      "required": false,
+      "description": "Lines of context after each match (grep -A)"
+    },
+    {
+      "name": "--grep-before",
+      "type": "int",
+      "required": false,
+      "description": "Lines of context before each match (grep -B)"
+    },
+    {
+      "name": "--grep-invert",
+      "type": "bool",
+      "required": false,
+      "description": "Invert grep match (grep -v), show non-matching lines"
+    },
+    {
+      "name": "--max-depth",
+      "type": "int",
+      "required": false,
+      "description": "Max directory depth when using --dir (default: unlimited)"
+    },
+    {
+      "name": "--no-header",
+      "type": "bool",
+      "required": false,
+      "description": "Suppress file header (===== filename =====) in output"
+    }
+  ],
+  "examples": [
+    {
+      "call": "/app/.preinstalled_scripts/batch-read/main.sh --cd=/app --try client/blocks/like-button/index",
+      "expected": "Content of client/blocks/like-button/index.jsx with file header"
+    }
+  ],
+  "cost_saving_rationale": "Collapses cd, cat, sed, head, tail, find, sort, wc -l, and cat+grep chains into one step, saving N-1 agent steps per batch; multi-range --lines=1-200,200-350,350-450 collapses 3 nl -ba | sed -n calls into 1 step saving 2 agent steps; --dir --name collapses find+cat into one step; --try collapses cat ext || cat ext2 || find fallback chains; --grep collapses cat | grep -n -A/B into one step."
+}

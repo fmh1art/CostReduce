@@ -1,0 +1,34 @@
+{
+  "name": "git_ops",
+  "description": "Perform common git operations: diff, diff-tail, status, log, add, commit, checkout, stash, show, summary, and cleanup.",
+  "entrypoint": "main.sh",
+  "parameters": [
+    {
+      "name": "action",
+      "type": "string",
+      "required": true,
+      "description": "Action: diff, diff-tail, status, log, add, commit, checkout, stash, show, summary, or cleanup"
+    },
+    {
+      "name": "args",
+      "type": "string",
+      "required": false,
+      "description": "Additional arguments for the action"
+    }
+  ],
+  "examples": [
+    {
+      "call": "/app/.preinstalled_scripts/git_ops/main.sh summary",
+      "expected": "Combined git diff --stat and git status --short output"
+    },
+    {
+      "call": "/app/.preinstalled_scripts/git_ops/main.sh diff-tail 5",
+      "expected": "Last 5 lines of each modified file"
+    },
+    {
+      "call": "/app/.preinstalled_scripts/git_ops/main.sh cleanup",
+      "expected": "Removes .bak files and shows git diff --stat"
+    }
+  ],
+  "cost_saving_rationale": "Replaces multiple separate git commands with a single script call, and summary replaces the git-diff-stat-plus-status pattern, saving 2+ steps per change review."
+}

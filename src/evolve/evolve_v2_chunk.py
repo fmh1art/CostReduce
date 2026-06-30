@@ -164,18 +164,41 @@ class ChunkTrajectoryAnnotatorV2(ChunkTrajectoryAnnotator):
 
     @staticmethod
     def _annotate_step_meta(path) -> None:
-        """给每个 action step 写入 step_meta 字段。"""
+        """给每个 action step 写入 step_meta 字段。
+
+        V3 合并后，dependency 标注已经在同一次 LLM 调用里写入了
+        ``step_meta.op_type``（``op_type_source="llm"``）或因解析失败而留空。
+        这里用规则分类器补齐其余字段（success / idempotent / bash_verbs /
+        files_touched），并尊重 LLM 的 op_type：
+          - 若 op_type_source=="llm"，op_type / op_type_source 原样保留；
+          - 否则用规则 op_type 覆盖，标 ``op_type_source="rule_fallback"``。
+        """
         from ._chunk_helpers import classify_step_meta
         data = json.loads(Path(path).read_text(encoding="utf-8"))
+        n_llm = 0
         for step in data.get("steps", []):
-            if step.get("tool_calls") or "observation" in step or step.get("action"):
-                if "step_meta" not in step:
-                    step["step_meta"] = classify_step_meta(step)
+            if not (step.get("tool_calls") or "observation" in step or step.get("action")):
+                continue
+            meta = step.get("step_meta")
+            if not isinstance(meta, dict):
+                step["step_meta"] = classify_step_meta(step)
+                step["step_meta"]["op_type_source"] = "rule_fallback"
+                continue
+            rule = classify_step_meta(step)
+            if meta.get("op_type_source") == "llm":
+                n_llm += 1
+                # 保留 LLM op_type，只补齐规则字段
+                for k in ("success", "idempotent", "bash_verbs", "files_touched"):
+                    meta.setdefault(k, rule.get(k))
+            else:
+                # 无 LLM op_type（解析失败或旧文件）：用规则 op_type
+                meta.update(rule)
+                meta["op_type_source"] = "rule_fallback"
         Path(path).write_text(
             json.dumps(data, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
-        logger.info("annotated step_meta for %s", path)
+        logger.info("annotated step_meta for %s (llm op_type on %d step(s))", path, n_llm)
 
     @staticmethod
     def is_annotated(path) -> bool:
@@ -667,26 +690,21 @@ class ChunkEvolvePromptBuilderV2(ChunkEvolvePromptBuilder):
         "scripts = lower downstream prompt cost. When you remove a script, delete its directory.",
         "",
         "## instruction.md (BEHAVIOR CONTRACT, NOT TOOL CATALOG)",
-        "Maintain instruction.md as ≤ 10 behavior contracts for the downstream agent. "
+        "Maintain instruction.md as ≤ 20 behavior contracts for the downstream agent. "
         "Each contract ≤ 1 line. Write contracts based on the cost patterns you observe "
-        "in the samples below — do NOT just copy generic advice.",
-        "Good contracts name a specific stuck pattern and the action to take, e.g.:",
-        "  - \"After N steps without attempting a fix, STOP exploring and attempt a fix.\"",
-        "  - \"If you've made N edits without running tests, run tests now.\"",
-        "Do NOT write per-tool bullets like \"Use read-lines to ...\" — that's intro.json's job.",
-        "Do NOT write a hard step cap like \"max 60 steps\" — hard tasks legitimately need 100+ steps.",
+        "in the samples below — do NOT just copy generic advice. ",
+        "For example, a good contract can be: Perform multiple simple and clear operations in one step to save steps. ",
         "Instead, write STOP-PROGRESSING-IF rules that detect stuck behavior.",
         "",
         "## Cost model (for prioritizing your designs)",
         "Effect on real cost, largest to smallest:",
-        "  1. Fewer agent steps — each step costs cache write + output tokens.",
-        "  2. Shorter tool_call commands.",
-        "  3. Smaller observations — low priority.",
-        "A batching script that collapses N repeated calls into 1 step saves N-1 steps.",
-        "Do NOT optimize observation size if it costs you an extra step.",
+        "  1. Fewer agent steps — each step costs cache write + output tokens. ",
+        "  2. Shorter tool_call commands. ",
+        "  3. Smaller observations — low priority. ",
+        "A batching script that collapses N repeated calls into 1 step saves N-1 steps. ",
         "",
         "## Verification (REQUIRED after every script add/update)",
-        "1. Run `bash <script_dir>/main.sh <sample_args>` and confirm it exits 0.",
+        "1. Run `bash <script_dir>/main.sh <sample_args>` on testing source files and confirm it return the desired content. ",
         "2. Validate intro.json: `python -c \"import json; json.load(open('<script_dir>/intro.json'))\"`.",
         "3. Re-read the script — confirm it is GENERIC (no hardcoded file paths from "
         "the samples below).",
@@ -1065,7 +1083,7 @@ class MiniSweAgentRunnerV2(MiniSweAgentRunner):
     """
 
     def run(self, prompt: str, prompt_path: Path, output_path: Path, cwd: Path) -> None:
-        env, model, temperature = self._load_llm_env()
+        env, model, temperature, model_class = self._load_llm_env()
         task = (
             f"Read the full evolution instruction from {prompt_path}. "
             "Then modify, add, or remove scripts (each with an intro.json) and update "
@@ -1077,7 +1095,7 @@ class MiniSweAgentRunnerV2(MiniSweAgentRunner):
             "uv", "tool", "run", "--from", str(self.mini_swe_agent_dir),
             "mini",
             "-m", model,
-            "--model-class", "litellm",
+            "--model-class", model_class,
             "--environment-class", "local",
             "-y", "--exit-immediately",
             "--cost-limit", "0",

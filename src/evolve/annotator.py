@@ -25,18 +25,37 @@ class TrajectoryAnnotator:
     For each action step `i`, the LLM is asked to list every previous step
     index `j` that step `i` depends on. The result is written back into the
     trajectory file in-place. Here, "depends on" means that if the agent see all previous step j, it can generate the step i.
+
+    V3 merges a step-type (``op_type``) question into the *same* LLM call, so
+    both ``dependencies[i]`` and ``step_meta.op_type`` come from one query per
+    step — no extra round-trip. op_type is best-effort (falls back to the v2
+    rule classifier on parse failure); dependencies stay correctness-critical.
     """
 
     name = "annotate"
 
+    # op_type label set mirrors classify_op_type exactly (4 classes), so the
+    # contrastive/phase/anchor consumers downstream stay on the same vocabulary.
+    OP_TYPE_LABELS = ("read", "write", "verify", "explore")
+
     SYSTEM_PROMPT = (
-        "You annotate dependency relations between trajectory steps. "
+        "You annotate dependency relations AND the operation type of trajectory steps. "
         "Step 0 is the initial state before any action. For current step i, "
         "return every previous step index j that the action depends on: as long as the "
         "agent sees all previous step j, it can generate the step i. "
         "Step 0 (initial state) is almost always required — include 0 in the list "
         "unless step i truly needs no prior context. "
-        "Output only a JSON list of integers."
+        "ALSO classify step i's operation type into exactly one label:\n"
+        "  read    — inspecting/searching code/data WITHOUT modifying it "
+        "(grep, rg, find, cat, head, ls, sed WITHOUT -i, git status/log/diff/show).\n"
+        "  write   — creating/editing/deleting/moving files, or changing repo state "
+        "(sed -i, cat >, rm, mv, cp, apply patch, git checkout/commit/add/reset/apply).\n"
+        "  verify  — running tests/build/lint/type-check to validate a change "
+        "(pytest, make, go test/build, npm run, tsc, ruff, python -m pytest).\n"
+        "  explore — none of the above: exploratory shells, env inspection, retries, "
+        "setup, or anything ambiguous (pwd, env, echo, cd, which).\n"
+        'Output ONLY a JSON object: {"dependencies": [int, ...], "op_type": "label"}. '
+        "dependencies may be empty only if step i needs no prior context."
     )
 
     MAX_OBSERVATION_CHARS = 800
@@ -89,18 +108,22 @@ class TrajectoryAnnotator:
         step_inputs = self._build_step_inputs(action_steps)
 
         dependencies = {"0": []}
+        op_types: dict = {}
         if step_workers <= 1 or len(step_inputs) <= 1:
             for i, current_step_text, history in step_inputs:
-                _, deps = self._annotate_step(
+                _, deps, op_type = self._annotate_step(
                     path, i, len(action_steps), current_step_text, history, llm
                 )
                 dependencies[str(i)] = deps
+                op_types[str(i)] = op_type
         else:
-            dependencies.update(
-                self._annotate_steps_parallel(path, action_steps, step_inputs, step_workers)
-            )
+            par_deps, par_ops = self._annotate_steps_parallel(
+                path, action_steps, step_inputs, step_workers, llm=llm)
+            dependencies.update(par_deps)
+            op_types.update(par_ops)
 
         data["dependencies"] = dependencies
+        self._write_step_meta(action_steps, op_types)
         Path(path).write_text(
             json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
         )
@@ -210,14 +233,21 @@ class TrajectoryAnnotator:
         return deps
 
     def _annotate_step(self, path, i, total, current_step_text, history, llm):
+        """One LLM call producing both dependencies and op_type for step i.
+
+        Returns ``(i, deps, op_type)``. deps is correctness-critical and raises
+        ``DependencyParseError`` on parse failure (as before). op_type is
+        best-effort: ``None`` on parse failure, left for the v2 rule classifier
+        to fill (marked ``op_type_source="rule_fallback"`` there).
+        """
         logger.info("annotating %s step %d/%d", path, i, total)
         user_prompt = (
             f"Current step {i}:\n{current_step_text}\n\n"
-            f"Which previous steps does step {i} depend on? Output only a JSON list."
+            f"Return the JSON object with step {i}'s dependencies AND op_type."
         )
         raw = llm.query(self.SYSTEM_PROMPT, history, user_prompt)
         try:
-            deps = self._parse_dependency_list(raw, i - 1)
+            deps, op_type = self._parse_dependency_and_op_type(raw, i - 1)
         except DependencyParseError as exc:
             logger.error(
                 "failed to parse dependencies for %s step %d, raw=%r: %s",
@@ -227,13 +257,81 @@ class TrajectoryAnnotator:
                 exc,
             )
             raise
-        logger.info("annotated %s step %d dependencies=%s", path, i, deps)
-        return i, deps
+        logger.info("annotated %s step %d dependencies=%s op_type=%s", path, i, deps, op_type)
+        return i, deps, op_type
 
-    def _annotate_steps_parallel(self, path, action_steps, step_inputs, step_workers):
+    @classmethod
+    def _parse_dependency_and_op_type(cls, text, max_index):
+        """Parse a merged ``{"dependencies":[...], "op_type":"..."}`` response.
+
+        Tolerant of two LLM habits:
+        - Emits a JSON object as instructed → take its ``dependencies`` (fall
+          back to a bare list value) and ``op_type``.
+        - Ignores the object shape and emits just ``[int, ...]`` → parse it via
+          the legacy ``_parse_dependency_list`` and return op_type=None (rule
+          fallback downstream).
+
+        deps are validated strictly (raise DependencyParseError); op_type is
+        only accepted if it's one of the 4 known labels, else None.
+        """
+        text = text or ""
+        obj = None
+        obj_matches = re.findall(r"\{[\s\S]*\}", text)
+        if obj_matches:
+            try:
+                obj = json.loads(obj_matches[-1])
+            except json.JSONDecodeError:
+                obj = None
+        if isinstance(obj, dict):
+            dep_raw = obj.get("dependencies")
+            if dep_raw is None:
+                # object present but no "dependencies" key → maybe {"op_type":...} only
+                dep_raw = obj.get("deps")
+            if dep_raw is None:
+                # Model emitted an object but omitted dependencies entirely.
+                # Treat as "depends on nothing explicit" → just the initial
+                # state (step 0), which _parse_dependency_list would add anyway.
+                deps = [0] if max_index >= 0 else []
+            else:
+                deps = cls._parse_dependency_list(json.dumps(dep_raw), max_index)
+            op_raw = obj.get("op_type", obj.get("operation_type"))
+            op_type = op_raw.strip().lower() if isinstance(op_raw, str) else None
+            if op_type not in cls.OP_TYPE_LABELS:
+                op_type = None
+            return deps, op_type
+        # No JSON object — fall back to the legacy bare-list parser.
+        deps = cls._parse_dependency_list(text, max_index)
+        return deps, None
+
+    @staticmethod
+    def _write_step_meta(action_steps, op_types) -> None:
+        """Stamp LLM op_type into each action step's ``step_meta``.
+
+        Only writes when the LLM produced a label for that step (op_type is
+        non-None); steps without one are left for the v2 rule classifier, which
+        fills ``step_meta`` and marks ``op_type_source="rule_fallback"``.
+        Leaves any pre-existing ``step_meta`` fields untouched.
+        """
+        for i, step in enumerate(action_steps, start=1):
+            op_type = op_types.get(str(i))
+            if not op_type:
+                continue
+            meta = step.get("step_meta")
+            if not isinstance(meta, dict):
+                meta = {}
+                step["step_meta"] = meta
+            meta["op_type"] = op_type
+            meta["op_type_source"] = "llm"
+
+    def _annotate_steps_parallel(self, path, action_steps, step_inputs, step_workers, llm=None):
         thread_state = threading.local()
 
         def get_llm():
+            # Prefer an injected (shared) LLM — its query is stateless, so it's
+            # safe to share across worker threads. Fall back to a per-thread
+            # LLM only when none was injected.
+            if llm is not None:
+                return llm
             if not hasattr(thread_state, "llm"):
                 thread_state.llm = LLM(self.config_path)
             return thread_state.llm
@@ -244,6 +342,7 @@ class TrajectoryAnnotator:
             )
 
         step_results = {}
+        op_results = {}
         errors = []
         max_workers = min(step_workers, len(step_inputs))
         with ThreadPoolExecutor(max_workers=max_workers) as pool:
@@ -254,8 +353,9 @@ class TrajectoryAnnotator:
             for future in as_completed(futures):
                 i = futures[future]
                 try:
-                    _, deps = future.result()
+                    _, deps, op_type = future.result()
                     step_results[i] = deps
+                    op_results[i] = op_type
                 except Exception as exc:
                     errors.append((i, exc))
                     logger.exception("failed to annotate %s step %d: %s", path, i, exc)
@@ -264,7 +364,9 @@ class TrajectoryAnnotator:
             raise RuntimeError(
                 f"failed to annotate {path} step {first_step}"
             ) from first_error
-        return {str(i): step_results[i] for i in range(1, len(action_steps) + 1)}
+        deps = {str(i): step_results[i] for i in range(1, len(action_steps) + 1)}
+        ops = {str(i): op_results.get(i) for i in range(1, len(action_steps) + 1)}
+        return deps, ops
 
     def _run_batch(self, paths):
         pending = [p for p in paths if not self.is_annotated(p)]
