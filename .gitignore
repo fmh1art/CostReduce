@@ -6,6 +6,8 @@ results_*/
 _his/
 .evolve_skills/
 .evolve_tools_his/
+.evolve_scripts/
+.evolve_scripts_v3_*/
 
 # Temporary workspaces, caches, and generated runtime state
 tmp/

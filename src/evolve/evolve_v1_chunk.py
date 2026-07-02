@@ -19,7 +19,7 @@
         │
         ▼
     ┌───────────────────────────┐
-    │ 3. evolve_chunk           │  batch = 2 chunks / prompt
+    │ 3. evolve_chunk           │  batch = N cases / prompt
     │   (mini-swe-agent)        │  prompt 区分两类 sample
     └───────────────────────────┘
 
@@ -31,7 +31,7 @@
   造成 token 爆炸 / Lost in the Middle。每 chunk 生成两类 sample：
     - graph contrastive：chunk vs. mini chunk（依赖图裁剪）
     - observation contrastive：full observation + 后续 step vs. brief observation
-* evolve 一个 batch 给 2 个 chunk 的所有 sample，prompt 明确：
+* evolve 一个 batch 给 ``--batch-size`` 个 case（trajectory）的全部 sample，prompt 明确：
     - scripts 要通用，不要 case-specific patch
     - 不需要每个 sample 都处理（已解决或无法解决可跳过）
 
@@ -702,12 +702,12 @@ class ChunkEvolvePromptBuilder(EvolvePromptBuilder):
 
 
 class ChunkScriptEvolver(ScriptEvolver):
-    """按 chunk 批处理：``--batch-size`` 表示每个 batch 含多少个 chunk。
+    """按 case 批处理：``--batch-size`` = 每个 prompt 含几个 case（trajectory）。
 
     与父类的区别：
     * intro.json 必填字段去掉 ``when_to_use`` 和 ``examples``（参见 ChunkEvolvePromptBuilder）。
-    * ``_batched`` 改为 round-robin 跨 trajectory 取 chunk，保证一个 batch 内的
-      chunk 来自不同 case，进化出的 script 更通用。
+    * ``_batched`` 按 case 分组 —— 每个 batch 含 ``batch_size`` 个 case 的全部
+      sample（跨所有 chunk），而非按 chunk 切。
     """
 
     name = "evolve_chunk"
@@ -735,37 +735,25 @@ class ChunkScriptEvolver(ScriptEvolver):
         return stem == task or stem.startswith(f"{task}__") or task in stem.split("__")
 
     def _batched(self, items: List[Path], batch_size: int):
-        """Round-robin 跨 trajectory 分 batch，保证 batch 内 chunk 来自不同 case。
+        """按 case（trajectory）分 batch：``batch_size`` = 每个 prompt 含几个 case。
 
-        具体做法：把所有 chunk 按 trajectory 分桶，每桶按 chunk_id 排序后，
-        依次从每个桶弹出队首，拼成一个跨 case 的 chunk 队列。
-        然后按 ``batch_size`` 切片。这样在 ``batch_size <= 桶数`` 时，
-        每个 batch 内的 chunk 全部来自不同 trajectory。
+        把所有 sample 按所属 trajectory 分组（保留首次出现顺序），再按
+        ``batch_size`` 个 case 切片。每个 batch 含这 N 个 case 的**全部**
+        sample（跨所有 chunk）。``--batch-size`` 因此统一表示「每 prompt 的
+        case 数」，而非 chunk 数。
         """
-        chunk_groups: Dict[Tuple[str, int], List[Path]] = {}
+        by_traj: Dict[str, List[Path]] = {}
         for p in items:
-            key = ChunkEvolvePromptBuilder._chunk_key(p)
-            chunk_groups.setdefault(key, []).append(p)
+            traj = ChunkEvolvePromptBuilder._chunk_key(p)[0]
+            by_traj.setdefault(traj, []).append(p)
 
-        by_traj: Dict[str, List[Tuple[str, int]]] = {}
-        for key in chunk_groups:
-            by_traj.setdefault(key[0], []).append(key)
-        for traj in by_traj:
-            by_traj[traj].sort(key=lambda k: k[1])
-
-        trajectories = sorted(by_traj.keys())
-        chunk_queue: List[Tuple[str, int]] = []
-        while any(by_traj.values()):
-            for traj in trajectories:
-                if by_traj[traj]:
-                    chunk_queue.append(by_traj[traj].pop(0))
-
-        for i in range(0, len(chunk_queue), batch_size):
-            batch_keys = chunk_queue[i : i + batch_size]
+        trajectories = list(by_traj.keys())  # 已按 find_samples 排序后的首次出现顺序
+        for i in range(0, len(trajectories), batch_size):
             batch: List[Path] = []
-            for k in batch_keys:
-                batch.extend(chunk_groups[k])
-            yield batch
+            for traj in trajectories[i : i + batch_size]:
+                batch.extend(by_traj[traj])
+            if batch:
+                yield batch
 
 
 # ============================================================================

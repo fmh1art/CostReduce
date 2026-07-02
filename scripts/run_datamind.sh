@@ -4,8 +4,26 @@ set -euo pipefail
 # 加载公共变量和函数，用于读取 LLM 配置、结果目录和并发参数。
 source "$(dirname "$0")/_bench_common.sh"
 
-# 从 _config/deepseekv4_flash.yaml 解析模型名、API key、base URL 和温度。
+# 从 _config/*.yaml 解析被测模型名、API key、base URL 和温度。
 load_llm_config
+
+# LLM-as-judge 独立配置（默认 deepseek-v4-flash，与其它 benchmark 的 verifier 统一）。
+# longds.py 的 judge 用 OpenAI client 直调 JUDGE_API_KEY/JUDGE_BASE_URL + --judge-model；
+# load_llm_config 会把 JUDGE_* 设成被测 LLM 的值，这里用 JUDGE_CONFIG 覆盖成独立的 flash。
+JUDGE_CONFIG="${JUDGE_CONFIG:-$ROOT_DIR/_config/deepseekv4_flash.yaml}"
+eval "$(python - "$JUDGE_CONFIG" <<'PY'
+from pathlib import Path
+import shlex, sys
+data = {}
+for line in Path(sys.argv[1]).read_text().splitlines():
+    if ':' in line and not line.startswith(' '):
+        k, v = line.split(':', 1)
+        data[k.strip()] = v.strip().strip("\"'")
+print(f'export JUDGE_API_KEY={shlex.quote(data["key"])}')
+print(f'export JUDGE_BASE_URL={shlex.quote(data["openai_base_url"])}')
+print(f'export JUDGE_MODEL={shlex.quote(data["llm_name"])}')
+PY
+)"
 
 # 切换到 DataMind/LongDS 的 DSGym 目录，确保 examples/longds.py 能找到本地包和数据路径。
 cd "$ROOT_DIR/benchmark/DataMind/longds/DSGym"
@@ -52,6 +70,15 @@ if [[ -n "${EVOLVE_TOOLS_BLOCK_FILE}" ]]; then
   trap 'rm -f "${EVOLVE_TOOLS_BLOCK_FILE}"' EXIT
 fi
 
+# 可选：DATAMIND_DATASET_PATH 指向自定义 dataset 根目录（含 task_list.json + domain 目录）。
+# prep 阶段会把采样的 N 个 case 写成临时 task_list.json 并软链 domain 目录到这里；
+# 未设置时沿用 longds.py 默认（DSGym/data/task/longds）。
+DATAMIND_DATASET_PATH="${DATAMIND_DATASET_PATH:-}"
+DATASET_PATH_ARGS=()
+if [[ -n "${DATAMIND_DATASET_PATH}" ]]; then
+  DATASET_PATH_ARGS=(--dataset-path "${DATAMIND_DATASET_PATH}")
+fi
+
 # 使用 DSGym 的 LongDS 入口运行 DataMind/LongDS 评测，并调用 deepseek-v4-flash API。
 "$UV_BIN" run python examples/longds.py \
   --dataset longds \
@@ -60,8 +87,9 @@ fi
   --output-dir "$RESULTS_DIR/datamind-longds/$RUN_ID" \
   --temperature "$TEMPERATURE" \
   --task-limit "$N_TASKS" \
-  --judge-model "${JUDGE_MODEL:-deepseek-v4-pro}" \
+  --judge-model "${JUDGE_MODEL:-deepseek-v4-flash}" \
   "${EVOLVE_SCRIPTS_ARGS[@]}" \
   "${EVOLVE_INSTRUCTIONS_ARGS[@]}" \
   "${EVOLVE_TOOLS_BLOCK_ARGS[@]}" \
+  "${DATASET_PATH_ARGS[@]}" \
   "${SKIP_ARGS[@]}"

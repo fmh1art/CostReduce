@@ -25,9 +25,14 @@ mapfile -t AGENT_ENV < <(agent_env_args)
 # 生成传给 Harbor agent setup/运行阶段的代理环境变量参数，帮助容器内 apt/curl/pip 访问外网。
 mapfile -t PROXY_ENV < <(proxy_env_args)
 
-# SWE-Atlas verifier(evaluator) 改用 _config/deepseekv4_pro.yaml 作为 LLM judge。
-# 解析该 yaml 的 llm_name / key / openai_base_url 覆盖默认 VERIFIER_* 配置。
-eval "$(python - "$ROOT_DIR/_config/deepseekv4_pro.yaml" <<'PY'
+# SWE-Atlas verifier(evaluator) 的 LLM judge 配置：默认 deepseekv4_pro（chat），
+# 可用 VERIFIER_CONFIG 覆盖（如 _config/gpt53_codex.yaml，走 responses）。
+# 解析该 yaml 的 api_type：
+#   - responses：导出 EVAL_API_TYPE=responses + AZURE_API_KEY/BASE/VERSION，
+#     evaluate_tests.py 据此用 AzureOpenAI + responses.create 路由到 aidp 网关。
+#   - chat（默认）：导出 VERIFIER_API_KEY/BASE_URL/MODEL（= EVAL_*），维持原行为。
+VERIFIER_CONFIG="${VERIFIER_CONFIG:-$ROOT_DIR/_config/deepseekv4_flash.yaml}"
+eval "$(python - "$VERIFIER_CONFIG" <<'PY'
 from pathlib import Path
 import shlex
 import sys
@@ -38,11 +43,20 @@ for line in Path(sys.argv[1]).read_text().splitlines():
         key, value = line.split(':', 1)
         data[key.strip()] = value.strip().strip('"\'')
 
-for key, value in {
-    'VERIFIER_API_KEY': data['key'],
-    'VERIFIER_BASE_URL': data['openai_base_url'],
-    'VERIFIER_MODEL': data['llm_name'],
-}.items():
+api_type = data.get('api_type', '').strip().lower()
+exports = {'VERIFIER_API_KEY': data['key'], 'VERIFIER_MODEL': data['llm_name']}
+if api_type == 'responses':
+    exports.update({
+        'VERIFIER_BASE_URL': data['azure_endpoint'],
+        'EVAL_API_TYPE': 'responses',
+        'AZURE_API_KEY': data['key'],
+        'AZURE_API_BASE': data['azure_endpoint'],
+        'AZURE_API_VERSION': data.get('api_version', '2024-03-01-preview'),
+        'EVAL_API_VERSION': data.get('api_version', '2024-03-01-preview'),
+    })
+else:
+    exports['VERIFIER_BASE_URL'] = data['openai_base_url']
+for key, value in exports.items():
     print(f'export {key}={shlex.quote(value)}')
 PY
 )"

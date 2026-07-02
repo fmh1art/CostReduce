@@ -723,11 +723,17 @@ class ChunkEvolvePromptBuilderV2(ChunkEvolvePromptBuilder):
         serializer: Optional[TrajectorySerializer] = None,
         downstream_stats: Optional[Dict[str, dict]] = None,
         scripts_target_root: str = "/app/.preinstalled_scripts",
+        feedback: Optional[dict] = None,
     ):
         super().__init__(serializer=serializer)
         # downstream_stats: {script_name: {calls, failures, saved_yuan, notes}}
         self.downstream_stats = downstream_stats or {}
         self.scripts_target_root = scripts_target_root.rstrip("/") or "/"
+        # feedback: v3 闭环传入的"失败原因 + 修改计划"（来自 T0/T1 的 LLM diagnose），
+        # 让 evolve agent 在设计脚本时兼顾已知失败模式。形如
+        # {"phase": "t0"|"t1", "error_reason": str, "fix_plan": [str],
+        #  "scripts_to_fix": [str], "instruction_md_plan": [str]}。None 时不渲染。
+        self.feedback = feedback or None
 
     # 缓存 task info（trajectory_path → dict），避免同一 trajectory 被多次解析
     _task_info_cache: Dict[str, dict] = {}
@@ -932,6 +938,9 @@ class ChunkEvolvePromptBuilderV2(ChunkEvolvePromptBuilder):
         # 闭环反馈：下游使用统计
         if self.downstream_stats:
             parts += self._downstream_stats_block()
+        # 闭环反馈：T0/T1 失败原因 + 修改计划（v3 传入）
+        if self.feedback:
+            parts += self._feedback_block()
 
         # graph + observation contrastive（与 v1-chunk 一致）
         # 同一 trajectory 的 task info 只在第一个 chunk 渲染时输出一次
@@ -1060,6 +1069,60 @@ class ChunkEvolvePromptBuilderV2(ChunkEvolvePromptBuilder):
             )
             if notes:
                 lines.append(f"  notes: {notes}")
+        return lines
+
+    def _feedback_block(self) -> List[str]:
+        """v3 闭环反馈：把 T0/T1 的失败原因 + 修改计划展示给 evolve agent。
+
+        ``self.feedback`` 形如::
+
+            {"phase": "t0"|"t1", "error_reason": str, "fix_plan": [str],
+             "scripts_to_fix": [str], "instruction_md_plan": [str]}
+
+        - phase="t0"：基线（无脚本）的失败模式，forward-looking —— 引导 agent
+          设计能解决这些失败模式的脚本/契约（``scripts_to_fix`` 是*提议*，不是
+          已存在的脚本名）。
+        - phase="t1"：装上 evolve 脚本后出现的回归，regression —— 引导 agent 修
+          复已存在的脚本/契约。
+        """
+        fb = self.feedback or {}
+        phase = fb.get("phase") or "t1"
+        reason = fb.get("error_reason") or ""
+        plan = fb.get("fix_plan") or []
+        to_fix = fb.get("scripts_to_fix") or []
+        instr_plan = fb.get("instruction_md_plan") or []
+
+        if phase == "t0":
+            lines = [
+                "\n# Prior failure analysis (baseline, BEFORE any evolve scripts)",
+                "The trajectories above come from a baseline agent that had NO helper "
+                "scripts. A separate LLM pass diagnosed WHY it failed some tasks and "
+                "proposed scripts / instruction.md contracts that would help. Use this "
+                "as a design hint when evolving scripts below — favor scripts/contracts "
+                "that address these failure modes.",
+            ]
+        else:
+            lines = [
+                "\n# Prior failure analysis (with a PREVIOUS evolve-scripts version)",
+                "A previous version of the evolve scripts in this directory caused tasks "
+                "to FAIL. A separate LLM pass diagnosed the root cause. Use this when "
+                "evolving scripts below — fix the named scripts/contracts rather than "
+                "re-introducing the same failure.",
+            ]
+
+        lines.append(f"\n## Error reason\n{reason or '(none)'}")
+        if plan:
+            lines.append("\n## Fix / design plan")
+            for i, step in enumerate(plan, start=1):
+                lines.append(f"{i}. {step}")
+        if to_fix:
+            label = "Scripts to create/extend" if phase == "t0" else "Scripts to fix"
+            lines.append(f"\n## {label}")
+            lines.append(", ".join(f"`{s}`" for s in to_fix))
+        if instr_plan:
+            lines.append("\n## instruction.md (behavior contract) changes")
+            for i, step in enumerate(instr_plan, start=1):
+                lines.append(f"{i}. {step}")
         return lines
 
 
@@ -1277,11 +1340,13 @@ class ChunkScriptEvolverV2(ChunkScriptEvolver):
         if not isinstance(stats, dict):
             logger.warning("stats_provider returned non-dict: %r", type(stats))
             return
-        # 复用旧 serializer，只换 downstream_stats
+        # 复用旧 serializer，只换 downstream_stats（保留 feedback，避免被重建清掉）
         old_serializer = getattr(self.prompt_builder, "serializer", None) or TrajectorySerializer()
+        old_feedback = getattr(self.prompt_builder, "feedback", None)
         self.prompt_builder = ChunkEvolvePromptBuilderV2(
             serializer=old_serializer,
             downstream_stats=stats,
+            feedback=old_feedback,
         )
         logger.info("refreshed downstream_stats: %d scripts", len(stats))
 
@@ -1327,6 +1392,7 @@ def make_v2_evolver(
     dry_run: bool = False,
     resume: bool = True,
     stats_provider=None,
+    feedback: Optional[dict] = None,
 ) -> ChunkScriptEvolverV2:
     return ChunkScriptEvolverV2(
         scripts_dir=scripts_dir,
@@ -1337,6 +1403,7 @@ def make_v2_evolver(
         ),
         prompt_builder=ChunkEvolvePromptBuilderV2(
             serializer=TrajectorySerializer(max_observation_chars=max_observation_chars),
+            feedback=feedback,
         ),
         batch_size=batch_size,
         output_dir=Path(output_dir).resolve() if output_dir else None,

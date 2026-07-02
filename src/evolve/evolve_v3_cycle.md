@@ -9,26 +9,17 @@
   - Evaluate($T_0$)=Success 且 Evaluate($T_1$)=Fail，判断错误原因，列出scripts修改计划，将错误原因和修改计划给到下游code agent，去修改scripts
 
 
-# 修改1
+# 已迭代修改
 
-我已经在所有benchmark上跑了上述实验，得到文件夹如下：
+我发现目前的框架很慢，可以按照下面要求对其优化：
 
-.evolve_scripts_v3_deep-swe_0630-001820
-.evolve_scripts_v3_swe-atlas-qa_0630-001820
-.evolve_scripts_v3_swe-atlas-rf_0630-001820
-.evolve_scripts_v3_swe-atlas-tw_0630-001820
+- 不迭代进行验证。按照当前V3框架，先对 T_0 进行标注。
+- If Evaluate($T_0$)=Fail，判断错误原因，列出scripts和instruction.md的修改计划，记录错误原因和修改计划
+- 基于contrastive samples和上述错误原因和修改计划，根据现在的evolve框架进行进化。
+- 将进化得到的scripts安装到code agent，在之前evolve的cases上跑一遍，得到 T_1。
+- If Evaluate($T_1$)=Fail，判断错误原因，列出scripts和instruction.md的修改计划，记录错误原因和修改计划
+- 计算 $T_0$vs $T_1$的指标，例如实际的API cost，step数，最大的observation token，observation token avg step。基于上述信息和之前记录的错误原因和修改计划prompt 大模型问当前是否达到了降成本的预期，如果没有，让他修改instruction.md（通用的指令）和scrips
 
-results/deep-swe
-results/swe-atlas-qa
-results/swe-atlas-rf
-results/swe-atlas-tw
-results/v3_cycle
+# 修改
 
-但是，我发现目前的框架很慢，可以按照下面要求对其优化：
-
-- 不迭代进行验证。按照当前V3框架，先对 T_0 进行标注。然后根据现在的evolve框架进行进化。
-- 将进化得到的scripts安装到code agent，在之前evolve的cases上跑一遍，得到 T_1。计算 $T_0$vs $T_1$的指标，例如实际的API cost，step数，最大的observation token，observation token avg step。prompt 大模型问当前是否达到了降成本的预期，如果没有，让他修改instruction.md和scrips
-
-
-- 当使用evolve scripts $S_0$ 安装到code agent，去得到新的trajectory的时候（使用了进化得到的scripts），我们不需要对他进行标注。因为后续使用这个标注的部分仅仅包括：（1）根据$T_1$和$T^{*}_1$，重新走V2的更新流程，更新scripts。但其实计算 $T^{*}_1$ 并对比 $T_1$ 其实不是非常有必要。我们只需要对比 trajectory$T_0$ 和 trajectory$T_1$ 就足够了。但是，直接将 T_0 和 T_1序列化到prompt中太长了，可以让LLM将两个trajectory进行对齐。
-
+我觉得现在这种方案还不如v2的框架。请将当前v3_cycle方案保留，实现一个v3_chunk的方案，和v2_chunk的区别就在于annotate step type改为用LLM标注

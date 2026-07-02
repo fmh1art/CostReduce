@@ -1,10 +1,3 @@
 llm_name: kimi-k2.6
 key: sk-t7iwfuuGv42FbRhkOaSLjczH8VN9BpnhD62qHpcstzdDNS5r
 openai_base_url: https://api.moonshot.cn/v1
-temperature: 1.0
-top_p: 0.95
-
-price_dollar_per_token:
-  input_token: 0.000004
-  output_token: 0.000021
-  cached_token: 0.0000007

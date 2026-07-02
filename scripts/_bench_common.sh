@@ -10,9 +10,27 @@ N_TASKS="${N_TASKS:-1000}"
 SWE_ATLAS_SPLITS="${SWE_ATLAS_SPLITS:-qa}"
 HARBOR_AGENT_SETUP_TIMEOUT_MULTIPLIER="${HARBOR_AGENT_SETUP_TIMEOUT_MULTIPLIER:-4}"
 PROXY_URL="${PROXY_URL:-http://sys-proxy-rd-relay.byted.org:8118}"
-VERIFIER_API_KEY="${VERIFIER_API_KEY:-sk-BzMx97xHrUYmbBLBcotVpNXsIY2rbw74pD6Xv4mmsISQwcTz}"
-VERIFIER_BASE_URL="${VERIFIER_BASE_URL:-https://api.whatai.cc/v1}"
-VERIFIER_MODEL="${VERIFIER_MODEL:-claude-opus-4-5-20251101}"
+# verifier / LLM judge 统一用 deepseek-v4-flash（与 swe-atlas 的 VERIFIER_CONFIG 一致）。
+# 默认从 _config/deepseekv4_flash.yaml 派生 VERIFIER_API_KEY/BASE_URL/MODEL；各 run 脚本
+# 可用 VERIFIER_CONFIG 覆盖（如 responses 路由的 gpt53_codex.yaml）。swe-atlas 在自身脚本
+# 里重复解析 VERIFIER_CONFIG 并会覆盖此处默认值；这里仅作 fallback 与非 swe-atlas 入口用。
+VERIFIER_CONFIG="${VERIFIER_CONFIG:-${ROOT_DIR}/_config/deepseekv4_flash.yaml}"
+if [[ -z "${VERIFIER_API_KEY:-}${VERIFIER_BASE_URL:-}${VERIFIER_MODEL:-}" ]]; then
+  eval "$(python - "$VERIFIER_CONFIG" <<'PY'
+from pathlib import Path
+import shlex, sys
+data = {}
+for line in Path(sys.argv[1]).read_text().splitlines():
+    if ':' in line and not line.startswith(' '):
+        k, v = line.split(':', 1)
+        data[k.strip()] = v.strip().strip("\"'")
+for k, vk in [('VERIFIER_API_KEY','key'), ('VERIFIER_MODEL','llm_name'),
+              ('VERIFIER_BASE_URL','openai_base_url')]:
+    if vk in data:
+        print(f'export {k}={shlex.quote(data[vk])}')
+PY
+)"
+fi
 HARBOR_ENV="${HARBOR_ENV:-docker}"
 UV_BIN="${UV_BIN:-uv}"
 
@@ -152,17 +170,30 @@ proxy_env_args() {
 }
 
 verifier_env_args() {
-  # 将 SWE-Atlas LLM verifier 的 OpenAI-compatible 配置转换成 Harbor 的 --ve 参数列表。
-  printf '%s\n' \
-    --ve "EVAL_API_KEY=${VERIFIER_API_KEY}" \
-    --ve "EVAL_BASE_URL=${VERIFIER_BASE_URL}" \
-    --ve "EVAL_MODEL=${VERIFIER_MODEL}" \
-    --ve "HTTP_PROXY=${PROXY_URL}" \
-    --ve "HTTPS_PROXY=${PROXY_URL}" \
-    --ve "http_proxy=${PROXY_URL}" \
-    --ve "https_proxy=${PROXY_URL}" \
-    --ve "NO_PROXY=localhost,127.0.0.1,::1" \
+  # 将 SWE-Atlas LLM verifier 的配置转换成 Harbor 的 --ve 参数列表。
+  # EVAL_API_TYPE=responses（aidp 网关）时追加 AZURE_*，让 evaluate_tests.py 用
+  # AzureOpenAI + responses.create 路由到网关 Responses API；chat 路径维持原样。
+  local args=(
+    --ve "EVAL_API_KEY=${VERIFIER_API_KEY}"
+    --ve "EVAL_BASE_URL=${VERIFIER_BASE_URL}"
+    --ve "EVAL_MODEL=${VERIFIER_MODEL}"
+    --ve "HTTP_PROXY=${PROXY_URL}"
+    --ve "HTTPS_PROXY=${PROXY_URL}"
+    --ve "http_proxy=${PROXY_URL}"
+    --ve "https_proxy=${PROXY_URL}"
+    --ve "NO_PROXY=localhost,127.0.0.1,::1"
     --ve "no_proxy=localhost,127.0.0.1,::1"
+  )
+  if [[ -n "${EVAL_API_TYPE:-}" ]]; then
+    args+=(
+      --ve "EVAL_API_TYPE=${EVAL_API_TYPE}"
+      --ve "AZURE_API_KEY=${AZURE_API_KEY:-}"
+      --ve "AZURE_API_BASE=${AZURE_API_BASE:-}"
+      --ve "AZURE_API_VERSION=${AZURE_API_VERSION:-}"
+      --ve "EVAL_API_VERSION=${EVAL_API_VERSION:-}"
+    )
+  fi
+  printf '%s\n' "${args[@]}"
 }
 
 evolve_scripts_mounts_json() {

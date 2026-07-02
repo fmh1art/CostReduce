@@ -218,7 +218,10 @@ def _add_annotate(parser):
 def _add_evolve(parser):
     parser.add_argument("--scripts-dir", default=str(DEFAULT_SCRIPTS_DIR))
     parser.add_argument("--mini-swe-agent-dir", default=str(DEFAULT_MINI_SWE_AGENT))
-    parser.add_argument("--batch-size", type=int, default=5)
+    parser.add_argument(
+        "--batch-size", type=int, default=5,
+        help="每 prompt 含几个 case（trajectory）；v3 闭环另语义。default: %(default)s",
+    )
     parser.add_argument("--max-observation-chars", type=int, default=1000)
     parser.add_argument(
         "--output-dir",

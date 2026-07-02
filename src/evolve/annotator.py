@@ -42,9 +42,9 @@ class TrajectoryAnnotator:
         "You annotate dependency relations AND the operation type of trajectory steps. "
         "Step 0 is the initial state before any action. For current step i, "
         "return every previous step index j that the action depends on: as long as the "
-        "agent sees all previous step j, it can generate the step i. "
-        "Step 0 (initial state) is almost always required — include 0 in the list "
-        "unless step i truly needs no prior context. "
+        "agent sees all previous step j, it can generate the step i. Make sure that all "
+        "necessary dependencies are included. Sometimes, although previous steps are wrong, "
+        "they are still necessary for the current step to be generated. "
         "ALSO classify step i's operation type into exactly one label:\n"
         "  read    — inspecting/searching code/data WITHOUT modifying it "
         "(grep, rg, find, cat, head, ls, sed WITHOUT -i, git status/log/diff/show).\n"
@@ -55,7 +55,6 @@ class TrajectoryAnnotator:
         "  explore — none of the above: exploratory shells, env inspection, retries, "
         "setup, or anything ambiguous (pwd, env, echo, cd, which).\n"
         'Output ONLY a JSON object: {"dependencies": [int, ...], "op_type": "label"}. '
-        "dependencies may be empty only if step i needs no prior context."
     )
 
     MAX_OBSERVATION_CHARS = 800
