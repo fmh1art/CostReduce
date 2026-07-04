@@ -15,8 +15,9 @@ set -euo pipefail
 #                              需要外网/代理，见下文 EXPORT_HOST_PROXY）。
 #
 # LLM 配置：复用 _config/*.yaml（默认 _config/deepseekv4_flash.yaml，可用 LLM_CONFIG 覆盖）。
-#   - chat 类配置（如 deepseekv4_flash）：不传 config_file，mini-swe-agent 用内置
-#     mini.yaml 走 chat-completions。
+#   - chat 类配置（如 deepseekv4_flash）：注入 _config/mswea_maxtok.yaml 仅抬输出上限
+#     （修 reasoning 模型 verbose 响应撞默认 max_tokens → RepeatedFormatError 早退），
+#     其余沿用 mini.yaml 默认（recursive_merge 深合并）。
 #   - responses 类配置（如 gpt53_codex，bytedance aidp 网关只暴露 Responses API）：
 #     自动合成一份仅含 model.model_class=litellm_response 的临时 mswea 配置，让
 #     mini-swe-agent 走 litellm.responses(azure/...) 路由到网关 Responses API；
@@ -52,6 +53,9 @@ SWEBENCH_TASK_PATH="${SWEBENCH_TASK_PATH:-}"                # -p 本地任务目
 SWEBENCH_MSWEA_CONFIG="${SWEBENCH_MSWEA_CONFIG:-}"           # 显式 mswea 配置 yaml
 SWEBENCH_RESULTS_SUBDIR="${SWEBENCH_RESULTS_SUBDIR:-swebench-verified}"
 EXPORT_HOST_PROXY="${EXPORT_HOST_PROXY:-1}"
+# mini-swe-agent 输出上限 override（修 reasoning 模型 verbose 响应撞默认 max_tokens →
+# RepeatedFormatError 早退；详见该 yaml 注释）。chat/responses 两条路径都会注入它。
+MSWEA_MAXTOK_CONFIG="${MSWEA_MAXTOK_CONFIG:-$ROOT_DIR/_config/mswea_maxtok.yaml}"
 
 swebench_verifier_proxy_args() {
   # SWE-Bench verifier 不调 LLM，但 tests/test.sh 的 `uv run parser.py` 会按 PEP 723
@@ -70,13 +74,20 @@ swebench_responses_config_file() {
   # responses（bytedance aidp 网关）配置时，合成一份最小 mswea 配置 yaml：
   #   model:
   #     model_class: litellm_response
-  # 让 mini-swe-agent 走 litellm.responses(azure/...) 路由到网关 Responses API。
+  #     model_kwargs:
+  #       max_completion_tokens: 16384
+  # 让 mini-swe-agent 走 litellm.responses(azure/...) 路由到网关 Responses API；
+  # 同时把输出上限 override 一并写进来（responses 路径只允许一个 config_file，不能另传
+  # MSWEA_MAXTOK_CONFIG，故合并到同一个 model 段；recursive_merge 对单文件内不生效，但这里
+  # model_class 与 model_kwargs 本就同属 model，写在一起即合法 YAML）。
   # 非 responses 配置（AZURE_API_KEY 未设）时不生成，返回空串。
   # 调用方负责在退出时删除返回的临时文件。
   if [[ -z "${AZURE_API_KEY:-}" ]]; then return 0; fi
-  local tmp
+  local tmp maxtok
+  maxtok="$(grep -E '^\s*max_completion_tokens:' "$MSWEA_MAXTOK_CONFIG" 2>/dev/null | head -1 | awk '{print $2}')"
+  maxtok="${maxtok:-16384}"
   tmp="$(mktemp -t swebench_resp_cfg.XXXXXX.yaml)"
-  printf 'model:\n  model_class: litellm_response\n' > "$tmp"
+  printf 'model:\n  model_class: litellm_response\n  model_kwargs:\n    max_completion_tokens: %s\n' "$maxtok" > "$tmp"
   printf '%s\n' "$tmp"
 }
 
@@ -126,8 +137,9 @@ fi
 
 # 选择 mini-swe-agent 的 config_file：
 #   - SWEBENCH_MSWEA_CONFIG 显式指定 → 直接用。
-#   - responses 配置 → 合成 litellm_response 临时配置。
-#   - chat 配置 → 不传 config_file，沿用 mini.yaml 默认。
+#   - responses 配置 → 合成 litellm_response 临时配置（已含 max_completion_tokens）。
+#   - chat 配置（如 deepseekv4_flash）→ 注入 MSWEA_MAXTOK_CONFIG 仅抬输出上限；
+#     mini-swe-agent 的 recursive_merge 会和内置 mini.yaml 深合并，保留其余默认。
 MSWEA_CFG_ARGS=()
 if [[ -n "${SWEBENCH_MSWEA_CONFIG}" ]]; then
   MSWEA_CFG_ARGS=(--ak "config_file=${SWEBENCH_MSWEA_CONFIG}")
@@ -135,6 +147,8 @@ else
   MSWEA_CFG_TMP="$(swebench_responses_config_file)"
   if [[ -n "${MSWEA_CFG_TMP}" ]]; then
     MSWEA_CFG_ARGS=(--ak "config_file=${MSWEA_CFG_TMP}")
+  elif [[ -f "${MSWEA_MAXTOK_CONFIG}" ]]; then
+    MSWEA_CFG_ARGS=(--ak "config_file=${MSWEA_MAXTOK_CONFIG}")
   fi
 fi
 

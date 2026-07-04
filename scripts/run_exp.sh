@@ -7,7 +7,7 @@ cd "$ROOT_DIR" || { echo "[run_exp] cd $ROOT_DIR 失败" >&2; exit 1; }
 
 # BENCHMARKS="${BENCHMARKS:-deep-swe swe-atlas-qa swe-atlas-tw swe-atlas-rf swebench}"
 # BENCHMARKS="${BENCHMARKS:-deep-swe swe-atlas-qa swe-atlas-tw swe-atlas-rf swebench datamind}"
-BENCHMARKS="${BENCHMARKS:-deep-swe swe-atlas-qa swe-atlas-tw swe-atlas-rf swebench}"
+BENCHMARKS="${BENCHMARKS:-swebench deep-swe}"
 N_CONCURRENT="${N_CONCURRENT:-16}"
 EVOLVE_WORKERS="${EVOLVE_WORKERS:-16}"
 EVAL_N_TASKS="${EVAL_N_TASKS:-64}"

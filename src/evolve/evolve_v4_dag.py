@@ -53,6 +53,7 @@ import copy
 import hashlib
 import json
 import logging
+import time
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
@@ -222,14 +223,18 @@ class ChunkContrastiveSampleBuilderV4(ChunkContrastiveSampleBuilderV2):
                 "skippable_local_indices": seg,
                 "context_before_local": context_before,
                 "context_after_local": context_after,
-                "context_before": [self._step_brief(local_steps[i - 1]) for i in context_before],
-                "skippable_steps": [self._step_brief(local_steps[i - 1]) for i in seg],
-                "context_after": [self._step_brief(local_steps[i - 1]) for i in context_after],
-                "rationale": (
-                    f"steps {seg} are not in the dependency closure of the anchor "
-                    f"(step {positive.get('anchor_index')}); skipping them does not "
-                    "change the anchor's outcome."
-                ),
+                "context_before": [
+                    self._step_brief(local_steps[i - 1], self._global_index(chunk, i))
+                    for i in context_before
+                ],
+                "skippable_steps": [
+                    self._step_brief(local_steps[i - 1], self._global_index(chunk, i))
+                    for i in seg
+                ],
+                "context_after": [
+                    self._step_brief(local_steps[i - 1], self._global_index(chunk, i))
+                    for i in context_after
+                ],
                 "_file_tag": f"seg{n}",
             })
         return outs
@@ -296,13 +301,11 @@ class ChunkContrastiveSampleBuilderV4(ChunkContrastiveSampleBuilderV2):
                 "source_trajectory": str(path),
                 "merge_pair": [i, j],
                 "shared_dependencies": sorted(dep_set(i)),
-                "steps": [self._step_brief(step_i), self._step_brief(step_j)],
+                "steps": [
+                    self._step_brief(step_i, self._global_index(chunk, i)),
+                    self._step_brief(step_j, self._global_index(chunk, j)),
+                ],
                 "merged_form_example": self._merged_form_example(step_i, step_j),
-                "rationale": (
-                    f"steps {i} and {j} share the same dependencies {sorted(dep_set(i))}, "
-                    f"same op_type, both succeed, and touch disjoint files; "
-                    "safe to merge into one step."
-                ),
                 "_file_tag": f"pair{n}",
             })
         return outs
@@ -348,14 +351,15 @@ class ChunkContrastiveSampleBuilderV4(ChunkContrastiveSampleBuilderV2):
                 "step_local_index": i,
                 "observation_chars": nchars,
                 "pct_of_chunk_obs": round(nchars / total_chunk_obs * 100, 1) if total_chunk_obs else 0.0,
-                "target_step": self._step_brief(local_steps[i - 1]),
-                "predecessor_actions": [self._action_only(local_steps[k - 1]) for k in predecessors],
-                "successor_actions": [self._action_only(local_steps[k - 1]) for k in successors],
-                "rationale": (
-                    f"step {i} observation is {nchars} chars; an indexing/retrieve "
-                    "script could shorten it. Actions of dependent/dependency steps "
-                    "are listed for context (observations omitted)."
-                ),
+                "target_step": self._step_brief(local_steps[i - 1], self._global_index(chunk, i)),
+                "predecessor_actions": [
+                    self._action_only(local_steps[k - 1], self._global_index(chunk, k))
+                    for k in predecessors
+                ],
+                "successor_actions": [
+                    self._action_only(local_steps[k - 1], self._global_index(chunk, k))
+                    for k in successors
+                ],
                 "_file_tag": f"step{i}",
             })
         return outs
@@ -377,22 +381,39 @@ class ChunkContrastiveSampleBuilderV4(ChunkContrastiveSampleBuilderV2):
 
     # ----- 共享 step 渲染辅助 -----
 
+    @staticmethod
+    def _global_index(chunk: dict, local_i: int) -> int:
+        """local chunk action-step 索引(1-based) → 原始 trajectory T 的全局 action-step 索引。"""
+        cr = chunk.get("chunk_range", [0, 0])
+        return cr[0] + local_i - 1
+
     def _local_action_steps(self, chunk: dict) -> List[dict]:
         """chunk.steps 里的 action step 列表（local 1-based 索引对应这里）。"""
         return [s for s in chunk.get("steps", []) if self._is_action_step(s)]
 
     @staticmethod
-    def _step_brief(step: dict) -> dict:
-        """精简 step：只留 tool_calls + observation，供 prompt 渲染。"""
-        return {
+    def _step_brief(step: dict, display_index: Optional[int] = None) -> dict:
+        """精简 step：只留 tool_calls + observation，供 prompt 渲染。
+
+        display_index 为原始 trajectory T 的全局 step index，注入 _display_index 后
+        TrajectorySerializer 会用它而非 block 内位置计数（避免 <skippable_steps> 等块内
+        步号从 1 重新计数，保持与原始 trajectory 一致）。
+        """
+        brief = {
             "tool_calls": copy.deepcopy(step.get("tool_calls") or []),
             "observation": copy.deepcopy(step.get("observation", "")),
         }
+        if display_index is not None:
+            brief["_display_index"] = display_index
+        return brief
 
     @staticmethod
-    def _action_only(step: dict) -> dict:
+    def _action_only(step: dict, display_index: Optional[int] = None) -> dict:
         """只留 action（tool_calls），不给 observation（optobs 上下文用）。"""
-        return {"tool_calls": copy.deepcopy(step.get("tool_calls") or [])}
+        brief = {"tool_calls": copy.deepcopy(step.get("tool_calls") or [])}
+        if display_index is not None:
+            brief["_display_index"] = display_index
+        return brief
 
     # ---------- Phase 0 离线统计 ----------
 
@@ -473,7 +494,13 @@ class ChunkEvolvePromptBuilderV4(ChunkEvolvePromptBuilderV2):
     * verification 段强化为"未验证的 script 比没有 script 更糟"。
     * ``build`` 按 (trajectory, chunk_id) 分组三类 v4 样本，同 chunk 的多类样本
       合并渲染到一个 prompt 块（防样本数膨胀导致 batch 翻倍）。
+    * optobs 每个 case 只渲染 observation 最长的 ``max_optobs_per_task`` 个 step。
+    * step 在 prompt 中的编号用原始 trajectory T 的全局 step index（非 block 内
+      位置计数），避免 ``<skippable_steps>`` 等块内步号从 1 重新计数。
     """
+
+    # 每个 case（trajectory）optobs 最多渲染的 sample 数（取 observation 最长者）。
+    max_optobs_per_task: int = 3
 
     HEADER = [
         "# Evolve task",
@@ -513,11 +540,20 @@ class ChunkEvolvePromptBuilderV4(ChunkEvolvePromptBuilderV2):
         "script could be extended with a new action/flag instead. Fewer, more general "
         "scripts = lower downstream prompt cost. When you remove a script, delete its directory.",
         "",
-        "## instruction.md (HIGH-LEVEL GUIDANCE ONLY)",
-        "Maintain instruction.md as ≤ 20 SHORT high-level cost-saving rules for the "
-        "downstream agent. Each rule ≤ 1 line. Do NOT describe any specific script's "
-        "usage here — each script's usage lives in its own intro.json. Do NOT duplicate "
-        "examples. Write rules based on the cost patterns you observe in the samples below.",
+        "## instruction.md (HIGH-LEVEL COST-SAVING RULES)",
+        "Write ≤ 20 short rules (each ≤ 1 line) telling the downstream agent how to "
+        "spend fewer steps and tokens. ",
+        "Your evolved scripts are bash helper scripts instead of standard agent tools. ",
+        "Thus, you should use `bash <script_root>/<your_script>.sh <args>` instead of `!<your_script> <args>` in your rules. ",
+        "Add STOP-PROGRESSING-IF rules for stuck behavior (e.g. 3 consecutive actions "
+        "with no useful change).",
+        "",
+        "## Cost model (for prioritizing your designs)",
+        "Effect on real cost, largest to smallest:",
+        "  1. Fewer agent steps — each step costs cache write + output tokens. ",
+        "  2. Shorter tool_call commands. ",
+        "  3. Smaller observations — low priority. ",
+        "A batching script that collapses N repeated calls into 1 step saves N-1 steps. ",
         "",
         "## Verification (REQUIRED after every script add/update)",
         "1. Run `bash <script_dir>/main.sh <sample_args>` on testing source files and confirm "
@@ -526,6 +562,18 @@ class ChunkEvolvePromptBuilderV4(ChunkEvolvePromptBuilderV2):
         "3. Re-read the script — confirm it is GENERIC (no hardcoded file paths from the samples).",
         "An UNVERIFIED script is worse than no script — verify before finishing.",
     ]
+
+    FOOTER = (
+        "\n# Your task\n"
+        "Modify, add, merge, or remove scripts under your cwd based on the samples above. "
+        "After EVERY change you MUST run the verification steps listed above — an "
+        "unverified script is worse than no script, and an untested change can regress "
+        "downstream agents. "
+        "You may create test files under `test_codebase/` (a subdirectory of your cwd) to "
+        "exercise newly added or modified scripts against realistic inputs before finishing. "
+        "Do NOT edit the prompt file or sample files. "
+        "Finish once scripts + intro.json + instruction.md are saved and verified."
+    )
 
     def build(
         self,
@@ -573,12 +621,17 @@ class ChunkEvolvePromptBuilderV4(ChunkEvolvePromptBuilderV2):
                 samples = task[kind]
                 if not samples:
                     continue
+                # optobs：每个 case（trajectory）只保留 observation 最长的 3 个 step，
+                # 避免长尾样本稀释信号、控制 prompt 长度。
+                if kind == "optobs":
+                    samples = sorted(
+                        samples,
+                        key=lambda x: x.get("observation_chars", 0),
+                        reverse=True,
+                    )[: self.max_optobs_per_task]
                 type_name = TYPE_LABELS[kind]
                 for j, s in enumerate(samples, start=1):
                     parts.append(f"\n### {type_name} Contrastive Sample {j}")
-                    # 仅在每类第一个 sample 处给出该类的英文描述
-                    if j == 1:
-                        parts.append(TYPE_DESCRIPTIONS[kind])
                     parts += self._render_sample_body(kind, s)
 
         parts.append(self.FOOTER)
@@ -620,56 +673,39 @@ class ChunkEvolvePromptBuilderV4(ChunkEvolvePromptBuilderV2):
         return self._render_optobs_body(s)
 
     def _render_skippable_body(self, s: dict) -> List[str]:
-        cr = s.get("chunk_range", [0, 0])
-        seg = s.get("skippable_local_indices", [])
-        lines = [
-            f"chunk {s['chunk_id']}, global steps {cr[0]}-{cr[1]}, "
-            f"skippable local steps {seg}",
-        ]
+        lines: List[str] = []
         if s.get("context_before"):
-            lines.append("\nContext before (T* steps the skippable segment depends on):")
+            lines.append("\nContext before:")
             lines.append(self.serializer.serialize({"steps": s["context_before"]}))
         lines.append("\n<skippable_steps>")
         lines.append(self.serializer.serialize({"steps": s["skippable_steps"]}))
         lines.append("</skippable_steps>")
         if s.get("context_after"):
-            lines.append("\nContext after (T* step whose outcome is unchanged if the skippable steps are removed):")
+            lines.append("\nContext after:")
             lines.append(self.serializer.serialize({"steps": s["context_after"]}))
-        lines.append(f"\nRationale: {s.get('rationale', '')}")
         return lines
 
     def _render_mergeable_body(self, s: dict) -> List[str]:
-        i, j = s.get("merge_pair", [0, 0])
-        lines = [
-            f"chunk {s['chunk_id']}, mergeable local steps {i} & {j}; "
-            f"shared dependencies (local): {s.get('shared_dependencies', [])}",
-        ]
+        lines: List[str] = []
         lines.append("\n<mergable_steps>")
         lines.append(self.serializer.serialize({"steps": s["steps"]}))
         lines.append("</mergable_steps>")
         if s.get("merged_form_example"):
             lines.append(f"\nMerged form example: `{s['merged_form_example']}`")
-        lines.append(f"\nRationale: {s.get('rationale', '')}")
         return lines
 
     def _render_optobs_body(self, s: dict) -> List[str]:
-        i = s.get("step_local_index", 0)
-        nchars = s.get("observation_chars", 0)
-        pct = s.get("pct_of_chunk_obs", 0.0)
-        lines = [
-            f"chunk {s['chunk_id']}, local step {i}, observation {nchars} chars "
-            f"(≈ {pct}% of chunk obs)",
-        ]
-        lines.append("\n<optimizable_observation_step>")
-        lines.append(self.serializer.serialize({"steps": [s["target_step"]]}))
-        lines.append("</optimizable_observation_step>")
+        # 顺序：前序 → 目标 step → 后继，保持与原始 trajectory 的语意连续性。
+        lines: List[str] = []
         if s.get("predecessor_actions"):
             lines.append("\nPredecessor actions (observations omitted):")
             lines.append(self.serializer.serialize({"steps": s["predecessor_actions"]}))
+        lines.append("\n<optimizable_observation_step>")
+        lines.append(self.serializer.serialize({"steps": [s["target_step"]]}))
+        lines.append("</optimizable_observation_step>")
         if s.get("successor_actions"):
             lines.append("\nSuccessor actions (observations omitted):")
             lines.append(self.serializer.serialize({"steps": s["successor_actions"]}))
-        lines.append(f"\nRationale: {s.get('rationale', '')}")
         return lines
 
 
@@ -713,15 +749,24 @@ class ChunkScriptEvolverV4(ChunkScriptEvolverV2):
 
         failures: List[int] = []
         noop_batches: List[int] = []
-        for batch_id, batch in enumerate(self._batched(samples, self.batch_size), start=1):
+        batches = list(self._batched(samples, self.batch_size))
+        total = len(batches)
+        logger.info(
+            "running %d evolve batch(es) (batch_size=%d cases/prompt, sequential — "
+            "all batches write the same scripts_dir so cannot parallelize)",
+            total, self.batch_size,
+        )
+        for batch_id, batch in enumerate(batches, start=1):
             output_path = output_dir / f"evolve_batch_{batch_id}.traj.json"
             prompt_path = output_path.with_suffix(".prompt.md")
             sentinel = output_path.with_suffix(".done")
             if self.resume and sentinel.exists():
-                logger.info("batch %d already done (sentinel exists), skipping", batch_id)
+                logger.info("batch %d/%d already done (sentinel exists), skipping", batch_id, total)
                 continue
             self._maybe_refresh_stats()
             before = self._scripts_hash()
+            logger.info("batch %d/%d starting (%d samples)", batch_id, total, len(batch))
+            t0 = time.time()
             try:
                 self.runner.run(
                     prompt=self.prompt_builder.build(
@@ -738,15 +783,21 @@ class ChunkScriptEvolverV4(ChunkScriptEvolverV2):
                     encoding="utf-8",
                 )
             except Exception as exc:
-                logger.exception("batch %d failed: %s", batch_id, exc)
+                logger.exception("batch %d/%d failed: %s", batch_id, total, exc)
                 failures.append(batch_id)
                 continue
+            dt = time.time() - t0
             after = self._scripts_hash()
             if before == after:
                 noop_batches.append(batch_id)
                 logger.info(
-                    "batch %d produced no script change (acceptable per SKIP directive)",
-                    batch_id,
+                    "batch %d/%d done in %.1fs (no-op per SKIP directive)",
+                    batch_id, total, dt,
+                )
+            else:
+                logger.info(
+                    "batch %d/%d done in %.1fs (scripts changed)",
+                    batch_id, total, dt,
                 )
         if failures:
             logger.warning("batches failed: %s", failures)

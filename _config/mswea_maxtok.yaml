@@ -1,0 +1,25 @@
+# mini-swe-agent 输出上限 override（通过 harbor `config_file` 注入）。
+#
+# 为什么需要：
+#   deepseek-v4-flash 是 reasoning 模型，其输出预算要同时覆盖 reasoning_tokens + 可见输出
+#   + bash tool call 的 JSON args。内置 mini.yaml 的 model.model_kwargs 只设了 drop_params，
+#   没设 max_tokens → 走 provider 默认（偏小）。v2 evolved 把 ~5.5KB cost-saving 指令塞进
+#   prompt 后，agent 每步先长篇推理再吐 tool call，撞默认上限 → tool call args 被中途截断
+#   → parse_toolcall_actions 解析失败 → FormatError → 连续 3 次(max_consecutive_format_errors=3)
+#   → RepeatedFormatError 退出。这是 v2 swebench 17/64 早退（含 5 个 0 步崩溃）的直接根因。
+#
+# 为什么用 max_completion_tokens 而非 max_tokens：
+#   reasoning 模型走 max_completion_tokens（见 benchmark/DataMind/longds/DSGym/dsgym/synth/
+#   filters/quality_filter.py:99-108 注释）。配合 drop_params:true，litellm 自动 drop 不支持的
+#   那个，不会报错。
+#
+# 合并安全性：
+#   mini-swe-agent 的 -c 是 recursive_merge（run/mini.py:92, utils/serialize.py:6 深合并），
+#   本文件只追加 model.model_kwargs.max_completion_tokens 一个叶子，不会冲掉 mini.yaml 的
+#   observation_template / format_error_template / drop_params。
+#
+# 取值 16384：传统 deepseek 输出上限 8192 的 2 倍，对 reasoning + tool call 绰绰有余；
+# 若极复杂任务仍偶发截断，可调大到 32768（API 接受到至少 65536）。
+model:
+  model_kwargs:
+    max_completion_tokens: 16384

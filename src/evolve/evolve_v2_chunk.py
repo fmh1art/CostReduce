@@ -76,6 +76,7 @@ import os
 import re
 import shlex
 import subprocess
+import time
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
@@ -1174,40 +1175,7 @@ class MiniSweAgentRunnerV2(MiniSweAgentRunner):
             return
         output_path.parent.mkdir(parents=True, exist_ok=True)
         prompt_path.write_text(prompt, encoding="utf-8")
-        try:
-            proc = subprocess.run(
-                cmd,
-                cwd=str(cwd),
-                env={**os.environ, **env},
-                capture_output=True,
-                text=True,
-                timeout=self.timeout,
-            )
-        except subprocess.TimeoutExpired as exc:
-            logger.error(
-                "mini-swe-agent timed out after %ds (cwd=%s): %s",
-                self.timeout,
-                cwd,
-                exc,
-            )
-            raise RuntimeError(f"mini-swe-agent timed out after {self.timeout}s") from exc
-        if proc.returncode != 0:
-            logger.error(
-                "mini-swe-agent failed (rc=%d)\nstdout:\n%s\nstderr:\n%s",
-                proc.returncode,
-                proc.stdout,
-                proc.stderr,
-            )
-            raise RuntimeError(
-                f"mini-swe-agent exited with code {proc.returncode}"
-            )
-        logger.info("mini-swe-agent finished (cwd=%s)", cwd)
-        if proc.stdout:
-            tail = proc.stdout[-2000:]
-            logger.info("mini-swe-agent stdout tail:\n%s", tail)
-        if proc.stderr:
-            tail = proc.stderr[-2000:]
-            logger.info("mini-swe-agent stderr tail:\n%s", tail)
+        self._run_mini_swe(cmd, cwd, {**os.environ, **env})
 
 
 # ============================================================================
@@ -1292,15 +1260,24 @@ class ChunkScriptEvolverV2(ChunkScriptEvolver):
             return output_dir
 
         failures: List[int] = []
-        for batch_id, batch in enumerate(self._batched(samples, self.batch_size), start=1):
+        batches = list(self._batched(samples, self.batch_size))
+        total = len(batches)
+        logger.info(
+            "running %d evolve batch(es) (batch_size=%d cases/prompt, sequential — "
+            "all batches write the same scripts_dir so cannot parallelize)",
+            total, self.batch_size,
+        )
+        for batch_id, batch in enumerate(batches, start=1):
             output_path = output_dir / f"evolve_batch_{batch_id}.traj.json"
             prompt_path = output_path.with_suffix(".prompt.md")
             sentinel = output_path.with_suffix(".done")
             if self.resume and sentinel.exists():
-                logger.info("batch %d already done (sentinel %s exists), skipping", batch_id, sentinel)
+                logger.info("batch %d/%d already done (sentinel %s exists), skipping", batch_id, total, sentinel)
                 continue
             # 在每个 batch 前刷新 downstream_stats
             self._maybe_refresh_stats()
+            logger.info("batch %d/%d starting (%d samples)", batch_id, total, len(batch))
+            t0 = time.time()
             try:
                 self.runner.run(
                     prompt=self.prompt_builder.build(
@@ -1317,9 +1294,10 @@ class ChunkScriptEvolverV2(ChunkScriptEvolver):
                     encoding="utf-8",
                 )
             except Exception as exc:
-                logger.exception("batch %d failed: %s", batch_id, exc)
+                logger.exception("batch %d/%d failed: %s", batch_id, total, exc)
                 failures.append(batch_id)
                 continue
+            logger.info("batch %d/%d done in %.1fs", batch_id, total, time.time() - t0)
         if failures:
             logger.warning("batches failed: %s", failures)
         else:

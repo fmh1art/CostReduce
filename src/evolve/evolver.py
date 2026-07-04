@@ -21,6 +21,8 @@ import logging
 import os
 import shlex
 import subprocess
+import sys
+import threading
 from pathlib import Path
 from typing import Iterable, List, Optional, Sequence
 
@@ -48,8 +50,11 @@ class TrajectorySerializer:
             if not self._is_action_step(step):
                 continue
             step_index += 1
+            # 优先用 step 自带的 _display_index（原始 trajectory T 的 step index），
+            # 否则回退到 block 内位置计数（v1/v2 旧行为）。
+            display_index = step.get("_display_index", step_index)
             lines += [
-                f"\n#### Step {step_index}",
+                f"\n#### Step {display_index}",
                 "Action:",
                 self._serialize_action(self._action_of(step)),
                 "Observation:",
@@ -256,40 +261,64 @@ class MiniSweAgentRunner(AgentRunner):
             return
         output_path.parent.mkdir(parents=True, exist_ok=True)
         prompt_path.write_text(prompt, encoding="utf-8")
+        self._run_mini_swe(cmd, cwd, {**os.environ, **env})
+
+    def _run_mini_swe(self, cmd: list, cwd: Path, env: dict) -> None:
+        """跑 mini-swe-agent 子进程，stdout/stderr 实时流式回显到父进程 stderr，
+        让 evolve 过程有可见进度（而非 capture_output 静默几分钟）。
+
+        - Popen + 后台线程逐行 pump：边读边写 sys.stderr，同时累积用于失败 tail。
+        - 主线程 ``proc.wait(timeout)`` 保住超时语义；超时则 kill 并抛 RuntimeError。
+        - agent 的完整 trajectory 已由 mini-swe-agent 自己写到 ``--output`` 路径，
+          这里流式输出的文本只用于实时进度 + 失败时的 tail 诊断。
+        """
+        logger.info("mini-swe-agent starting (cwd=%s, timeout=%ds)", cwd, self.timeout)
+        # PYTHONUNBUFFERED=1：mini-swe-agent 是 Python，stdout 接 PIPE 时默认块缓冲，
+        # 会让逐行流式退化成 4KB 一坨；强制 unbuffered 才能真正实时回显进度。
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(cwd),
+            env={**env, "PYTHONUNBUFFERED": "1"},
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+        captured: list = []
+
+        def _pump() -> None:
+            assert proc.stdout is not None
+            for line in proc.stdout:
+                captured.append(line)
+                sys.stderr.write(line)
+                sys.stderr.flush()
+
+        reader = threading.Thread(target=_pump, daemon=True)
+        reader.start()
         try:
-            proc = subprocess.run(
-                cmd,
-                cwd=str(cwd),
-                env={**os.environ, **env},
-                capture_output=True,
-                text=True,
-                timeout=self.timeout,
-            )
-        except subprocess.TimeoutExpired as exc:
+            rc = proc.wait(timeout=self.timeout)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            try:
+                proc.wait(timeout=10)
+            except Exception:
+                pass
+            reader.join(timeout=5)
             logger.error(
-                "mini-swe-agent timed out after %ds (cwd=%s): %s",
-                self.timeout,
+                "mini-swe-agent timed out after %ds (cwd=%s)", self.timeout, cwd
+            )
+            raise RuntimeError(f"mini-swe-agent timed out after {self.timeout}s")
+        reader.join(timeout=5)
+        out = "".join(captured)
+        if rc != 0:
+            logger.error(
+                "mini-swe-agent failed (rc=%d, cwd=%s); streamed output above. tail:\n%s",
+                rc,
                 cwd,
-                exc,
+                out[-2000:],
             )
-            raise RuntimeError(f"mini-swe-agent timed out after {self.timeout}s") from exc
-        if proc.returncode != 0:
-            logger.error(
-                "mini-swe-agent failed (rc=%d)\nstdout:\n%s\nstderr:\n%s",
-                proc.returncode,
-                proc.stdout,
-                proc.stderr,
-            )
-            raise RuntimeError(
-                f"mini-swe-agent exited with code {proc.returncode}"
-            )
-        logger.info("mini-swe-agent finished (cwd=%s)", cwd)
-        if proc.stdout:
-            tail = proc.stdout[-2000:]
-            logger.info("mini-swe-agent stdout tail:\n%s", tail)
-        if proc.stderr:
-            tail = proc.stderr[-2000:]
-            logger.info("mini-swe-agent stderr tail:\n%s", tail)
+            raise RuntimeError(f"mini-swe-agent exited with code {rc}")
+        logger.info("mini-swe-agent finished (rc=0, cwd=%s)", cwd)
 
     def _load_llm_env(self):
         cfg = LLM._load_config(self.llm_config)

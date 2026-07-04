@@ -317,6 +317,8 @@ PARAM_DESC_LIMIT = 120
 EXAMPLE_LIMIT = 1
 EXPECTED_LIMIT = 160
 RATIONALE_LIMIT = 200
+# example 的 call（bash 全路径调用）是 agent 唯一能看到的脚本用法，给更长上限。
+CALL_LIMIT = 320
 
 def clip(text, limit):
     text = "" if text is None else str(text)
@@ -346,27 +348,30 @@ for d in sorted(scripts_dir.iterdir()):
 if not intros:
     sys.exit(0)
 
-lines = ["## Available evolved scripts", ""]
+lines = [
+    "## Available bash helper scripts",
+    "",
+    "Invoke each script with the `bash` tool using its full path, e.g.",
+    "`bash /app/.preinstalled_scripts/<name>/main.sh <args>`. Do NOT call a script",
+    "name directly as a tool — it is not one. Use the example line for the call form.",
+    "",
+]
 for name, data in intros:
     entrypoint = data.get("entrypoint", "main.sh")
     abs_path = f"{target_root}/{name}/{entrypoint}" if target_root != "/" else f"/{name}/{entrypoint}"
-    lines.append(f"### ./{name}/")
+    lines.append(f"### {name}")
     lines.append(f"- description: {clip(data.get('description', '(no description)'), DESC_LIMIT)}")
     lines.append(f"- entrypoint: {abs_path}")
-    params = data.get("parameters") or []
-    if isinstance(params, list) and params:
-        lines.append("- parameters:")
-        for p in params:
-            if isinstance(p, dict):
-                req = "required" if p.get("required") else "optional"
-                pdesc = clip(p.get("description", ""), PARAM_DESC_LIMIT)
-                lines.append(f"    - {p.get('name', '?')} ({p.get('type', '?')}, {req}): {pdesc}")
+    # 不输出 parameters schema —— 它会被下游 agent 误当成 native function tool 的参数
+    # schema，从而用 <name>({param: ...}) 形式调用，但 evolved scripts 没注册成 native
+    # tool，导致 'Unknown tool' FormatError → RepeatedFormatError → 0 步崩。只留 example
+    # 的 bash 调用形式，让 agent 知道走 bash。
     examples = data.get("examples") or []
     if isinstance(examples, list) and examples:
         # 只取第一条 example，避免 prompt 膨胀
         ex = examples[0]
         if isinstance(ex, dict):
-            call = clip(ex.get("call", ""), EXPECTED_LIMIT)
+            call = clip(ex.get("call", ""), CALL_LIMIT)
             expected = clip(ex.get("expected", ""), EXPECTED_LIMIT)
             lines.append(f"- example: {call}  ->  {expected}")
     rationale = data.get("cost_saving_rationale")
