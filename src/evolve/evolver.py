@@ -131,20 +131,26 @@ class EvolvePromptBuilder:
     HEADER = [
         "Here are contrastive execution histories. The original trajectory is high-cost, while the minimal trajectory keeps only dependency-critical steps.",
         "Evolve the scripts and instruction.md in this working directory to help future agents solve similar tasks with fewer steps/tokens while preserving correctness.",
+        "Each script you write becomes a NATIVE FUNCTION TOOL for the downstream mini-swe-agent:",
+        "the agent calls it BY NAME (e.g. `read-lines`) with structured JSON parameters — it",
+        "does NOT shell out to `bash <path>/main.sh`. Your `main.sh` is the executor that",
+        "receives the rendered CLI args; `intro.json` defines the tool's schema.",
         "Each script should live under ./<script_name>/ and contain a main.sh entrypoint plus an intro.json file.",
         "intro.json must be valid JSON with this schema:",
         "  {",
         "    \"name\": \"<script_name>\",",
         "    \"description\": \"what this script does\",",
-        "    \"when_to_use\": \"under what conditions to call this script\",",
         "    \"entrypoint\": \"main.sh\",",
         "    \"parameters\": [",
-        "      {\"name\": \"...\", \"type\": \"string|int|bool|...\", \"required\": true, \"description\": \"...\"}",
+        "      {\"name\": \"...\", \"type\": \"string|int|bool\", \"required\": true, \"description\": \"...\"}",
         "    ],",
         "    \"examples\": [{\"call\": \"main.sh <args>\", \"expected\": \"...\"}],",
         "    \"cost_saving_rationale\": \"why this script reduces cost vs. the baseline trajectory\"",
         "  }",
-        "instruction.md is for HIGH-LEVEL cost-saving guidance ONLY (e.g. batching multiple tool calls per step to cut round trips, keeping tool output lean, anti-patterns to avoid). Do NOT list or describe specific scripts in instruction.md — each script's usage lives in its own intro.json.",
+        "Each parameter `name` encodes its CLI form, used to render a function call back into argv:",
+        "  --flag (bool), --key=VALUE (valued flag), -c code / --x N (space flag), file (positional).",
+        "`type` becomes the JSON-schema type the LLM sees. Use clean, conventional flag names.",
+        "instruction.md is for HIGH-LEVEL cost-saving guidance ONLY (e.g. batching multiple tool calls per step to cut round trips, keeping tool output lean, anti-patterns to avoid). Reference tools by name, not by bash path. Do NOT list or describe specific scripts in instruction.md — each script's usage lives in its own intro.json.",
         "REMEMBER: instruction.md contains **brief** and **high-level** instructions."
     ]
     FOOTER = (
@@ -241,8 +247,15 @@ class MiniSweAgentRunner(AgentRunner):
             "Then modify, add, or remove scripts (each with an intro.json) and update instruction.md in the current working directory as requested. "
             "Do not edit the prompt file or contrastive sample files."
         )
+        # --project (NOT --directory): `uv run --directory <dir>` chdir's into <dir>,
+        # overriding the subprocess cwd=scripts_dir passed to _run_mini_swe below, so the
+        # evolve agent would run in the shared mini_swe_agent_dir (polluting it with evolved
+        # tool artifacts) instead of scripts_dir, and only write tools to scripts_dir when
+        # the LLM happens to `find`+cd there (non-deterministic). --project uses
+        # mini_swe_agent_dir as the uv project (so the `mini` console script resolves) but
+        # leaves the cwd at scripts_dir.
         cmd = [
-            "uv", "run", "--directory", str(self.mini_swe_agent_dir),
+            "uv", "run", "--project", str(self.mini_swe_agent_dir),
             "mini",
             "-m", model,
             "--model-class", model_class,
@@ -432,7 +445,21 @@ class ScriptEvolver:
             logger.info("all batches finished")
         for w in self._validate_intros():
             logger.warning("intro.json: %s", w)
+        self._refresh_native_tools_manifest()
         return output_dir
+
+    def _refresh_native_tools_manifest(self) -> None:
+        """Regenerate ``.tools_manifest.json`` so the next rollout sees the evolved scripts.
+
+        Best-effort: the rollout shell wiring (``evolve_scripts_deploy``) also regenerates
+        this, so a failure here is non-fatal — we just log and move on.
+        """
+        try:
+            from src.evolve.native_tools import write_manifest
+
+            write_manifest(self.scripts_dir)
+        except Exception as exc:  # noqa: BLE001 — never let manifest refresh abort evolve
+            logger.warning("skipped native-tools manifest refresh: %s", exc)
 
     def find_samples(self, result_dir, task=None) -> List[Path]:
         files = sorted(Path(result_dir).glob("**/agent/contrastive_sample.json"))

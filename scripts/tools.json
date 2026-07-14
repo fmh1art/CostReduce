@@ -1,0 +1,15 @@
+[
+  {
+    "name": "run-tests",
+    "description": "Run a repo's tests in a given directory, auto-detecting Go (go.mod), Django (runtests.py) vs pytest.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "tests": {"type": "string", "description": "Test target(s): pytest path/node-id(s), Go package path(s) (e.g. './...'), or for Django a space-separated list of dotted test labels (e.g. 'auth.tests.test_x'). Empty runs the default suite."},
+        "cwd": {"type": "string", "description": "Directory to run the tests in (repo root or subdir). Defaults to the agent's current working directory."},
+        "extra_args": {"type": "string", "description": "Optional extra CLI args passed through to the underlying runner."}
+      },
+      "required": []
+    }
+  }
+]

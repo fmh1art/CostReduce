@@ -7,32 +7,40 @@ cd "$ROOT_DIR" || { echo "[run_exp] cd $ROOT_DIR 失败" >&2; exit 1; }
 
 # BENCHMARKS="${BENCHMARKS:-deep-swe swe-atlas-qa swe-atlas-tw swe-atlas-rf swebench}"
 # BENCHMARKS="${BENCHMARKS:-deep-swe swe-atlas-qa swe-atlas-tw swe-atlas-rf swebench datamind}"
-BENCHMARKS="${BENCHMARKS:-swebench deep-swe}"
+BENCHMARKS="${BENCHMARKS:-deep-swe}"
 N_CONCURRENT="${N_CONCURRENT:-16}"
 EVOLVE_WORKERS="${EVOLVE_WORKERS:-16}"
 EVAL_N_TASKS="${EVAL_N_TASKS:-64}"
 EVOLVE_CASE_COUNT="${EVOLVE_CASE_COUNT:-16}"
 SWEBENCH_TASK_PATH="${SWEBENCH_TASK_PATH:-}"
 DATAMIND_TASK_PATH="${DATAMIND_TASK_PATH:-}"
+DAB_TASK_PATH="${DAB_TASK_PATH:-}"
 DRY_RUN="${DRY_RUN:-0}"
 SKIP_FINAL_EVAL="${SKIP_FINAL_EVAL:-0}"
 FORCE_PREP="${FORCE_PREP:-0}"
-# evolve 阶段使用的框架版本：v1/v2/v3/v4，分别对应
-#   src/evolve/evolve_v1_chunk.py / evolve_v2_chunk.py / evolve_v3_cycle.py / evolve_v4_dag.py
-# v3 是自包含闭环（自带 T0→evolve→T1→review→eval），跑 v3 时子脚本会跳过独立的最终评测步骤。
-EVOLVE_VERSION="${EVOLVE_VERSION:-v2}"
+# evolve 阶段使用的框架版本。默认保持 v6；可用 EVOLVE_VERSION=v7，
+# 或更直接地设置 USE_EVOLVE_V7=1，切换到 src/evolve/evolve_v7.py。
+EVOLVE_VERSION="${EVOLVE_VERSION:-v6}"
+USE_EVOLVE_V7="${USE_EVOLVE_V7:-0}"
+case "$USE_EVOLVE_V7" in
+  1|true|TRUE|yes|YES) EVOLVE_VERSION="v7" ;;
+  0|false|FALSE|no|NO) ;;
+  *) printf '[run_exp] USE_EVOLVE_V7 必须是 0/1/true/false（当前=%s）\n' "$USE_EVOLVE_V7" >&2; exit 2 ;;
+esac
 
 # 这些在 run_exp.sh 内用 ${:-} 设了默认，须 export 才能传给子脚本；
 # LLM_CONFIG / CONDA_ENV 不在此设默认 —— 若用户从前缀传入则作为 env 自动透传，
 # 否则子脚本用其自带默认（${VAR:-default}）。
-export EVAL_N_TASKS EVOLVE_CASE_COUNT SWEBENCH_TASK_PATH DATAMIND_TASK_PATH DRY_RUN SKIP_FINAL_EVAL FORCE_PREP EVOLVE_VERSION
+export EVAL_N_TASKS EVOLVE_CASE_COUNT SWEBENCH_TASK_PATH DATAMIND_TASK_PATH DAB_TASK_PATH DRY_RUN SKIP_FINAL_EVAL FORCE_PREP EVOLVE_VERSION USE_EVOLVE_V7
 
 log()  { printf '\n\033[1;35m[run_exp]\033[0m %s\n' "$*"; }
 warn() { printf '\n\033[1;33m[run_exp] WARN:\033[0m %s\n' "$*" >&2; }
 
 EVOLVE_CASES_PER_PROMPT="${EVOLVE_CASES_PER_PROMPT:-2}"   # 每 prompt 含几个 case（透传给 --batch-size）
+V7_EVOLVE_CASES_PER_PROMPT="${V7_EVOLVE_CASES_PER_PROMPT:-4}" # V7 样本更紧凑，默认每 prompt 4 个 case
+export V7_EVOLVE_CASES_PER_PROMPT
 
-log "BENCHMARKS=[$BENCHMARKS]  N_CONCURRENT=$N_CONCURRENT  EVOLVE_WORKERS=$EVOLVE_WORKERS  EVAL_N_TASKS=$EVAL_N_TASKS  EVOLVE_CASE_COUNT=$EVOLVE_CASE_COUNT  EVOLVE_VERSION=$EVOLVE_VERSION  EVOLVE_CASES_PER_PROMPT=$EVOLVE_CASES_PER_PROMPT"
+log "BENCHMARKS=[$BENCHMARKS]  N_CONCURRENT=$N_CONCURRENT  EVOLVE_WORKERS=$EVOLVE_WORKERS  EVAL_N_TASKS=$EVAL_N_TASKS  EVOLVE_CASE_COUNT=$EVOLVE_CASE_COUNT  EVOLVE_VERSION=$EVOLVE_VERSION  USE_EVOLVE_V7=$USE_EVOLVE_V7  EVOLVE_CASES_PER_PROMPT=$EVOLVE_CASES_PER_PROMPT  V7_EVOLVE_CASES_PER_PROMPT=$V7_EVOLVE_CASES_PER_PROMPT"
 
 FAILED=()
 for BENCH in $BENCHMARKS; do
@@ -56,7 +64,7 @@ if [[ ${#FAILED[@]} -eq 0 ]]; then
 else
   warn "以下 benchmark 退出非零（可重跑续接）：${FAILED[*]}"
 fi
-log "prep 产物（可复用）：     results/evolving/<bench>/"
-log "evolve work/logs（按版本）：results/evolve_<version>/<bench>/<TS>/"
-log "evolved scripts（按版本）：.evolve_scripts/<bench>_<llm>_<version>_<TS>/"
-log "最终评测结果（按版本）：   results/<sub>/evolve-<version>-<bench>-<TS>/"
+log "可复用 prep： results/prep/{runs,handles}/"
+log "evolve 产物： results/evolve/<version>/<bench>/<TS>/"
+log "最终评测：    results/eval/<bench>/<run-id>/"
+log "no-evolve：   results/no_evolve/<bench>/<run-id>/"

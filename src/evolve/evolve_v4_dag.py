@@ -505,9 +505,12 @@ class ChunkEvolvePromptBuilderV4(ChunkEvolvePromptBuilderV2):
     HEADER = [
         "# Evolve task",
         SKIP_DIRECTIVE,
-        "You are evolving bash helper scripts that downstream coding agents will call to "
-        "solve similar tasks with fewer steps. The scripts you write will be bind-mounted "
-        "into downstream agent containers at `/app/.preinstalled_scripts/<name>/main.sh`.",
+        "You are evolving helper scripts that a downstream mini-swe-agent will call as "
+        "NATIVE FUNCTION TOOLS to solve similar tasks with fewer steps. Each script you "
+        "write is auto-converted into a function tool: the agent calls it BY NAME (e.g. "
+        "`read-lines`) with structured JSON parameters — it does NOT shell out to "
+        "`bash <path>/main.sh`. Your `main.sh` is the executor that receives the rendered "
+        "CLI args; `intro.json` defines the tool's name, description, and parameter schema.",
         "",
         "## Working directory",
         "Your cwd is the absolute path shown below. Create/modify/delete files ONLY inside "
@@ -524,7 +527,7 @@ class ChunkEvolvePromptBuilderV4(ChunkEvolvePromptBuilderV2):
         "      {\"name\": \"...\", \"type\": \"string|int|bool\", \"required\": true,",
         "       \"description\": \"ONE short phrase\"}",
         "    ],",
-        "    \"examples\": [{\"call\": \"/app/.preinstalled_scripts/<name>/main.sh <args>\",",
+        "    \"examples\": [{\"call\": \"main.sh <args>\",",
         "                   \"expected\": \"ONE short line\"}],",
         "    \"cost_saving_rationale\": \"ONE short sentence: why this script saves cost\"",
         "  }",
@@ -532,19 +535,30 @@ class ChunkEvolvePromptBuilderV4(ChunkEvolvePromptBuilderV2):
         "- `description` ≤ 1 sentence. `parameter.description` ≤ 1 phrase. "
         "`cost_saving_rationale` ≤ 1 sentence. `examples[*].expected` ≤ 1 line.",
         "- `examples` is OPTIONAL; at most ONE example. No verbose multi-step walkthroughs.",
-        "- `examples[*].call` MUST use the absolute path "
-        "`/app/.preinstalled_scripts/<name>/main.sh ...` (this is the path downstream "
-        "agents see after bind-mounting, not your cwd).",
+        "- `examples[*].call` uses the relative `main.sh <args>` form to document the CLI "
+        "(the rollout agent never sees this path — it calls the tool by name).",
         "- Do NOT include `when_to_use` — the `description` already tells the agent when.",
         "- Merge similar scripts: before creating a new directory, check whether an existing "
         "script could be extended with a new action/flag instead. Fewer, more general "
         "scripts = lower downstream prompt cost. When you remove a script, delete its directory.",
         "",
+        "## How `parameters` become the tool schema",
+        "Each parameter's `name` encodes its CLI form; the converter uses it to render a "
+        "function call back into `main.sh` argv:",
+        "  - `--flag`              → boolean flag (emit `--flag` when the value is true)",
+        "  - `--key=VALUE`         → valued flag (emit `--key=<value>`)",
+        "  - `-c code` / `--x N`   → space-separated flag (emit the flag then the value)",
+        "  - `file` (no leading `-`) → positional argument (emit `<value>` at the end, in order)",
+        "`type` (`string`/`int`/`bool`) becomes the JSON-schema type the LLM sees. Use clean, "
+        "conventional flag names; a single positional like `command` may carry a multi-word "
+        "value (e.g. `go test ./...`) and will be shell-split into argv.",
+        "",
         "## instruction.md (HIGH-LEVEL COST-SAVING RULES)",
         "Write ≤ 20 short rules (each ≤ 1 line) telling the downstream agent how to "
         "spend fewer steps and tokens. ",
-        "Your evolved scripts are bash helper scripts instead of standard agent tools. ",
-        "Thus, you should use `bash <script_root>/<your_script>.sh <args>` instead of `!<your_script> <args>` in your rules. ",
+        "Your evolved scripts are exposed to the rollout agent as native function tools "
+        "(called by name with structured params). Reference tools by name in your rules "
+        "(e.g. \"use find-src then read-lines\"), not by bash path. ",
         "Add STOP-PROGRESSING-IF rules for stuck behavior (e.g. 3 consecutive actions "
         "with no useful change).",
         "",

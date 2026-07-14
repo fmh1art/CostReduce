@@ -122,6 +122,8 @@ def _bench_source_task_dir(benchmark: str) -> Optional[Path]:
     if benchmark.startswith("swe-atlas-"):
         split = benchmark.split("-", 2)[-1]   # qa / tw / rf
         return ROOT / "benchmark" / "SWE-Atlas" / "data" / split
+    if benchmark == "dab":
+        return Path(os.environ.get("DAB_TASK_PATH") or ROOT / "benchmark" / "DBA-bench" / "harbor" / "datasets" / "dab")
     return None   # swebench / datamind 由调用方提供
 
 
@@ -153,6 +155,10 @@ BENCHMARKS: Dict[str, dict] = {
     "datamind": dict(
         run_script="run_datamind.sh", results_subdir="datamind-longds", split="",
         task_path_env=None, temp_layout=None, include_only=False,
+    ),
+    "dab": dict(
+        run_script="run_dab_harbor.sh", results_subdir="dab", split="",
+        task_path_env="DAB_TASK_PATH", temp_layout="flat", include_only=True,
     ),
 }
 
@@ -689,7 +695,7 @@ class BenchmarkRunner:
     def _env_keys_to_log(self) -> set:
         return {"EVOLVE_SCRIPTS_DIR", "RUN_ID", "N_TASKS", "N_CONCURRENT", "N_ATTEMPTS",
                 "SWE_ATLAS_SPLITS", "DEEP_SWE_TASKS_PATH", "SWE_ATLAS_DATA_DIR",
-                "SWEBENCH_TASK_PATH", "EVOLVE_SKIP_FILE"}
+                "SWEBENCH_TASK_PATH", "DAB_TASK_PATH", "EVOLVE_SKIP_FILE"}
 
 
 def _safe_rmtree(path: Path) -> None:

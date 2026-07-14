@@ -74,6 +74,7 @@ mapfile -t SKIP_ARGS < <(evolve_skip_exclude_args)
 # EVOLVE_SCRIPTS_INCLUDE_DEFAULT_LOG_MOUNTS=0，避免重复挂载触发冲突。
 EVOLVE_MOUNTS_ARGS=()
 EVOLVE_PROMPT_ARGS=()
+EVOLVE_NATIVE_ARGS=()
 EVOLVE_PROMPT_TEMPLATE=""
 if [[ -n "${EVOLVE_SCRIPTS_DIR:-}" ]]; then
   EVOLVE_MOUNTS_JSON="$(EVOLVE_SCRIPTS_INCLUDE_DEFAULT_LOG_MOUNTS=0 evolve_scripts_mounts_json)"
@@ -86,6 +87,11 @@ if [[ -n "${EVOLVE_SCRIPTS_DIR:-}" ]]; then
     trap '[[ -n "${EVOLVE_PROMPT_TEMPLATE:-}" && -f "${EVOLVE_PROMPT_TEMPLATE}" ]] && rm -f "${EVOLVE_PROMPT_TEMPLATE}"' EXIT
     EVOLVE_PROMPT_ARGS=(--ak "prompt_template_path=${EVOLVE_PROMPT_TEMPLATE}")
   fi
+  # 把 evolved scripts 注册成 native function tools（生成 manifest/runtime/config，
+  # 输出 --ak config_file= + --ae EVOLVE_TOOLS_*）。evolve 模式下 model_class+
+  # agent_class 由此 config_file 设定，下面 per-split 的 mswea config 不再传。
+  evolve_scripts_deploy || exit 1
+  mapfile -t EVOLVE_NATIVE_ARGS < <(evolve_scripts_native_tools_args)
 fi
 
 # 依次评测 SWE_ATLAS_SPLITS 指定的 split；默认只跑 qa，便于先做 1 个 case 的 smoke test。
@@ -96,6 +102,13 @@ for split in ${SWE_ATLAS_SPLITS//,/ }; do
   MSWEA_CFG_TMP=""
   if [[ "$MSWEA_CFG" != "$ROOT_DIR/benchmark/SWE-Atlas/run_config/${split}/mswea_${split}_config.yaml" ]]; then
     MSWEA_CFG_TMP="$MSWEA_CFG"
+  fi
+  # evolve native tools 时 model_class+agent_class 已由 EVOLVE_NATIVE_ARGS 的 config_file
+  # 设定（evolve_tools.model.* / evolve_tools.agent.EvolveToolsAgent），不再传 per-split
+  # mswea config；非 evolve 模式才传 per-split config。
+  SPLIT_CFG_ARGS=()
+  if [[ -z "${EVOLVE_TOOLS_CONFIG_HOST:-}" ]]; then
+    SPLIT_CFG_ARGS=(--ak "config_file=${MSWEA_CFG}")
   fi
   # 使用 Harbor 在当前 split 上运行 mini-swe-agent，并加载该 split 专用的 mswea 配置。
   "$UV_BIN" run --directory "$ROOT_DIR/tmp/harbor" harbor run \
@@ -109,7 +122,8 @@ for split in ${SWE_ATLAS_SPLITS//,/ }; do
     --n-tasks "$N_TASKS" \
     -o "$RESULTS_DIR/swe-atlas-${split}" \
     --job-name "$RUN_ID" \
-    --ak "config_file=${MSWEA_CFG}" \
+    "${SPLIT_CFG_ARGS[@]}" \
+    "${EVOLVE_NATIVE_ARGS[@]}" \
     --yes \
     "${EVOLVE_MOUNTS_ARGS[@]}" \
     "${EVOLVE_PROMPT_ARGS[@]}" \

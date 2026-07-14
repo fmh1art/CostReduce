@@ -2,6 +2,11 @@
 results/
 results_*/
 
+# Benchmark datasets and external repos (large files, not to be committed)
+benchmark/*/datasets/
+benchmark/*/data/
+benchmark/DBA-bench/DataAgentBench/
+
 # Archived or historical local working data
 _his/
 .evolve_skills/
@@ -23,6 +28,7 @@ __pycache__/
 *$py.class
 
 # Logs and runtime artifacts
+logs/
 *.log
 *.tmp
 *.temp

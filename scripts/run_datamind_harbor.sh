@@ -117,11 +117,12 @@ mapfile -t VERIFIER_JUDGE_ENV < <(datamind_verifier_args)
 mapfile -t SKIP_ARGS < <(evolve_skip_exclude_args)
 
 # 可选：若设置了 EVOLVE_SCRIPTS_DIR，把其下文件 bind mount 到容器辅助脚本目录，
-# 并把 instruction.md + tools block 注入 prompt 模板。Harbor 的 Trial 层会自动追加
-# /logs/{agent,verifier,artifacts} 三个默认 bind mount，故强制
-# EVOLVE_SCRIPTS_INCLUDE_DEFAULT_LOG_MOUNTS=0 避免重复挂载触发冲突。
+# 并把 evolved scripts 注册成 native function tools（model/agent 子类 + manifest）。
+# Harbor 的 Trial 层会自动追加 /logs/{agent,verifier,artifacts} 三个默认 bind mount，
+# 故强制 EVOLVE_SCRIPTS_INCLUDE_DEFAULT_LOG_MOUNTS=0 避免重复挂载触发冲突。
 EVOLVE_MOUNTS_ARGS=()
 EVOLVE_PROMPT_ARGS=()
+EVOLVE_NATIVE_ARGS=()
 if [[ -n "${EVOLVE_SCRIPTS_DIR:-}" ]]; then
   EVOLVE_MOUNTS_JSON="$(EVOLVE_SCRIPTS_INCLUDE_DEFAULT_LOG_MOUNTS=0 evolve_scripts_mounts_json)"
   if [[ -n "${EVOLVE_MOUNTS_JSON}" ]]; then
@@ -131,19 +132,24 @@ if [[ -n "${EVOLVE_SCRIPTS_DIR:-}" ]]; then
   if [[ -n "${EVOLVE_PROMPT_TEMPLATE}" ]]; then
     EVOLVE_PROMPT_ARGS=(--ak "prompt_template_path=${EVOLVE_PROMPT_TEMPLATE}")
   fi
+  evolve_scripts_deploy || exit 1
+  mapfile -t EVOLVE_NATIVE_ARGS < <(evolve_scripts_native_tools_args)
 fi
 
-# 选择 mini-swe-agent 的 config_file：
+# 选择 mini-swe-agent 的 config_file（仅在没有 evolved native tools 时生效）：
 #   - DATAMIND_MSWEA_CONFIG 显式指定 → 直接用。
 #   - responses 配置 → 合成 litellm_response 临时配置。
 #   - chat 配置 → 不传 config_file，沿用 mini.yaml 默认。
+# evolve 模式下 model_class+agent_class 由 EVOLVE_NATIVE_ARGS 的 config_file 设定。
 MSWEA_CFG_ARGS=()
-if [[ -n "${DATAMIND_MSWEA_CONFIG}" ]]; then
-  MSWEA_CFG_ARGS=(--ak "config_file=${DATAMIND_MSWEA_CONFIG}")
-else
-  MSWEA_CFG_TMP="$(datamind_responses_config_file)"
-  if [[ -n "${MSWEA_CFG_TMP}" ]]; then
-    MSWEA_CFG_ARGS=(--ak "config_file=${MSWEA_CFG_TMP}")
+if [[ -z "${EVOLVE_TOOLS_CONFIG_HOST:-}" ]]; then
+  if [[ -n "${DATAMIND_MSWEA_CONFIG}" ]]; then
+    MSWEA_CFG_ARGS=(--ak "config_file=${DATAMIND_MSWEA_CONFIG}")
+  else
+    MSWEA_CFG_TMP="$(datamind_responses_config_file)"
+    if [[ -n "${MSWEA_CFG_TMP}" ]]; then
+      MSWEA_CFG_ARGS=(--ak "config_file=${MSWEA_CFG_TMP}")
+    fi
   fi
 fi
 
@@ -168,6 +174,7 @@ fi
   --job-name "$RUN_ID" \
   --yes \
   "${MSWEA_CFG_ARGS[@]}" \
+  "${EVOLVE_NATIVE_ARGS[@]}" \
   "${EVOLVE_MOUNTS_ARGS[@]}" \
   "${EVOLVE_PROMPT_ARGS[@]}" \
   "${SKIP_ARGS[@]}" \

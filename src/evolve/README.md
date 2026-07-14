@@ -1,6 +1,8 @@
 # Script Evolution Pipeline — Tutorial
 
-从已有的 agent trajectory 演化出可复用的成本优化脚本（`.evolve_scripts/`）。
+从已有的 agent trajectory 演化出可复用的成本优化脚本。实验脚本默认将日志、报告和
+最终脚本统一保存到 `results/evolve/<version>/<benchmark>/<timeflag>/`；prep、最终评测和
+no-evolve 分别保存到 `results/prep/`、`results/eval/` 和 `results/no_evolve/`。
 
 ## 1. Pipeline 概览
 
@@ -286,3 +288,95 @@ A: 日志里会打印 `mini-swe-agent failed (rc=...)` + 完整 stdout/stderr ta
 
 **Q: `--task` 匹配不到？**
 A: 先看 `result_dir` 下的目录结构。task id 通常是 `<task_id>__<random>` 形式，`--task task-foo` 会匹配 `task-foo__*`。如果是别的命名，回退到子串匹配，所以传任意路径片段都行。
+
+## 7. Evolved scripts → native function tools（`native_tools.py` + `evolve_tools`）
+
+历史做法是把 evolved scripts 当「伪工具」：在 system prompt 里教 agent 用
+`bash /app/.preinstalled_scripts/<name>/main.sh <args>` 调用。现在改为**真正的 function
+tool**——agent 直接按名字（如 `read-lines`）带结构化参数调用。
+
+### 7.1 转换流水线（host 侧：`src/evolve/native_tools.py`）
+
+evolve agent 编辑 `<scripts_dir>/<tool>/{main.sh, intro.json}` 后，converter 把这个目录变成
+mini-swe-agent 注册 native tool 所需的三样东西：
+
+| 产物 | 路径 | 作用 |
+|---|---|---|
+| manifest | `<scripts_dir>/.tools_manifest.json` | 每个 tool 的 JSON-schema `parameters` + `param_specs`（CLI 渲染规则）|
+| runtime 包 | `<scripts_dir>/.runtime/evolve_tools/` | 通用 agent 端包（`EvolveToolsAgent` + 两个 Model 子类），容器内经 `PYTHONPATH` 导入 |
+| config yaml | `<scripts_dir>/.evolve_tools_config.yaml` | 设 `model.model_class` / `agent.agent_class` 为 evolve_tools 类（+ `max_completion_tokens`）|
+
+intro.json 参数 `name` → CLI 形式的映射规则（converter 据此把 function-call 参数渲染回 argv）：
+
+| `name` 形式 | kind | 渲染 |
+|---|---|---|
+| `--numbered` | bool_flag | 值为真时 emit `--numbered` |
+| `--head=N` | value_flag_eq | emit `--head=<value>` |
+| `-c code` / `--x N` | value_flag_space | emit flag 再 emit value |
+| `file`（无前导 `-`）| positional | 末尾按声明顺序 emit，多词值会被 shell-split |
+
+CLI：
+
+```bash
+python -m src.evolve.native_tools deploy --scripts-dir .evolve_scripts --api-type chat
+python -m src.evolve.native_tools build-manifest --scripts-dir .evolve_scripts
+python -m src.evolve.native_tools deploy-runtime --scripts-dir .evolve_scripts
+python -m src.evolve.native_tools write-config --scripts-dir .evolve_scripts --api-type responses
+```
+
+### 7.2 运行时（agent 侧：`minisweagent.extra.evolve_tools`）
+
+参照 `agent/mini-swe-agent/add_new_tools.md` 的 calc_tool 模式，零改动核心源码：
+
+- `registry.py` — 读 manifest（`EVOLVE_TOOLS_MANIFEST`，默认 `/app/.preinstalled_scripts/.tools_manifest.json`），
+  暴露 chat/responses tool 列表、扩展解析器（认 `bash` + 所有注册 tool）、`run_tool`（`bash <main.sh> <rendered argv>`）。
+- `agent.py` — `EvolveToolsAgent(DefaultAgent)`：按 `action["tool"]` 分流，注册 tool 走 `run_tool`，其余走 `env.execute`（bash）。
+- `model.py` — `LitellmModelWithEvolveTools` / `LitellmResponseModelWithEvolveTools`：把 tool schemas 加进 `tools=`，换扩展解析器。
+
+manifest 缺失时退化为「只有 bash」（不崩），所以空 scripts_dir 也能 rollout。
+
+### 7.3 rollout 容器如何装上（`scripts/_bench_common.sh`）
+
+设置 `EVOLVE_SCRIPTS_DIR` 后，每个 `run_<bench>.sh` 在调起容器前调用 `evolve_scripts_deploy`
+（生成三样产物），并通过 pier/harbor 注入：
+
+- `--ak config_file=<config yaml>` — 设 model/agent 类为 evolve_tools.*
+- `--ae EVOLVE_TOOLS_MANIFEST` / `EVOLVE_TOOLS_SCRIPTS_DIR` / `PYTHONPATH=<scripts>/.runtime`
+
+容器里 mini-swe-agent 来自 PyPI（没有 `extra/evolve_tools`），所以 runtime 包是从 host 拷进
+`<scripts>/.runtime/` 并经 `PYTHONPATH` 导入的；脚本目录经 bind-mount 挂到 `/app/.preinstalled_scripts`。
+
+测试：`cd agent/mini-swe-agent && uv run python tests/test_evolve_tools.py`（22 用例，免 LLM）。
+
+## 8. evolve_v5_cycle — rollout ↔ evolve 闭环（4 cycles，native tools）
+
+`src/evolve/evolve_v5_cycle.py` 把上面整条链路闭成 4 轮（`--n-cycles`，默认 4）：
+
+```
+for cycle in 1..N:
+  1. rollout     mini-swe-agent 带【当前】native tools 跑 benchmark → 新 trajectories
+  2. annotate    LLM 标注每条 trajectory 的 step 依赖
+  3. contrastive 按依赖图裁出最小 trajectory
+  4. evolve      contrastive samples 喂给 evolve agent → 改 scripts/intro.json
+  5. bridge      converter 重建 manifest/runtime/config（下一轮 rollout 自动用上新 tools）
+```
+
+- **rollout agent** = `RolloutAgent`：调 `scripts/run_<bench>.sh`，临时软链 N 个 case 进 temp 目录。
+- **evolve agent** = `EvolveAgent`：复用 `TrajectoryAnnotator` / `ContrastiveSampleBuilder` /
+  `ScriptEvolver` / `MiniSweAgentRunner`，evolve 后调 `native_tools.deploy` 刷新注册文件。
+- cycle 1 可用 `--baseline-dir` 复用已有 T0（无脚本轨迹），跳过首轮 rollout。
+
+```bash
+python -m src.evolve.evolve_v5_cycle run \
+    --benchmark deep-swe \
+    --config _config/deepseekv4_flash.yaml \
+    --eval-cases-file results/prep/handles/deep-swe/deepseek-v4-flash/eval_cases.txt \
+    --scripts-dir .evolve_scripts_v5_deep-swe \
+    --work-dir results/v5_cycle/deep-swe \
+    --n-cycles 4
+
+# 或经实验脚本
+EVOLVE_VERSION=v5 BENCHMARK=deep-swe bash scripts/run_evolve_experiment.sh
+```
+
+每轮报告写到 `<work_dir>/v5_report.json`。

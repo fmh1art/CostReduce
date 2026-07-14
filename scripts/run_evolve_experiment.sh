@@ -5,7 +5,7 @@
 # 在「单个 benchmark」上跑完整的 evolve 实验（默认 v2）：
 #   prep    采样 N 个 case（EVOLVE_CASE_COUNT，默认 16）+ 无脚本跑 code agent 得 T0
 #           + v2 annotate（evolve_v2_chunk annotate，产出 dependencies/step_meta/brief_observations，
-#           是 v1/v2/v4 共用的超集标注），存 results/evolving/<bench>/<llm>/。
+#           是 v1/v2/v4 共用的超集标注），存 results/prep/{runs,handles}/。
 #           所有 evolve 框架可复用，按 LLM 区分（不同 LLM 不可互用）。
 #   步骤 1  按 EVOLVE_VERSION 选框架跑 evolve（复用 prep 标注，--skip annotate 只跑 contrastive+evolve）：
 #             v1 → src.evolve.evolve_v1_chunk run
@@ -21,7 +21,7 @@
 #           测 code agent 装上 evolved scripts 后的效果。
 #
 # 设计要点：
-#   * EVOLVE_VERSION 控制 evolve 阶段框架（v1/v2/v3/v4），默认 v2。
+#   * EVOLVE_VERSION 控制 evolve 阶段框架（v1/v2/v3/v4/v5/v6/v7），默认 v2。
 #   * prep 只做 code-agent + v2 annotate（版本无关、可复用）；contrastive 由各版本在步骤 1 自建。
 #   * prep 与 LLM 绑定（按 <bench>/<llm_name> 存），不同 LLM 不复用。
 #   * 不跳过 case → 步骤 2 EVOLVE_SKIP_FILE="" 强制不跳过。
@@ -50,7 +50,7 @@ LLM_CONFIG="${LLM_CONFIG:-${ROOT_DIR}/_config/deepseekv4_flash.yaml}"
 N_CONCURRENT="${N_CONCURRENT:-4}"
 EVOLVE_CASE_COUNT="${EVOLVE_CASE_COUNT:-16}"   # 采样多少 case 做 evolve + 回验
 EVAL_N_TASKS="${EVAL_N_TASKS:-64}"              # 步骤 2 最终评测跑多少 case（默认 64；swebench 上限 500）
-MAX_ROUNDS="${MAX_ROUNDS:-5}"                 # （v3 闭环用，纯 v2_chunk 模式忽略）
+MAX_ROUNDS="${MAX_ROUNDS:-5}"                 # （v3/v5 闭环用：v3=max_rounds，v5=n-cycles；纯 v2_chunk 模式忽略）
 SCRIPTS_DIR="${SCRIPTS_DIR:-}"                # 默认见下方带 TS 的兜底
 MINI_SWE_AGENT_DIR="${MINI_SWE_AGENT_DIR:-${ROOT_DIR}/agent/mini-swe-agent}"  # evolve agent 用
 # 每 prompt 含几个 case（trajectory）。传给各 evolve 框架的 --batch-size：
@@ -59,12 +59,14 @@ MINI_SWE_AGENT_DIR="${MINI_SWE_AGENT_DIR:-${ROOT_DIR}/agent/mini-swe-agent}"  # 
 EVOLVE_CASES_PER_PROMPT="${EVOLVE_CASES_PER_PROMPT:-2}"
 WORK_DIR="${WORK_DIR:-}"
 SWEBENCH_TASK_PATH="${SWEBENCH_TASK_PATH:-}"  # swebench 必填
+DAB_TASK_PATH="${DAB_TASK_PATH:-}"            # dab harbor flat task 目录（可自动生成）
 SKIP_FINAL_EVAL="${SKIP_FINAL_EVAL:-0}"       # 1=只做步骤 1，跳过最终评测
 DRY_RUN="${DRY_RUN:-0}"
 CONDA_ENV="${CONDA_ENV-0622}"                 # 置空串则不激活 conda
-# evolve 阶段框架版本：v1/v2/v3/v4（分别对应 evolve_v1_chunk/evolve_v2_chunk/
-# evolve_v3_cycle/evolve_v4_dag）。v1/v2/v4 走「步骤1 evolve + 步骤2 评测」；
-# v3 是自包含闭环，替代步骤 1+2。
+# evolve 阶段框架版本：v1/v2/v2.1/v3/v4/v5/v6/v7（分别对应 evolve_v1_chunk/evolve_v2_chunk/
+# evolve_v2_1_cycle/evolve_v3_cycle/evolve_v4_dag/evolve_v5_cycle/evolve_v6_cycle/evolve_v7）。v1/v2/v4 走「步骤1 evolve + 步骤2 评测」；
+# v3 是自包含闭环，替代步骤 1+2。v5 是 rollout↔evolve 闭环 over native function tools（4 cycles）。
+# v2.1 = v5 闭环 + v2 chunk 框架 + batch-3 标注（一次标注 3 个 step，~3× 更少调用）。
 EVOLVE_VERSION="${EVOLVE_VERSION:-v2}"
 
 # ---------- phase 切换（prep / v3 / all）----------
@@ -86,7 +88,13 @@ for line in Path(sys.argv[1]).read_text().splitlines():
 PY
 )}"
 [[ -n "$LLM_NAME" ]] || LLM_NAME="$(basename "$LLM_CONFIG" .yaml)"
-PREP_DIR="${PREP_DIR:-${ROOT_DIR}/results/evolving/${BENCHMARK}/${LLM_NAME}}"  # 稳定复用 handle（symlink）
+RESULTS_ROOT="${RESULTS_ROOT:-${ROOT_DIR}/results}"
+PREP_RUNS_ROOT="${PREP_RUNS_ROOT:-${RESULTS_ROOT}/prep/runs}"
+PREP_HANDLES_ROOT="${PREP_HANDLES_ROOT:-${RESULTS_ROOT}/prep/handles}"
+EVOLVE_RESULTS_ROOT="${EVOLVE_RESULTS_ROOT:-${RESULTS_ROOT}/evolve}"
+EVAL_RESULTS_ROOT="${EVAL_RESULTS_ROOT:-${RESULTS_ROOT}/eval}"
+NO_EVOLVE_RESULTS_ROOT="${NO_EVOLVE_RESULTS_ROOT:-${RESULTS_ROOT}/no_evolve}"
+PREP_DIR="${PREP_DIR:-${PREP_HANDLES_ROOT}/${BENCHMARK}/${LLM_NAME}}"  # 稳定复用 handle（symlink）
 FORCE_PREP="${FORCE_PREP:-0}"                  # 1=无视已有 prep 重跑
 BASELINE_DIR="${BASELINE_DIR:-}"               # 显式覆盖 v3 --baseline-dir（默认用 $PREP_DIR）
 
@@ -94,15 +102,19 @@ log()  { printf '\n\033[1;34m[evolve-exp]\033[0m %s\n' "$*" >&2; }
 warn() { printf '\n\033[1;33m[evolve-exp] WARN:\033[0m %s\n' "$*" >&2; }
 die()  { printf '\n\033[1;31m[evolve-exp] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 
-[[ -n "$BENCHMARK" ]] || die "请设置 BENCHMARK（deep-swe / swe-atlas-qa / swe-atlas-tw / swe-atlas-rf / swebench）"
+[[ -n "$BENCHMARK" ]] || die "请设置 BENCHMARK（deep-swe / swe-atlas-qa / swe-atlas-tw / swe-atlas-rf / swebench / datamind / dab）"
 
 # ---------- EVOLVE_VERSION → 模块映射 ----------
 case "$EVOLVE_VERSION" in
   v1) EVOLVE_MOD="evolve_v1_chunk"; VERSION_TAG="v1chunk" ;;
   v2) EVOLVE_MOD="evolve_v2_chunk"; VERSION_TAG="v2chunk" ;;
+  v2.1) EVOLVE_MOD="evolve_v2_1_cycle"; VERSION_TAG="v21cycle" ;;
   v3) EVOLVE_MOD="evolve_v3_cycle"; VERSION_TAG="v3cycle" ;;
   v4) EVOLVE_MOD="evolve_v4_dag";   VERSION_TAG="v4dag"   ;;
-  *) die "EVOLVE_VERSION 必须是 v1/v2/v3/v4（当前=$EVOLVE_VERSION）" ;;
+  v5) EVOLVE_MOD="evolve_v5_cycle"; VERSION_TAG="v5cycle" ;;
+  v6) EVOLVE_MOD="evolve_v6_cycle"; VERSION_TAG="v6cycle" ;;
+  v7) EVOLVE_MOD="evolve_v7";       VERSION_TAG="v7cycle" ;;
+  *) die "EVOLVE_VERSION 必须是 v1/v2/v2.1/v3/v4/v5/v6/v7（当前=$EVOLVE_VERSION）" ;;
 esac
 log "[$BENCHMARK] EVOLVE_VERSION=$EVOLVE_VERSION -> src.evolve.$EVOLVE_MOD"
 
@@ -111,7 +123,9 @@ log "[$BENCHMARK] EVOLVE_VERSION=$EVOLVE_VERSION -> src.evolve.$EVOLVE_MOD"
 # 本函数：若给定的 SWEBENCH_TASK_PATH 已是 flat 且实例数够 → 原样返回；
 # 否则（parquet，或 flat 但实例不足）调 adapter 生成 / 补齐（HF 离线缓存 + 代理），
 # 产物落 SWEBENCH_TASKS_GEN（默认 tmp/harbor/datasets/swebench-verified），幂等可复用。
-_swebench_count() { find "$1" -maxdepth 2 \( -name task.toml -o -name task.yaml \) 2>/dev/null | wc -l; }
+# -H：跟随作为起始点的 symlink（让 symlink 共享的数据目录也能采样/计数），
+#      但不跟随遍历中遇到的 symlink（与真实目录行为一致，不会多算软链条目）。
+_swebench_count() { find -H "$1" -maxdepth 2 \( -name task.toml -o -name task.yaml \) 2>/dev/null | wc -l; }
 
 prepare_swebench_tasks() {
   local given="$1"
@@ -162,7 +176,7 @@ prepare_swebench_tasks() {
 # flat task 目录（每轮一个 [[steps]]，verifier 用 LLM judge）。本函数幂等：已有且够数则复用。
 # 产物落 DATAMIND_TASKS_GEN（默认 tmp/harbor/datasets/longds），返回该路径。
 # 与 prepare_swebench_tasks 同构，但 longds adapter 不需要 HF 离线缓存/代理（纯本地数据）。
-_datamind_count() { find "$1" -maxdepth 2 -name task.toml 2>/dev/null | wc -l; }
+_datamind_count() { find -H "$1" -maxdepth 2 -name task.toml 2>/dev/null | wc -l; }
 
 prepare_datamind_tasks() {
   local need="${DATAMIND_GEN_LIMIT:-${EVAL_N_TASKS}}"
@@ -197,6 +211,39 @@ prepare_datamind_tasks() {
   printf '%s\n' "$target"
 }
 
+# ---------- dab：用本项目 adapter 生成 harbor flat task 目录 ----------
+_dab_count() { find -H "$1" -maxdepth 2 -name task.toml 2>/dev/null | wc -l; }
+
+prepare_dab_tasks() {
+  local need="${DAB_GEN_LIMIT:-${EVAL_N_TASKS}}"
+  [[ "$need" =~ ^[0-9]+$ ]] || need=104
+  local target="${DAB_TASK_PATH:-${ROOT_DIR}/benchmark/DBA-bench/harbor/datasets/dab}"
+  local have
+  have="$(_dab_count "$target")"
+  if [[ "$have" -ge "$need" ]]; then
+    log "[dab] 使用已有 flat task 目录：$target（$have 个实例 ≥ 需求 $need）"
+    printf '%s\n' "$target"; return 0
+  fi
+  local adapter="${ROOT_DIR}/benchmark/DBA-bench/dab_harbor_adapter.py"
+  local dab_root="${DAB_ROOT:-${ROOT_DIR}/benchmark/DBA-bench/DataAgentBench}"
+  [[ -f "$adapter" ]] || die "[dab] adapter 不存在：$adapter"
+  [[ -d "$dab_root" ]] || die "[dab] DAB_ROOT 不存在：$dab_root"
+  log "[dab] flat 任务不足（现有 $have < 需求 $need），用 adapter 生成 ≤${need} -> $target"
+  if [[ "${DRY_RUN}" == "1" ]]; then
+    warn "[DRY_RUN] 跳过 DAB adapter 生成；假设 flat 目录已在 $target"
+    printf '%s\n' "$target"; return 0
+  fi
+  local args=(python "$adapter" --dab-root "$dab_root" --output-dir "$target" --limit "$need" --overwrite)
+  [[ -n "${DAB_DATASETS:-}" ]] && args+=(--datasets "$DAB_DATASETS")
+  [[ "${DAB_USE_HINTS:-0}" == "1" ]] && args+=(--use-hints)
+  ( cd "$ROOT_DIR" && "${args[@]}" ) >&2 \
+    || die "[dab] adapter 生成 flat 任务目录失败（见上方输出）"
+  have="$(_dab_count "$target")"
+  [[ "$have" -ge 1 ]] || die "[dab] adapter 跑完但未生成任何 task 目录（$target）"
+  log "[dab] flat 任务就绪：$target（$have 个实例）"
+  printf '%s\n' "$target"
+}
+
 # ---------- benchmark 元信息（镜像 src/evolve/evolve_v3_cycle.py 的 BENCHMARKS） ----------
 case "$BENCHMARK" in
   deep-swe)
@@ -226,7 +273,12 @@ case "$BENCHMARK" in
     RUN_SCRIPT="run_datamind_harbor.sh"; RESULTS_SUBDIR="datamind-longds"; SPLIT=""
     SOURCE_TASK_DIR="$(prepare_datamind_tasks)"
     ;;
-  *) die "未知 BENCHMARK=$BENCHMARK（支持：deep-swe / swe-atlas-qa / swe-atlas-tw / swe-atlas-rf / swebench / datamind）";;
+  dab)
+    DAB_TASK_PATH="${DAB_TASK_PATH:-${ROOT_DIR}/benchmark/DBA-bench/harbor/datasets/dab}"
+    RUN_SCRIPT="run_dab_harbor.sh"; RESULTS_SUBDIR="dab"; SPLIT=""
+    SOURCE_TASK_DIR="$(prepare_dab_tasks)"
+    ;;
+  *) die "未知 BENCHMARK=$BENCHMARK（支持：deep-swe / swe-atlas-qa / swe-atlas-tw / swe-atlas-rf / swebench / datamind / dab）";;
 esac
 
 # DRY_RUN 时 prepare_*_tasks 会跳过实际生成、假设目录已就绪，故跳过存在性校验。
@@ -247,15 +299,18 @@ fi
 
 # ---------- 输出目录（带时间戳 + 版本，可被环境变量覆盖以便 resume） ----------
 TS="$(date +%m%d-%H%M%S)"
-# 路径都带 VERSION_TAG（v2chunk/v4dag/...），便于一眼区分不同 evolve 框架的产物。
-[[ -n "$WORK_DIR"  ]] || WORK_DIR="${ROOT_DIR}/results/evolve_${VERSION_TAG}/${BENCHMARK}/${TS}"
-# evolve scripts 统一存到 ./.evolve_scripts/<bench>_<llm>_<version>_<TS>/（与 bench+LLM+版本
-# 绑定，带时间戳保留历史版本）。dry-run 不在仓库根建目录（指到 WORK_DIR 下，避免反复
-# dry-run 留下一堆空目录）。
+# 每类结果有独立根目录，避免 prep/evolve/eval/no-evolve 相互混杂。
+if [[ -z "$WORK_DIR" ]]; then
+  case "$PHASE" in
+    prep)      WORK_DIR="${RESULTS_ROOT}/prep/work/${BENCHMARK}/${TS}" ;;
+    no_evolve) WORK_DIR="${NO_EVOLVE_RESULTS_ROOT}/work/${BENCHMARK}/${TS}" ;;
+    *)         WORK_DIR="${EVOLVE_RESULTS_ROOT}/${VERSION_TAG}/${BENCHMARK}/${TS}" ;;
+  esac
+fi
 if [[ "${DRY_RUN}" == "1" ]]; then
   [[ -n "$SCRIPTS_DIR" ]] || SCRIPTS_DIR="${WORK_DIR}/scripts_dryrun"
 else
-  [[ -n "$SCRIPTS_DIR" ]] || SCRIPTS_DIR="${ROOT_DIR}/.evolve_scripts/${BENCHMARK}_${LLM_NAME}_${VERSION_TAG}_${TS}"
+  [[ -n "$SCRIPTS_DIR" ]] || SCRIPTS_DIR="${WORK_DIR}/scripts"
 fi
 EVAL_CASES_FILE="${WORK_DIR}/eval_cases.txt"
 mkdir -p "$WORK_DIR" "$SCRIPTS_DIR"
@@ -264,7 +319,7 @@ mkdir -p "$WORK_DIR" "$SCRIPTS_DIR"
 # 所有 benchmark 的 SOURCE_TASK_DIR 现在都是 harbor flat task 目录（每 case 一个子目录），
 # 采样 = 取前 N 个子目录名。datamind 的 case id 是 <domain>__<dataset>__<task_id>（adapter 扁平化）。
 mapfile -t CASE_IDS < <(
-  find "$SOURCE_TASK_DIR" -maxdepth 1 -mindepth 1 -type d -printf '%f\n' 2>/dev/null \
+  find -H "$SOURCE_TASK_DIR" -maxdepth 1 -mindepth 1 -type d -printf '%f\n' 2>/dev/null \
     | sort | head -n "$EVOLVE_CASE_COUNT"
 )
 N=${#CASE_IDS[@]}
@@ -280,6 +335,7 @@ _prep_task_meta() {
     swe-atlas-*) PREP_TASK_ENV_NAME="SWE_ATLAS_DATA_DIR";   PREP_TASK_LAYOUT="split" ;;
     swebench)    PREP_TASK_ENV_NAME="SWEBENCH_TASK_PATH";    PREP_TASK_LAYOUT="flat" ;;
     datamind)    PREP_TASK_ENV_NAME="DATAMIND_TASK_PATH";    PREP_TASK_LAYOUT="flat" ;;
+    dab)         PREP_TASK_ENV_NAME="DAB_TASK_PATH";          PREP_TASK_LAYOUT="flat" ;;
     *) die "prep 不支持 benchmark=$BENCHMARK" ;;
   esac
 }
@@ -315,7 +371,7 @@ _prep_ready() { [[ -e "$PREP_DIR" && -f "$PREP_DIR/.prep_done" ]]; }
 # ---------- prep 主体：无脚本跑 16 + v2 annotate/contrastive ----------
 run_prep() {
   local run_id="prep-${BENCHMARK}-${LLM_NAME}-${TS}"
-  local results_root="${RESULTS_DIR:-${ROOT_DIR}/results}"
+  local results_root="${PREP_RESULTS_DIR:-${PREP_RUNS_ROOT}}"
   local prep_run_dir="${results_root}/${RESULTS_SUBDIR}/${run_id}"
   local taskdir_base="${WORK_DIR}/prep_taskdir"
 
@@ -328,6 +384,7 @@ run_prep() {
     N_TASKS="$EVOLVE_CASE_COUNT"         # 只跑这 16 个
     N_CONCURRENT="$N_CONCURRENT"
     LLM_CONFIG="$LLM_CONFIG"
+    RESULTS_DIR="$results_root"
   )
   [[ -n "$SPLIT" ]] && prep_env+=(SWE_ATLAS_SPLITS="$SPLIT")
   prep_env+=("${PREP_TASK_ENV_NAME}=${PREP_TASK_ENV_VAL}")
@@ -367,7 +424,7 @@ run_prep() {
 }
 
 # ---------- 提取 evolve 装 scripts 评测实际跑的 case id ----------
-# 从 results/<subdir>/evolve-v2chunk-<bench>-*/ 的 trial 子目录里读 config.json 的
+# 从 results/eval/<subdir>/evolve-v2chunk-<bench>-*/ 的 trial 子目录里读 config.json 的
 # task.path，取 basename 作 case id（比解析 trial 目录名 __suffix 更可靠，且不受 harbor
 # task name 30 字符截断影响）。写到该评测目录下的 eval_cases_used.txt。
 # 入参：$1=评测目录（evolve-v2chunk-<bench>-<ts>）。输出：该目录下 eval_cases_used.txt。
@@ -425,10 +482,11 @@ fi
 # 依赖：step2 评测产物（evolve-<version>-<bench>-<ts>）必须已存在（先跑 PHASE=all）。
 if [[ "$PHASE" == "no_evolve" ]]; then
   # 找最新的 evolve-*-${BENCH}-* 评测目录（no_evolve 的 case 来源；跨版本匹配）
-  results_root="${RESULTS_DIR:-${ROOT_DIR}/results}"
+  eval_results_root="${EVAL_RESULTS_DIR:-${EVAL_RESULTS_ROOT}}"
+  noevolve_results_root="${NO_EVOLVE_RESULTS_DIR:-${NO_EVOLVE_RESULTS_ROOT}}"
   eval_src_dir="${NO_EVOLVE_EVAL_DIR:-}"
   if [[ -z "$eval_src_dir" ]]; then
-    eval_src_dir="$(find "${results_root}/${RESULTS_SUBDIR}" -maxdepth 1 -type d \
+    eval_src_dir="$(find "${eval_results_root}/${RESULTS_SUBDIR}" -maxdepth 1 -type d \
       -name "evolve-*-${BENCHMARK}-*" 2>/dev/null | sort | tail -1)"
   fi
   [[ -n "$eval_src_dir" && -d "$eval_src_dir" ]] \
@@ -461,22 +519,23 @@ if [[ "$PHASE" == "no_evolve" ]]; then
     N_TASKS="$N"                         # 只跑提取的这些 case
     N_CONCURRENT="$N_CONCURRENT"
     LLM_CONFIG="$LLM_CONFIG"
+    RESULTS_DIR="$noevolve_results_root"
   )
   [[ -n "$SPLIT" ]] && noevolve_env+=(SWE_ATLAS_SPLITS="$SPLIT")
   noevolve_env+=("${PREP_TASK_ENV_NAME}=${PREP_TASK_ENV_VAL}")
 
   log "[$BENCHMARK] no_evolve：不装 scripts 跑 $N 个 case（RUN_ID=$noevolve_run_id）"
   log "  对照 evolve 评测：$eval_src_dir"
-  log "  结果目录 -> ${results_root}/${RESULTS_SUBDIR}/${noevolve_run_id}"
+  log "  结果目录 -> ${noevolve_results_root}/${RESULTS_SUBDIR}/${noevolve_run_id}"
   if [[ "$DRY_RUN" == "1" ]]; then
     warn "[DRY_RUN] env ${noevolve_env[*]} bash ${SCRIPT_DIR}/${RUN_SCRIPT}"
   else
     env "${noevolve_env[@]}" bash "${SCRIPT_DIR}/${RUN_SCRIPT}" \
       || warn "[$BENCHMARK] no_evolve 评测退出非零（部分 case 可能失败），结果仍保留。"
   fi
-  log "[$BENCHMARK] 完成（PHASE=no_evolve）。对照基线结果：${results_root}/${RESULTS_SUBDIR}/${noevolve_run_id}/"
+  log "[$BENCHMARK] 完成（PHASE=no_evolve）。对照基线结果：${noevolve_results_root}/${RESULTS_SUBDIR}/${noevolve_run_id}/"
   log "  evolve 评测（装 scripts）：$eval_src_dir"
-  log "  no_evolve（不装 scripts）：${results_root}/${RESULTS_SUBDIR}/${noevolve_run_id}/"
+  log "  no_evolve（不装 scripts）：${noevolve_results_root}/${RESULTS_SUBDIR}/${noevolve_run_id}/"
   exit 0
 fi
 
@@ -514,6 +573,7 @@ if [[ "$EVOLVE_VERSION" == "v3" ]]; then
     --n-tasks "$N"
     --n-concurrent "$N_CONCURRENT")
   [[ "$BENCHMARK" == "swebench" ]] && V3_CMD+=(--swebench-task-path "$SOURCE_TASK_DIR")
+  [[ "$BENCHMARK" == "dab" ]] && export DAB_TASK_PATH="$SOURCE_TASK_DIR"
   [[ "$DRY_RUN" == "1" ]] && V3_CMD+=(--dry-run)
   log "[$BENCHMARK] 步骤 1：v3_cycle 闭环（baseline=$EVOLVE_INPUT，eval cases=$EVAL_CASES_FILE）"
   log "  scripts -> $SCRIPTS_DIR"
@@ -528,26 +588,175 @@ if [[ "$EVOLVE_VERSION" == "v3" ]]; then
   exit 0
 fi
 
+# ---------- v5：rollout ↔ evolve 闭环 over native function tools（4 cycles）----------
+# v5 自包含闭环：每轮 rollout（装 native tools）→ annotate → contrastive → evolve
+# （evolve agent 实时更新 manifest/runtime/config）→ 下一轮。--n-cycles 默认 4。
+# --baseline-dir 复用 prep 的无脚本 T0 作 cycle-1 轨迹；--eval-cases-file 限定 case 集。
+if [[ "$EVOLVE_VERSION" == "v5" ]]; then
+  V5_CMD=(python -m src.evolve.evolve_v5_cycle run
+    --benchmark "$BENCHMARK"
+    --config "$LLM_CONFIG"
+    --eval-cases-file "$EVAL_CASES_FILE"
+    --baseline-dir "$EVOLVE_INPUT"
+    --scripts-dir "$SCRIPTS_DIR"
+    --work-dir "$WORK_DIR"
+    --mini-swe-agent-dir "$MINI_SWE_AGENT_DIR"
+    --workers "$EVOLVE_WORKERS"
+    --batch-size "$EVOLVE_CASES_PER_PROMPT"
+    --n-tasks "$N"
+    --n-concurrent "$N_CONCURRENT"
+    --n-cycles "${V5_N_CYCLES:-4}")
+  # v5 从 SWEBENCH_TASK_PATH 环境变量读 swebench 源任务目录。
+  [[ "$BENCHMARK" == "swebench" ]] && export SWEBENCH_TASK_PATH="$SOURCE_TASK_DIR"
+  [[ "$BENCHMARK" == "dab" ]] && export DAB_TASK_PATH="$SOURCE_TASK_DIR"
+  [[ "$DRY_RUN" == "1" ]] && V5_CMD+=(--dry-run)
+  log "[$BENCHMARK] 步骤 1：v5_cycle 闭环（baseline=$EVOLVE_INPUT，cycles=${V5_N_CYCLES:-4}）"
+  log "  scripts -> $SCRIPTS_DIR  （evolved scripts 在每轮 evolve 后转为 native function tools）"
+  log "  work    -> $WORK_DIR（闭环自带 rollout/annotate/contrastive/evolve，跳过独立的步骤 2）"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    warn "[DRY_RUN] $(printf '%q ' "${V5_CMD[@]}")"
+  else
+    ( cd "$ROOT_DIR" && "${V5_CMD[@]}" ) \
+      || die "[$BENCHMARK] v5_cycle 失败（见 ${WORK_DIR}/v5_report.json）"
+  fi
+  log "[$BENCHMARK] 完成（EVOLVE_VERSION=v5 闭环）。evolved scripts：$SCRIPTS_DIR"
+  exit 0
+fi
+
+# ---------- v6：rollout ↔ evolve 闭环，evolve agent 直接写 tools.json+executor.py ----------
+# v6 与 v5 同构（4 cycle 闭环），但 evolve agent 不再写 main.sh/intro.json，而是直接写
+# 注册文件 tools.json（tool schemas）+ executor.py（run_tool Python 执行逻辑）。rollout
+# 经 EVOLVE_TOOLS_MODE=registry 装 evolve_tools_v6 运行时加载这两个文件。
+if [[ "$EVOLVE_VERSION" == "v6" ]]; then
+  V6_CMD=(python -m src.evolve.evolve_v6_cycle run
+    --benchmark "$BENCHMARK"
+    --config "$LLM_CONFIG"
+    --eval-cases-file "$EVAL_CASES_FILE"
+    --baseline-dir "$EVOLVE_INPUT"
+    --scripts-dir "$SCRIPTS_DIR"
+    --work-dir "$WORK_DIR"
+    --mini-swe-agent-dir "$MINI_SWE_AGENT_DIR"
+    --workers "$EVOLVE_WORKERS"
+    --batch-size "$EVOLVE_CASES_PER_PROMPT"
+    --n-tasks "$N"
+    --n-concurrent "$N_CONCURRENT"
+    --n-cycles "${V6_N_CYCLES:-4}")
+  [[ "$BENCHMARK" == "swebench" ]] && export SWEBENCH_TASK_PATH="$SOURCE_TASK_DIR"
+  [[ "$BENCHMARK" == "dab" ]] && export DAB_TASK_PATH="$SOURCE_TASK_DIR"
+  [[ "$DRY_RUN" == "1" ]] && V6_CMD+=(--dry-run)
+  log "[$BENCHMARK] 步骤 1：v6_cycle 闭环（baseline=$EVOLVE_INPUT，cycles=${V6_N_CYCLES:-4}）"
+  log "  scripts -> $SCRIPTS_DIR  （evolve agent 每轮改写 tools.json + executor.py）"
+  log "  work    -> $WORK_DIR（闭环自带 rollout/annotate/contrastive/evolve，跳过独立的步骤 2）"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    warn "[DRY_RUN] $(printf '%q ' "${V6_CMD[@]}")"
+  else
+    ( cd "$ROOT_DIR" && "${V6_CMD[@]}" ) \
+      || die "[$BENCHMARK] v6_cycle 失败（见 ${WORK_DIR}/v6_report.json）"
+  fi
+  log "[$BENCHMARK] 完成（EVOLVE_VERSION=v6 闭环）。evolved tools：$SCRIPTS_DIR/{tools.json,executor.py}"
+  exit 0
+fi
+
+# ---------- v7：结果锚定 provenance graph + 紧凑 graph-macro prompt ----------
+# v7 复用 v6 的 native tools runtime 和 rollout wiring，但独立构造 outcome-anchored
+# provenance samples。完整图写盘，evolve prompt 仅放成本摘要、受限 slice 和高收益 macro，
+# 并由 V7_MAX_PROMPT_CHARS 设置硬字符预算。
+if [[ "$EVOLVE_VERSION" == "v7" ]]; then
+  V7_CMD=(python -m src.evolve.evolve_v7 run
+    --benchmark "$BENCHMARK"
+    --config "$LLM_CONFIG"
+    --eval-cases-file "$EVAL_CASES_FILE"
+    --baseline-dir "$EVOLVE_INPUT"
+    --scripts-dir "$SCRIPTS_DIR"
+    --work-dir "$WORK_DIR"
+    --mini-swe-agent-dir "$MINI_SWE_AGENT_DIR"
+    --workers "$EVOLVE_WORKERS"
+    --batch-size "${V7_EVOLVE_CASES_PER_PROMPT:-4}"
+    --n-tasks "$N"
+    --n-concurrent "$N_CONCURRENT"
+    --n-cycles "${V7_N_CYCLES:-4}"
+    --beam-width "${V7_BEAM_WIDTH:-32}"
+    --top-k "${V7_TOP_K:-3}"
+    --registry-budget-tokens "${V7_REGISTRY_BUDGET_TOKENS:-1200}"
+    --max-macro-candidates "${V7_MAX_MACRO_CANDIDATES:-8}"
+    --max-prompt-chars "${V7_MAX_PROMPT_CHARS:-32000}"
+    --max-steps-per-sample "${V7_MAX_STEPS_PER_SAMPLE:-8}")
+  [[ "$BENCHMARK" == "swebench" ]] && export SWEBENCH_TASK_PATH="$SOURCE_TASK_DIR"
+  [[ "$BENCHMARK" == "dab" ]] && export DAB_TASK_PATH="$SOURCE_TASK_DIR"
+  [[ "$DRY_RUN" == "1" ]] && V7_CMD+=(--dry-run)
+  log "[$BENCHMARK] 步骤 1：v7 outcome-anchored 闭环（baseline=$EVOLVE_INPUT，cycles=${V7_N_CYCLES:-4}）"
+  log "  scripts -> $SCRIPTS_DIR  （复用 v6 native tools runtime）"
+  log "  work    -> $WORK_DIR（provenance graph + compact prompt；batch=${V7_EVOLVE_CASES_PER_PROMPT:-4}，step-cap=${V7_MAX_STEPS_PER_SAMPLE:-8}，budget=${V7_MAX_PROMPT_CHARS:-32000} chars）"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    warn "[DRY_RUN] $(printf '%q ' "${V7_CMD[@]}")"
+  else
+    ( cd "$ROOT_DIR" && "${V7_CMD[@]}" ) \
+      || die "[$BENCHMARK] v7 失败（见 ${WORK_DIR}/v7_report.json）"
+  fi
+  log "[$BENCHMARK] 完成（EVOLVE_VERSION=v7）。evolved tools：$SCRIPTS_DIR/{tools.json,executor.py}"
+  exit 0
+fi
+
+# ---------- v2.1：rollout ↔ evolve 闭环，复用 v2 chunk 框架 + batch-3 标注 ----------
+# v2.1 = v5 的 rollout↔evolve 闭环 + v2 的 chunk evolve 框架（phase 切分 contrastive、
+# 行为契约 prompt、cwd 修复的 runner、main.sh/intro.json 脚本格式）+ 优化的 batch-3 标注器
+# （一次 LLM 调用标注 3 个连续 step 的依赖，~3× 更少标注调用；标注 step i 时只给 1..i-1）。
+# 与 v5 同构（4 cycle 闭环、--baseline-dir 复用 prep 无脚本 T0），但 evolve 侧用 v2 的
+# chunk 组件，bridge 用 native_tools.deploy（manifest 模式，与 v5 一致）。
+if [[ "$EVOLVE_VERSION" == "v2.1" ]]; then
+  V21_CMD=(python -m src.evolve.evolve_v2_1_cycle run
+    --benchmark "$BENCHMARK"
+    --config "$LLM_CONFIG"
+    --eval-cases-file "$EVAL_CASES_FILE"
+    --baseline-dir "$EVOLVE_INPUT"
+    --scripts-dir "$SCRIPTS_DIR"
+    --work-dir "$WORK_DIR"
+    --mini-swe-agent-dir "$MINI_SWE_AGENT_DIR"
+    --workers "$EVOLVE_WORKERS"
+    --batch-size "$EVOLVE_CASES_PER_PROMPT"
+    --n-tasks "$N"
+    --n-concurrent "$N_CONCURRENT"
+    --n-cycles "${V21_N_CYCLES:-4}"
+    --annotate-window-size "${V21_ANNOTATE_WINDOW_SIZE:-3}")
+  [[ "$BENCHMARK" == "swebench" ]] && export SWEBENCH_TASK_PATH="$SOURCE_TASK_DIR"
+  [[ "$BENCHMARK" == "dab" ]] && export DAB_TASK_PATH="$SOURCE_TASK_DIR"
+  [[ "$DRY_RUN" == "1" ]] && V21_CMD+=(--dry-run)
+  log "[$BENCHMARK] 步骤 1：v2.1_cycle 闭环（baseline=$EVOLVE_INPUT，cycles=${V21_N_CYCLES:-4}，annotate-window=${V21_ANNOTATE_WINDOW_SIZE:-3}）"
+  log "  scripts -> $SCRIPTS_DIR  （v2 chunk 框架演化 main.sh/intro.json，每轮转 native function tools）"
+  log "  work    -> $WORK_DIR（闭环自带 rollout/annotate(batch-3)/contrastive/evolve）"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    warn "[DRY_RUN] $(printf '%q ' "${V21_CMD[@]}")"
+  else
+    ( cd "$ROOT_DIR" && "${V21_CMD[@]}" ) \
+      || die "[$BENCHMARK] v2.1_cycle 失败（见 ${WORK_DIR}/v21_report.json）"
+  fi
+  log "[$BENCHMARK] v2.1_cycle 闭环完成。evolved scripts：$SCRIPTS_DIR -> 进步骤 2 最终评测（$EVAL_N_TASKS case）"
+  EVOLVE_DONE=1
+fi
+
 # v1/v2/v4：复用 prep 标注，--skip annotate 只跑 contrastive（各版本自建）+ evolve。
 # evolve 产出 scripts 直接进步骤 2 评测验证；不走闭环（无 T1 装脚本回验 / LLM review）。
-EVOLVE_CMD=(python -m src.evolve.$EVOLVE_MOD run
-  "$EVOLVE_INPUT"
-  --config "$LLM_CONFIG"
-  --scripts-dir "$SCRIPTS_DIR"
-  --mini-swe-agent-dir "$MINI_SWE_AGENT_DIR"
-  --workers "$EVOLVE_WORKERS"
-  --batch-size "$EVOLVE_CASES_PER_PROMPT"
-  --output-dir "${WORK_DIR}/evolve_logs"
-  --skip annotate)
+# v2.1 已在上面跑完闭环并把 EVOLVE_DONE=1，跳过这段 3 段式 evolve，直接进步骤 2 评测。
+if [[ -z "${EVOLVE_DONE:-}" ]]; then
+  EVOLVE_CMD=(python -m src.evolve.$EVOLVE_MOD run
+    "$EVOLVE_INPUT"
+    --config "$LLM_CONFIG"
+    --scripts-dir "$SCRIPTS_DIR"
+    --mini-swe-agent-dir "$MINI_SWE_AGENT_DIR"
+    --workers "$EVOLVE_WORKERS"
+    --batch-size "$EVOLVE_CASES_PER_PROMPT"
+    --output-dir "${WORK_DIR}/evolve_logs"
+    --skip annotate)
 
-log "[$BENCHMARK] 步骤 1：${EVOLVE_VERSION} evolve（复用 prep 标注 $EVOLVE_INPUT，跳过 annotate、自建 contrastive）"
-log "  scripts -> $SCRIPTS_DIR"
-log "  logs    -> ${WORK_DIR}/evolve_logs"
-if [[ "$DRY_RUN" == "1" ]]; then
-  warn "[DRY_RUN] $(printf '%q ' "${EVOLVE_CMD[@]}")"
-else
-  ( cd "$ROOT_DIR" && "${EVOLVE_CMD[@]}" ) \
-    || die "[$BENCHMARK] ${EVOLVE_VERSION} evolve 失败（见 ${WORK_DIR}/evolve_logs）"
+  log "[$BENCHMARK] 步骤 1：${EVOLVE_VERSION} evolve（复用 prep 标注 $EVOLVE_INPUT，跳过 annotate、自建 contrastive）"
+  log "  scripts -> $SCRIPTS_DIR"
+  log "  logs    -> ${WORK_DIR}/evolve_logs"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    warn "[DRY_RUN] $(printf '%q ' "${EVOLVE_CMD[@]}")"
+  else
+    ( cd "$ROOT_DIR" && "${EVOLVE_CMD[@]}" ) \
+      || die "[$BENCHMARK] ${EVOLVE_VERSION} evolve 失败（见 ${WORK_DIR}/evolve_logs）"
+  fi
 fi
 
 # ---------- 步骤 2：装 scripts 最终评测（不跳过 case） ----------
@@ -572,13 +781,15 @@ EVAL_ENV=(
   N_TASKS="$EVAL_N_TASKS"
   N_CONCURRENT="$N_CONCURRENT"
   LLM_CONFIG="$LLM_CONFIG"
+  RESULTS_DIR="$EVAL_RESULTS_ROOT"
 )
 [[ -n "$SPLIT" ]] && EVAL_ENV+=(SWE_ATLAS_SPLITS="$SPLIT")
 [[ "$BENCHMARK" == "swebench" ]] && EVAL_ENV+=(SWEBENCH_TASK_PATH="$SOURCE_TASK_DIR")
 [[ "$BENCHMARK" == "datamind" ]] && EVAL_ENV+=(DATAMIND_TASK_PATH="$SOURCE_TASK_DIR")
+[[ "$BENCHMARK" == "dab" ]] && EVAL_ENV+=(DAB_TASK_PATH="$SOURCE_TASK_DIR")
 
 log "[$BENCHMARK] 步骤 2：装 scripts 最终评测（RUN_ID=$EVAL_RUN_ID，不跳过 case，N_TASKS=$EVAL_N_TASKS）"
-log "  结果目录 -> ${ROOT_DIR}/results/${RESULTS_SUBDIR}/${EVAL_RUN_ID}"
+log "  结果目录 -> ${EVAL_RESULTS_ROOT}/${RESULTS_SUBDIR}/${EVAL_RUN_ID}"
 if [[ "$DRY_RUN" == "1" ]]; then
   warn "[DRY_RUN] env ${EVAL_ENV[*]} bash ${SCRIPT_DIR}/${RUN_SCRIPT}"
 else
@@ -590,4 +801,4 @@ log "[$BENCHMARK] 完成。"
 log "  prep（可复用）：$PREP_DIR"
 log "  evolved scripts：$SCRIPTS_DIR"
 log "  evolve 日志：    ${WORK_DIR}/evolve_logs"
-log "  最终评测结果：  ${ROOT_DIR}/results/${RESULTS_SUBDIR}/${EVAL_RUN_ID}/"
+log "  最终评测结果：  ${EVAL_RESULTS_ROOT}/${RESULTS_SUBDIR}/${EVAL_RUN_ID}/"

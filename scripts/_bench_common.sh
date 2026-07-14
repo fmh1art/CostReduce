@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 
-ROOT_DIR="${ROOT_DIR:-/home/fanmeihao/projects/CostReduce}"
+# ROOT_DIR 兜底：从本脚本位置（scripts/）推导仓库根，避免硬编码绝对路径
+# （直接 bash scripts/run_*.sh 时父进程未 export ROOT_DIR 也能正确解析）。
+# 经 run_exp.sh → run_evolve_experiment.sh 调用时 ROOT_DIR 已被 export，此处不触发。
+ROOT_DIR="${ROOT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 LLM_CONFIG="${LLM_CONFIG:-${ROOT_DIR}/_config/deepseekv4_flash.yaml}"
 RESULTS_DIR="${RESULTS_DIR:-${ROOT_DIR}/results}"
 RUN_ID="${RUN_ID:-smoke-$(date +%m%d-%H%M%S)}"
@@ -273,61 +276,162 @@ print(json.dumps(mounts))
 PY
 }
 
-evolve_scripts_tools_block() {
-  # 扫 $EVOLVE_SCRIPTS_DIR/*/intro.json，拼成 markdown 工具清单（含绝对路径），
-  # 用于注入下游 code agent 的 system prompt。
+evolve_scripts_deploy() {
+  # Build the native-function-tool artifacts from evolved scripts so the rollout
+  # agent calls them as real function tools (not via `bash <path>/main.sh`).
+  # Two modes selected by EVOLVE_TOOLS_MODE:
+  #   manifest (default, v2/v5): evolve agent wrote <name>/{main.sh,intro.json};
+  #       build .tools_manifest.json + .runtime/evolve_tools/ + .evolve_tools_config.yaml
+  #       (src/evolve/native_tools.py). Runtime reads the manifest + bash main.sh.
+  #   registry (v6):             evolve agent wrote tools.json + executor.py directly;
+  #       build .runtime/evolve_tools_v6/ + .evolve_tools_v6_config.yaml
+  #       (src/evolve/native_tools_v6.py). Runtime loads tools.json + executor.py.
+  # Idempotent; safe to call before every rollout. No-op if EVOLVE_SCRIPTS_DIR is empty.
   #
-  # 入参（环境变量）：
-  #   EVOLVE_SCRIPTS_DIR          host 上 evolve 输出目录；空则不输出。
-  #   EVOLVE_SCRIPTS_TARGET_ROOT  容器内挂载根目录，默认 /app/.preinstalled_scripts。
-  #                               tools block 里 entrypoint 会拼成绝对路径：
-  #                               ${EVOLVE_SCRIPTS_TARGET_ROOT}/<name>/<entrypoint>
+  # Sets a global for the caller:
+  #   EVOLVE_TOOLS_CONFIG_HOST  host path of the config yaml → pass via `--ak config_file=`
   #
-  # 输出（stdout）：
-  #   - 没有任何 intro.json 时输出空串（软回退：测评脚本退回旧行为，只看 instruction.md）
-  #   - 有 intro.json 时输出 markdown 工具清单
-  #
-  # 解析失败的 intro.json 会被跳过并在 stderr 打 warning，不会中断。
+  # api_type=responses when AZURE_API_KEY is set (aidp gateway), else chat.
+  # max_completion_tokens is read from MSWEA_MAXTOK_CONFIG when present (swebench path).
   local scripts_dir="${EVOLVE_SCRIPTS_DIR:-}"
   if [[ -z "${scripts_dir}" ]]; then
     return 0
   fi
   if [[ ! -d "${scripts_dir}" ]]; then
+    echo "[evolve_scripts_deploy] EVOLVE_SCRIPTS_DIR='${scripts_dir}' is not a directory" >&2
+    return 1
+  fi
+  local api_type="chat"
+  [[ -n "${AZURE_API_KEY:-}" ]] && api_type="responses"
+  local mode="${EVOLVE_TOOLS_MODE:-manifest}"
+  local module="src.evolve.native_tools"
+  [[ "$mode" == "registry" ]] && module="src.evolve.native_tools_v6"
+  local deploy_args=(--scripts-dir "${scripts_dir}" --api-type "${api_type}")
+  if [[ -f "${MSWEA_MAXTOK_CONFIG:-}" ]]; then
+    local mt
+    mt="$(grep -E '^[[:space:]]*max_completion_tokens:' "${MSWEA_MAXTOK_CONFIG}" 2>/dev/null | head -1 | awk '{print $2}')"
+    [[ -n "${mt}" ]] && deploy_args+=(--max-completion-tokens "${mt}")
+  fi
+  local json_out
+  json_out="$(cd "$ROOT_DIR" && PYTHONPATH="$ROOT_DIR${PYTHONPATH:+:$PYTHONPATH}" python -m "$module" deploy "${deploy_args[@]}")" \
+    || { echo "[evolve_scripts_deploy] deploy failed (mode=${mode}, api_type=${api_type})" >&2; return 1; }
+  EVOLVE_TOOLS_CONFIG_HOST="$(python -c "import json,sys; print(json.load(sys.stdin)['config'])" <<<"${json_out}")"
+  echo "[evolve_scripts_deploy] mode=${mode} api_type=${api_type} scripts=${scripts_dir} config=${EVOLVE_TOOLS_CONFIG_HOST}" >&2
+}
+
+evolve_scripts_native_tools_args() {
+  # Emit pier/harbor args that register evolved tools as native function tools
+  # inside the rollout container. Mode follows EVOLVE_TOOLS_MODE (default manifest).
+  #   manifest (v2/v5):
+  #     --ak config_file=<host yaml>   sets model_class+agent_class to evolve_tools.*
+  #     --ae EVOLVE_TOOLS_MANIFEST     container path to .tools_manifest.json
+  #     --ae EVOLVE_TOOLS_SCRIPTS_DIR  container scripts root (manifest paths are relative)
+  #     --ae PYTHONPATH                container dir holding the evolve_tools package
+  #   registry (v6):
+  #     --ak config_file=<host yaml>   sets model_class+agent_class to evolve_tools_v6.*
+  #     --ae EVOLVE_TOOLS_V6_REGISTRY  container path to tools.json
+  #     --ae EVOLVE_TOOLS_V6_EXECUTOR  container path to executor.py
+  #     --ae PYTHONPATH                container dir holding the evolve_tools_v6 package
+  # Pier's mini-swe-agent adapter defaults model_class=auto and maps openai/*
+  # to litellm_response, which breaks OpenAI-compatible chat endpoints such as
+  # DeepSeek and also overrides our native-tools config. An empty model_class
+  # disables that auto override while preserving config_file's model_class.
+  # No-op (prints nothing) when EVOLVE_TOOLS_CONFIG_HOST is unset (no scripts deployed →
+  # the caller falls back to plain litellm / litellm_response).
+  if [[ -z "${EVOLVE_TOOLS_CONFIG_HOST:-}" ]]; then
+    return 0
+  fi
+  local target="${EVOLVE_SCRIPTS_TARGET:-/app/.preinstalled_scripts}"
+  local mode="${EVOLVE_TOOLS_MODE:-manifest}"
+  if [[ "$mode" == "registry" ]]; then
+    printf '%s\n' \
+      --ak "model_class=" \
+      --ak "config_file=${EVOLVE_TOOLS_CONFIG_HOST}" \
+      --ae "EVOLVE_TOOLS_V6_REGISTRY=${target}/tools.json" \
+      --ae "EVOLVE_TOOLS_V6_EXECUTOR=${target}/executor.py" \
+      --ae "PYTHONPATH=${target}/.runtime"
+  else
+    printf '%s\n' \
+      --ak "model_class=" \
+      --ak "config_file=${EVOLVE_TOOLS_CONFIG_HOST}" \
+      --ae "EVOLVE_TOOLS_MANIFEST=${target}/.tools_manifest.json" \
+      --ae "EVOLVE_TOOLS_SCRIPTS_DIR=${target}" \
+      --ae "PYTHONPATH=${target}/.runtime"
+  fi
+}
+
+evolve_scripts_prompt_template() {
+  # Build a Jinja2 prompt template from EVOLVE_SCRIPTS_DIR/instruction.md only.
+  #
+  # Evolved scripts are exposed to the agent as native function tools — their
+  # schemas come from each intro.json via the evolve_tools registry (loaded from
+  # .tools_manifest.json), so the LLM sees them as first-class `function` tools
+  # it calls by name. The prompt therefore no longer carries a bash-invocation
+  # "tools block"; it carries only the high-level cost-saving guidance from
+  # instruction.md, followed by the live {{ instruction }} placeholder.
+  #
+  # Pier/harbor's render_prompt_template requires the template to contain
+  # {{ instruction }}; it is rendered then passed to mini-swe-agent --task=...
+  #
+  # 入参（环境变量）：
+  #   EVOLVE_SCRIPTS_DIR  host 上 evolved scripts 目录；空则不生成。
+  #
+  # 输出：stdout 打印临时模板文件路径；为空或无 instruction.md 时打印空串。
+  # 注意：调用方需在退出时清理该临时文件（trap 删除）。
+  local scripts_dir="${EVOLVE_SCRIPTS_DIR:-}"
+  if [[ -z "${scripts_dir}" ]]; then
+    return 0
+  fi
+  local instr="${scripts_dir%/}/instruction.md"
+  if [[ ! -f "${instr}" ]]; then
+    return 0
+  fi
+  local tmp
+  tmp="$(mktemp -t evolve_prompt.XXXXXX)"
+  # instruction.md 可能含 {{ }} 字面量（Go template、shell $(( ))、JSON 等），
+  # 直接交给 Jinja2 会被当表达式解析而报 TemplateSyntaxError。用 {% raw %}
+  # 整体包起来按字面输出，只保留末尾真正的 {{ instruction }} 占位符。
+  {
+    printf '{%% raw %%}\n'
+    cat "${instr}"
+    printf '\n{%% endraw %%}\n\n---\n\n{{ instruction }}\n'
+  } > "${tmp}"
+  printf '%s\n' "${tmp}"
+}
+
+evolve_scripts_tools_block() {
+  # LEGACY — bash pseudo-tool prompt block for non-mini-swe-agent agents only.
+  #
+  # All mini-swe-agent rollouts (run_deep_swe / run_swe_bench / run_swe_atlas /
+  # run_datamind_harbor) now register evolved scripts as NATIVE function tools
+  # via `evolve_scripts_deploy` (evolve_tools.model.* + EvolveToolsAgent), so the
+  # LLM calls them by name with structured params — no bash-invocation prompt.
+  #
+  # This helper remains ONLY for agents that cannot consume native function
+  # tools (e.g. DSGym's `multi_turn_react_ds_agent` used by run_datamind.sh).
+  # It scans $EVOLVE_SCRIPTS_DIR/*/intro.json into a markdown tool list with
+  # absolute entrypoint paths, for appending to such an agent's system prompt.
+  #
+  # 输出（stdout）：无 intro.json 时输出空串；否则输出 markdown 工具清单。
+  local scripts_dir="${EVOLVE_SCRIPTS_DIR:-}"
+  if [[ -z "${scripts_dir}" ]] || [[ ! -d "${scripts_dir}" ]]; then
     return 0
   fi
   local target_root="${EVOLVE_SCRIPTS_TARGET_ROOT:-/app/.preinstalled_scripts}"
   EVOLVE_SCRIPTS_DIR_ABS="$(cd "${scripts_dir}" && pwd)" \
   EVOLVE_SCRIPTS_TARGET_ROOT="${target_root}" \
   python - <<'PY'
-import json
-import os
-import sys
+import json, os, sys
 from pathlib import Path
 
-# 下游 system prompt 拼装时只保留 agent 真正需要的最小字段集合：
-#   - description:  一句话用途
-#   - entrypoint:   绝对路径
-#   - parameters:   名称/类型/必填/简短描述
-#   - example:      至多 1 条（call + 一行 expected）
-#   - cost_saving_rationale: 一句话
-# 不输出 when_to_use（与 description 重复），不输出全部 examples（避免 prompt 膨胀）。
-# 所有长字段都按下面 *_LIMIT 截断，确保 system prompt 不会因为单个工具爆 token。
-DESC_LIMIT = 240
-PARAM_DESC_LIMIT = 120
-EXAMPLE_LIMIT = 1
-EXPECTED_LIMIT = 160
-RATIONALE_LIMIT = 200
-# example 的 call（bash 全路径调用）是 agent 唯一能看到的脚本用法，给更长上限。
-CALL_LIMIT = 320
+DESC_LIMIT, RATIONALE_LIMIT, EXPECTED_LIMIT, CALL_LIMIT = 240, 200, 160, 320
 
 def clip(text, limit):
-    text = "" if text is None else str(text)
-    text = " ".join(text.split())  # 折叠多余空白/换行
+    text = " ".join(("" if text is None else str(text)).split())
     return text if len(text) <= limit else text[:limit].rstrip() + "..."
 
 scripts_dir = Path(os.environ["EVOLVE_SCRIPTS_DIR_ABS"])
 target_root = os.environ.get("EVOLVE_SCRIPTS_TARGET_ROOT", "/app/.preinstalled_scripts").rstrip("/") or "/"
-
 intros = []
 for d in sorted(scripts_dir.iterdir()):
     if not d.is_dir():
@@ -340,20 +444,16 @@ for d in sorted(scripts_dir.iterdir()):
     except json.JSONDecodeError as exc:
         print(f"[evolve_scripts_tools_block] skip {intro}: invalid JSON: {exc}", file=sys.stderr)
         continue
-    if not isinstance(data, dict):
-        print(f"[evolve_scripts_tools_block] skip {intro}: top-level is not a JSON object", file=sys.stderr)
-        continue
-    intros.append((d.name, data))
-
+    if isinstance(data, dict):
+        intros.append((d.name, data))
 if not intros:
     sys.exit(0)
 
 lines = [
-    "## Available bash helper scripts",
+    "## Available bash helper scripts (legacy pseudo-tool path)",
     "",
     "Invoke each script with the `bash` tool using its full path, e.g.",
-    "`bash /app/.preinstalled_scripts/<name>/main.sh <args>`. Do NOT call a script",
-    "name directly as a tool — it is not one. Use the example line for the call form.",
+    f"`bash {target_root}/<name>/main.sh <args>`.",
     "",
 ]
 for name, data in intros:
@@ -362,70 +462,17 @@ for name, data in intros:
     lines.append(f"### {name}")
     lines.append(f"- description: {clip(data.get('description', '(no description)'), DESC_LIMIT)}")
     lines.append(f"- entrypoint: {abs_path}")
-    # 不输出 parameters schema —— 它会被下游 agent 误当成 native function tool 的参数
-    # schema，从而用 <name>({param: ...}) 形式调用，但 evolved scripts 没注册成 native
-    # tool，导致 'Unknown tool' FormatError → RepeatedFormatError → 0 步崩。只留 example
-    # 的 bash 调用形式，让 agent 知道走 bash。
     examples = data.get("examples") or []
-    if isinstance(examples, list) and examples:
-        # 只取第一条 example，避免 prompt 膨胀
-        ex = examples[0]
-        if isinstance(ex, dict):
-            call = clip(ex.get("call", ""), CALL_LIMIT)
-            expected = clip(ex.get("expected", ""), EXPECTED_LIMIT)
-            lines.append(f"- example: {call}  ->  {expected}")
+    if isinstance(examples, list) and examples and isinstance(examples[0], dict):
+        call = clip(examples[0].get("call", ""), CALL_LIMIT)
+        expected = clip(examples[0].get("expected", ""), EXPECTED_LIMIT)
+        lines.append(f"- example: {call}  ->  {expected}")
     rationale = data.get("cost_saving_rationale")
     if rationale:
         lines.append(f"- cost_saving_rationale: {clip(rationale, RATIONALE_LIMIT)}")
     lines.append("")
-
 print("\n".join(lines))
 PY
-}
-
-evolve_scripts_prompt_template() {
-  # 根据 EVOLVE_SCRIPTS_DIR 找到 instruction.md，并生成可供 Pier
-  # --ak prompt_template_path=... 使用的 Jinja2 模板文件。
-  #
-  # 模板内容 = instruction.md 全文 + 分隔符 + tools_block（来自 intro.json）
-  #           + 分隔符 + "{{ instruction }}"。
-  # Pier 的 render_prompt_template 校验模板必须包含 {{ instruction }}，
-  # 渲染后再传给底层 agent（如 mini-swe-agent --task=...）。
-  #
-  # 入参（环境变量）：
-  #   EVOLVE_SCRIPTS_DIR          host 上辅助 bash 脚本目录；空则不生成。
-  #   EVOLVE_SCRIPTS_TARGET_ROOT  容器内挂载根目录，用于 tools block 拼绝对路径。
-  #
-  # 输出：
-  #   stdout 打印临时模板文件路径；EVOLVE_SCRIPTS_DIR 为空或不存在 instruction.md 时打印空串。
-  #
-  # 注意：调用方需要在退出时清理该临时文件（用 trap 删除）。
-  local scripts_dir="${EVOLVE_SCRIPTS_DIR:-}"
-  if [[ -z "${scripts_dir}" ]]; then
-    return 0
-  fi
-  local instr="${scripts_dir%/}/instruction.md"
-  if [[ ! -f "${instr}" ]]; then
-    return 0
-  fi
-  local tools_block
-  tools_block="$(evolve_scripts_tools_block)"
-  local tmp
-  tmp="$(mktemp -t evolve_prompt.XXXXXX)"
-  # instruction.md 和 tools_block 可能含 {{ }} 字面量（如 Go template
-  # '{{.GoFiles}}'、shell $(( ))、JSON 等），若直接交给 Jinja2 会被当成
-  # 表达式解析而报 TemplateSyntaxError。用 {% raw %}...{% endraw %} 把这两
-  # 段整体包起来按字面输出，只保留末尾真正的 {{ instruction }} 占位符。
-  {
-    printf '{%% raw %%}\n'
-    cat "${instr}"
-    if [[ -n "${tools_block}" ]]; then
-      printf '\n\n---\n\n'
-      printf '%s\n' "${tools_block}"
-    fi
-    printf '\n{%% endraw %%}\n\n---\n\n{{ instruction }}\n'
-  } > "${tmp}"
-  printf '%s\n' "${tmp}"
 }
 
 evolve_skip_exclude_args() {

@@ -50,10 +50,12 @@ mapfile -t AGENT_ENV < <(agent_env_args)
 mapfile -t SKIP_ARGS < <(evolve_skip_exclude_args)
 
 # 可选：若设置了 EVOLVE_SCRIPTS_DIR，则把其下所有文件 bind mount 到容器
-# workspace 的辅助脚本目录（默认 /app/.preinstalled_scripts）。未设置时保持空，
-# 沿用 Pier 默认 mounts 与默认 code agent。
+# workspace 的辅助脚本目录（默认 /app/.preinstalled_scripts），并把 evolved
+# scripts 注册成 native function tools（model/agent 子类 + manifest）。未设置
+# 时保持空，沿用 Pier 默认 mounts 与默认 code agent。
 EVOLVE_MOUNTS_ARGS=()
 EVOLVE_PROMPT_ARGS=()
+EVOLVE_NATIVE_ARGS=()
 if [[ -n "${EVOLVE_SCRIPTS_DIR:-}" ]]; then
   EVOLVE_MOUNTS_JSON="$(evolve_scripts_mounts_json)"
   if [[ -n "${EVOLVE_MOUNTS_JSON}" ]]; then
@@ -63,15 +65,26 @@ if [[ -n "${EVOLVE_SCRIPTS_DIR:-}" ]]; then
   if [[ -n "${EVOLVE_PROMPT_TEMPLATE}" ]]; then
     EVOLVE_PROMPT_ARGS=(--ak "prompt_template_path=${EVOLVE_PROMPT_TEMPLATE}")
   fi
+  # 把 evolved scripts 注册成 native function tools：生成 manifest/runtime/config，
+  # 输出 --ak config_file=（设 model_class+agent_class）+ --ae EVOLVE_TOOLS_*。
+  evolve_scripts_deploy || exit 1
+  mapfile -t EVOLVE_NATIVE_ARGS < <(evolve_scripts_native_tools_args)
 fi
 
-# model_class 注入：responses 配置用 litellm_response 临时配置文件，否则用 litellm。
+# model_class 注入：仅在没有 evolved native tools 时走原 litellm/litellm_response
+# 路径。有 evolved tools 时 model_class+agent_class 由 EVOLVE_NATIVE_ARGS 里的
+# config_file 设定（evolve_tools.model.* / evolve_tools.agent.EvolveToolsAgent）。
+# 这里以 EVOLVE_NATIVE_ARGS 是否为空为准，避免 EVOLVE_TOOLS_CONFIG_HOST 在某些调用路径
+# 下未保留到当前 shell 时，错误地再追加一层 litellm_response/litellm，覆盖 native tools
+# 的模型路由配置并把 deepseek chat 请求发到 Responses API。
 MSWEA_MODEL_CLASS_ARGS=()
-MSWEA_CFG_TMP="$(deep_swe_responses_config_file)"
-if [[ -n "${MSWEA_CFG_TMP}" ]]; then
-  MSWEA_MODEL_CLASS_ARGS=(--ak "config_file=${MSWEA_CFG_TMP}")
-else
-  MSWEA_MODEL_CLASS_ARGS=(--ak "model_class=litellm")
+if [[ ${#EVOLVE_NATIVE_ARGS[@]} -eq 0 ]]; then
+  MSWEA_CFG_TMP="$(deep_swe_responses_config_file)"
+  if [[ -n "${MSWEA_CFG_TMP}" ]]; then
+    MSWEA_MODEL_CLASS_ARGS=(--ak "config_file=${MSWEA_CFG_TMP}")
+  else
+    MSWEA_MODEL_CLASS_ARGS=(--ak "model_class=litellm")
+  fi
 fi
 
 # 使用 Pier 在 DeepSWE 全量任务集上运行 mini-swe-agent。
@@ -86,6 +99,7 @@ fi
   -o "$RESULTS_DIR/deep-swe" \
   --job-name "$RUN_ID" \
   "${MSWEA_MODEL_CLASS_ARGS[@]}" \
+  "${EVOLVE_NATIVE_ARGS[@]}" \
   "${EVOLVE_MOUNTS_ARGS[@]}" \
   "${EVOLVE_PROMPT_ARGS[@]}" \
   "${SKIP_ARGS[@]}" \
