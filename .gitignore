@@ -6,6 +6,10 @@ results_*/
 benchmark/*/datasets/
 benchmark/*/data/
 benchmark/DBA-bench/DataAgentBench/
+benchmark/DBA-bench/harbor/datasets/
+
+# Independently versioned paper repository
+_latex/
 
 # Archived or historical local working data
 _his/

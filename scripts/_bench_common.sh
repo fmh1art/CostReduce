@@ -45,6 +45,13 @@ EVOLVE_SCRIPTS_DIR="${EVOLVE_SCRIPTS_DIR:-}"
 EVOLVE_SCRIPTS_TARGET="${EVOLVE_SCRIPTS_TARGET:-/app/.preinstalled_scripts}"
 # 是否以只读方式挂载 evolve 辅助 bash 脚本。默认只读，避免容器内污染 host 上的脚本目录。
 EVOLVE_SCRIPTS_READONLY="${EVOLVE_SCRIPTS_READONLY:-1}"
+# Native evolved tools execute in a disposable worker. Keep this much shorter
+# than the task timeout so a failed helper becomes an LLM observation rather
+# than consuming/killing the whole agent. Both values are passed to the agent
+# container and may be overridden per experiment.
+EVOLVE_TOOLS_V6_TIMEOUT_SECONDS="${EVOLVE_TOOLS_V6_TIMEOUT_SECONDS:-30}"
+EVOLVE_TOOLS_V6_MEMORY_MB="${EVOLVE_TOOLS_V6_MEMORY_MB:-1024}"
+EVOLVE_TOOLS_V6_OUTPUT_TOKENS="${EVOLVE_TOOLS_V6_OUTPUT_TOKENS:-1000}"
 # 是否在生成的 mounts JSON 中显式带上 logs/{agent,verifier,artifacts} 三个默认 bind mount。
 # - 1（默认，Pier）：显式带上，因为 Pier 显式传 --mounts-json 会覆盖默认 mount。
 # - 0（Harbor 等）：跳过，由调度器（Trial 层）自行追加，否则会重复挂载。
@@ -349,6 +356,9 @@ evolve_scripts_native_tools_args() {
       --ak "config_file=${EVOLVE_TOOLS_CONFIG_HOST}" \
       --ae "EVOLVE_TOOLS_V6_REGISTRY=${target}/tools.json" \
       --ae "EVOLVE_TOOLS_V6_EXECUTOR=${target}/executor.py" \
+      --ae "EVOLVE_TOOLS_V6_TIMEOUT_SECONDS=${EVOLVE_TOOLS_V6_TIMEOUT_SECONDS}" \
+      --ae "EVOLVE_TOOLS_V6_MEMORY_MB=${EVOLVE_TOOLS_V6_MEMORY_MB}" \
+      --ae "EVOLVE_TOOLS_V6_OUTPUT_TOKENS=${EVOLVE_TOOLS_V6_OUTPUT_TOKENS}" \
       --ae "PYTHONPATH=${target}/.runtime"
   else
     printf '%s\n' \
@@ -394,6 +404,9 @@ evolve_scripts_prompt_template() {
   {
     printf '{%% raw %%}\n'
     cat "${instr}"
+    printf '\n\n## Native-tool failure fallback\n'
+    printf -- '- Evolved tools have a hard execution deadline. If one times out, runs out of memory, or returns a non-zero result, avoid repeating the same call unchanged.\n'
+    printf -- '- Recommended response: narrow the evolved-tool path/query or otherwise reduce its scope; alternatively, fall back to an equivalent bash command.\n'
     printf '\n{%% endraw %%}\n\n---\n\n{{ instruction }}\n'
   } > "${tmp}"
   printf '%s\n' "${tmp}"

@@ -25,6 +25,9 @@ set -euo pipefail
 
 RUN_ID="${RUN_ID:-dab-$(date +%m%d-%H%M%S)}"
 N_TASKS="${N_TASKS:-1}"
+# Original DataAgentBench's ExecTool allows a single database/Python command to
+# run for 600 seconds. Preserve that budget for both bash and evolved tools.
+EVOLVE_TOOLS_V6_TIMEOUT_SECONDS="${EVOLVE_TOOLS_V6_TIMEOUT_SECONDS:-600}"
 
 source "$(dirname "$0")/_bench_common.sh"
 
@@ -57,7 +60,8 @@ dab_responses_config_file() {
   maxtok="$(grep -E '^\s*max_completion_tokens:' "$MSWEA_MAXTOK_CONFIG" 2>/dev/null | head -1 | awk '{print $2}')"
   maxtok="${maxtok:-16384}"
   tmp="$(mktemp -t dab_resp_cfg.XXXXXX.yaml)"
-  printf 'model:\n  model_class: litellm_response\n  model_kwargs:\n    max_completion_tokens: %s\n' "$maxtok" > "$tmp"
+  printf 'model:\n  model_class: litellm_response\n  model_kwargs:\n    max_completion_tokens: %s\nenvironment:\n  timeout: %s\n' \
+    "$maxtok" "$EVOLVE_TOOLS_V6_TIMEOUT_SECONDS" > "$tmp"
   printf '%s\n' "$tmp"
 }
 
@@ -91,7 +95,40 @@ if [[ "${EXPORT_HOST_PROXY}" == "1" ]]; then
   export NO_PROXY="postgres,mongo,localhost,127.0.0.1,::1" no_proxy="postgres,mongo,localhost,127.0.0.1,::1"
 fi
 
-if [[ "${DAB_REGENERATE_TASKS}" == "1" || ! -d "${DAB_TASK_PATH}" || ! -f "${DAB_TASK_PATH}/manifest.json" ]]; then
+dab_task_count() {
+  local root="$1" d count=0
+  [[ -d "$root" ]] || { printf '0\n'; return 0; }
+  # Exact experiment taskdirs contain symlinks to task directories and do not
+  # necessarily have a manifest.json.  Test each child explicitly so symlinked
+  # task.toml files count as existing tasks.
+  for d in "$root"/*; do
+    [[ -f "$d/task.toml" ]] && count=$((count + 1))
+  done
+  printf '%s\n' "$count"
+}
+
+dab_agent_answers_exposed() {
+  local root="$1"
+  [[ -d "$root" ]] || return 1
+  find -L "$root" -type f \
+    \( -path '*/environment/dab/query/ground_truth.csv' \
+       -o -path '*/environment/dab/query/validate.py' \) \
+    -print -quit 2>/dev/null | grep -q .
+}
+
+DAB_EXISTING_TASKS="$(dab_task_count "$DAB_TASK_PATH")"
+DAB_LEGACY_LEAK=0
+if dab_agent_answers_exposed "$DAB_TASK_PATH"; then
+  DAB_LEGACY_LEAK=1
+  if [[ -f "$DAB_TASK_PATH/manifest.json" ]]; then
+    echo "[run_dab_harbor] detected legacy answer-leaking tasks; regenerating $DAB_TASK_PATH" >&2
+  elif [[ "$DAB_REGENERATE_TASKS" != "1" ]]; then
+    echo "[run_dab_harbor] refusing answer-leaking selected taskdir: $DAB_TASK_PATH" >&2
+    echo "  Regenerate the canonical DAB tasks, then rebuild this selected taskdir." >&2
+    exit 1
+  fi
+fi
+if [[ "${DAB_REGENERATE_TASKS}" == "1" || "$DAB_LEGACY_LEAK" -eq 1 || ! -d "${DAB_TASK_PATH}" || "$DAB_EXISTING_TASKS" -eq 0 ]]; then
   echo "[run_dab_harbor] generating DAB Harbor tasks at ${DAB_TASK_PATH}"
   GEN_ARGS=(
     --dab-root "$DAB_ROOT"
@@ -106,10 +143,16 @@ if [[ "${DAB_REGENERATE_TASKS}" == "1" || ! -d "${DAB_TASK_PATH}" || ! -f "${DAB
     GEN_ARGS+=(--use-hints)
   fi
   python "$DAB_ADAPTER" "${GEN_ARGS[@]}"
+else
+  echo "[run_dab_harbor] using existing DAB Harbor tasks at ${DAB_TASK_PATH} (${DAB_EXISTING_TASKS} tasks)"
 fi
 
 if [[ ! -d "$DAB_TASK_PATH" ]]; then
   echo "[run_dab_harbor] DAB_TASK_PATH 不是目录：$DAB_TASK_PATH" >&2
+  exit 1
+fi
+if dab_agent_answers_exposed "$DAB_TASK_PATH"; then
+  echo "[run_dab_harbor] generated task still exposes ground truth/validator; refusing to run" >&2
   exit 1
 fi
 

@@ -1,1197 +1,3 @@
-# Evolve V8：Validated Cost-Aware Graph Contraction
-
-## 1. 一句话方案
-
-v8 回到 v6 的简单主干：**trajectory → step-level DAG → evolve samples → tools/instruction → rollout evaluation**。唯一的核心变化是，不再用规则从单条轨迹裁出“最小 positive trajectory”，而是在多条成功轨迹的 DAG 中发现**重复、高成本、可验证的子图**，把子图收缩为一个 native function tool。
-
-一次收缩同时解决两类成本：子图中的多轮 agent 决策被一个 tool call 替代；子图内部的长 observations 不再进入 LLM context，只向下游暴露有上限的必要输出。
-
-本文将该方法称为 **Validated Cost-Aware Graph Contraction（VCGC）**。
-
-### 优化目标（双向而非单向）
-
-v6/v7 的目标是“成功率非劣（non-inferiority）前提下降成本”。v8 在此基础上**把成功率也当作可以主动改进的目标**，而不只是一个不能退步的约束：
-
-$$
-\min \; \mathbb{E}[C(\pi)]
-\quad\text{s.t.}\quad
-P_{\text{success}}(\pi)\ \ge\ P_{\text{success}}(\pi_{\text{baseline}})-\epsilon,
-\qquad\text{并鼓励 } P_{\text{success}}(\pi)\uparrow.
-$$
-
-理由有二，且都由 §2.1 的实证数据支撑：
-
-1. **成本与成功率可以同向改善。** baseline 在长任务上大量 turns 花在重复 read/长 observation 上，context 迅速逼近 window（deep-swe peak context 已达 162k tokens）。把定位类工作收缩成 bounded-output tool，既省 token，又给真正的推理/修改留出 context 预算，从而**降低“因上下文膨胀或步数耗尽而失败”的比例**。
-2. **本项目 benchmark 的 baseline 成功率很低**（§2.1：deep-swe 严格 `reward==1` 只有 1/16），因此“成功率不能下降”不是有意义的强约束——真正有价值的是让 evolved agent 在同等成本甚至更低成本下**多解出几道题**。
-
-因此 v8 的成功判据（success）与训练数据筛选（见 §5.4）采用**放宽定义**，并在实验中同时报告：严格 pass rate、放宽后的 partial/f2p 成功比例、以及每题成本，观察“成本↓ 且 成功比例↑”是否同时成立。
-
----
-
-## 2. 对 v6 的实证诊断
-
-### 2.1 结果快照说明
-
-本节检查了 `results/` 中已恢复的 64-case no-evolve/eval、prep trajectories、contrastive samples，以及最终生成的 `tools.json`、`executor.py`、`instruction.md`。不同 run 存在采样随机性，下面的数据用于定位设计问题，不能替代最终的 paired non-inferiority 实验。
-
-| Benchmark | 方法 | 平均 LLM turns | 平均 observation chars | 平均 prompt tokens | Performance |
-|---|---:|---:|---:|---:|---:|
-| Deep-SWE | baseline | 118.16 | 198,994 | 9,030,352 | reward 3.13% |
-| Deep-SWE | v6 | 106.61 | 195,583 | 8,202,824 | reward 6.25% |
-| SWE-Atlas QA | baseline | 48.16 | 172,366 | 2,151,618 | 18.75% |
-| SWE-Atlas QA | v6 | 46.42 | 194,710 | 2,478,018 | 23.44% |
-| SWE-Atlas TW | baseline | 45.44 | 127,763 | 2,370,757 | 18.75% |
-| SWE-Atlas TW | v6 | 48.00 | 113,447 | 2,306,401 | 18.75% |
-| SWE-bench Verified | baseline | 56.30 | 67,145 | 1,432,636 | 75.00% |
-| SWE-bench Verified | v6 | 51.20 | 56,789 | 1,220,604 | 79.69% |
-
-这组结果说明 v6 有时有效，但改进并不稳定地对齐两个成本来源：
-
-- QA 的 turns 下降 3.6%，但 observation 增长 13.0%，prompt tokens 增长 15.2%；
-- TW 的 observation 下降 11.2%，但 turns 反而增长 5.6%；
-- 因此“减少 step 数”不能作为总成本或 observation 成本的代理指标；
-- 当前 `cost_usd` 在多个结果中为 0 或 null，论文必须使用模型价格重算，不能把 0 当成免费。
-
-### 2.2 v6 sample 构造的问题
-
-恢复的 64 个 `contrastive_sample.json` 中：
-
-- baseline 平均有 54.98 个 action，v6 positive 平均保留 32.72 个，但**中位数只有 1 个**；
-- 18/64 个 sample 只保留一个 action；Deep-SWE 中可直接看到多个 sample 只剩 `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`；
-- 原因是 v6 从最后一个 action 反向取 dependency ancestors，而最后一个 action 经常只是 submit/status；
-- 即使 sink 正确，当 `dependencies` 表示全部必要前驱时，ancestor closure 也只有一个确定答案，并不存在“最短路径优化”；
-- 裁剪后的 action 可以被重放，不等于 agent 在看不到被删除 observations 时仍能自主生成同一 action。因此它不能未经验证就叫 positive sample。
-
-### 2.3 evolve 输入与产物的问题
-
-- Deep-SWE v6 的 8 个 evolve prompts 平均约 357k chars，最大约 579k；大量篇幅来自完整 positive/negative trajectory，而不是可执行的 tool 证据。
-- 最终 tools 多数是 `read/search/edit/git/test` 的通用 shell wrapper。Deep-SWE v6 一次注册了 14 个 tools，它们每轮都产生 schema prompt overhead，但没有基于实际采用率和净收益淘汰。
-- 工具会被大量采用，却仍可返回很长 observation。例如 eval 日志中一次 `read-lines` 直接返回大段源文件；这解释了“turns 下降但 context 不降”的现象。
-- SWE-bench v6 eval 的 trajectory 中只观察到 `bash` 调用，虽然 registry 中存在 10 个 evolved tools，说明“生成了工具”不等于“工具被部署并采用”。
-- `instruction.md` 中出现“测试失败后直接 commit”“小改动可不测试”等高风险规则。**需澄清根因**：这些规则并非全部由 evolve LLM“凭日志学出”，其中相当一部分直接来自框架的 seed 模板（`native_tools_v6.py::SEED_INSTRUCTION_MD` 里就硬编码了 “commit without running tests”“submit best-effort without full validation”）。因此它们既是 evolve 未验证的问题，也是一个可以**立即修复的 baseline 注入 bug**——v8 应先把 seed instruction 中未经验证的高风险规则删除或降级，再谈从验证子图学习行为规则。
-
-结论是：v6 真正缺少的不是更多图结构，而是一个把**图证据、真实成本、可复用 tool 和 correctness 验证**连起来的单一优化对象。
-
-### 2.4 可行性预实验（直接在 `results/prep` 上验证，无需重跑）
-
-在投入完整 v8 实现前，先用一个只读脚本（`scripts/v8_feasibility.py`，直接消费 `results/prep/runs/<bench>/` 的 baseline trajectory，不重新 rollout）验证 v8 的三条核心假设。**成本一律用真实单价** `_config/deepseekv4_flash.yaml`：input=1、output=2、**cached=0.02** 元/百万 token（即 cache 命中比未命中 input 便宜 **50×**，而非 v7 `PriceModel` fallback 假设的 10×）。每 benchmark 16 条 prep 轨迹，结果见 `results/v8_feasibility_result.json`：
-
-| Benchmark | 可用轨迹 | 平均 turns | 多-op turns 占比 | 可收缩 turns 占比 | 成本占比 unc/cache/out | observation exposure 占总成本 | READ 占 observation tokens |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| Deep-SWE | 16 | 120.9 | 43.4% | **17.7%** | 19/50/31 | 35.9% | **63.6%** |
-| SWE-Atlas TW | 16 | 33.3 | 66.8% | **17.4%** | 39/24/38 | 37.9% | 49.0% |
-| SWE-bench Verified | 16 | 61.8 | 46.4% | **14.7%** | 30/31/39 | 34.1% | 48.2% |
-| SWE-Atlas QA | 0（16 条全部在 agent 阶段崩溃，仅 system+user 两步 + `exception.txt`） | — | — | — | — | — | — |
-
-三条假设的结论：
-
-**假设 A（把多轮收缩成一轮能省 turn）——只成立于少数场景，不能当主杠杆。** 只有 **14.7%–17.7%** 的 turns 属于“连续 read/search burst 中可被收缩掉的多余轮次”（把长度 $b\ge2$ 的 burst 收成 1 轮）；与此同时 **43%–67%** 的 turns 本身已经是多-op（agent 已经用 `A && B | head` 在一轮里 batch 了 find/search/read）。因此“3 轮→1 轮”是乐观上界；turn 节省和 observation 节省在这个单-bash agent 上高度解耦，论文不能用 turn 数代理 observation 成本，也不能把 turn-collapse 当作主要收益来源。
-
-**假设 B（observation 长期暴露是主要成本，值得 bounded output）——成立，且比重比预期更靠 READ。** 即使按真实的 50× cache 折扣，observation 的累计 context exposure 仍占总成本的 **34%–38%**；而 observation tokens 中 **READ 类占 48%–64%（Deep-SWE 高达 63.6%）**，SEARCH/FIND 合计通常 <12%。**这直接修正了 v8 原先“先做 read-only search/read 宏工具、把 test-log/READ 排后”的优先级**：真正的成本大头是**读文件的长输出**（以及 SWE-bench 上的 WRITE/patch 与各 benchmark 的 VERIFY 日志），而不是 search 结果。因此 v8 的首要动作应是**给 READ / VERIFY 这类现有高频操作加 bounded output + cursor**，而不是优先去挖 `locate-symbol` 这种 search motif。
-
-**假设 C（有足够成功轨迹供跨任务 motif mining）——严重不足，必须放宽成功定义。** 严格 `reward==1` 的轨迹数：Deep-SWE **1/16**、SWE-Atlas TW 4/16、SWE-bench 11/16。从 1–4 条成功轨迹里挖“跨多个 task 重复”的 motif 在统计上不成立。放宽后（Deep-SWE 的 `reward.json` 提供 `partial`/`f2p` 分量）：`partial≥0.5` 有 **14/16**、`f2p>0` 有 **13/16**，训练样本量提高一个数量级。这直接支撑 §5.4 采用**放宽的成功定义**。此外 SWE-Atlas QA 的 prep 数据当前**完全不可用**（全部崩溃），任何依赖它的分析都要先重新 rollout。
-
-预实验的总结论：**v8 的方向（bounded-output + 验证 + 跨轮 registry 管理）成立，但重心要调整**——(1) 优先 bounded READ/VERIFY 输出而非优先挖 search motif；(2) 成功定义必须放宽，否则 motif mining 无米下锅；(3) turn-collapse 只是次要收益，不能作为主叙事或主指标。这些调整已写入后续章节（§5.4 成功定义、§5.5.12 与 §5.6 的优先级、§7 的成本口径、§8 的实现顺序）。
-
----
-
-## 3. 四个 high-level 技术挑战
-
-### 挑战 1：怎样把成本归因到真正产生结果的执行片段？
-
-最后一个 action 不是任务结果；同时，LLM 标注的 dependency 也可能缺边或多边。若 outcome 定错，后续任何图算法都会优化错误目标。
-
-**对应技术：final-outcome anchoring + dependency-connected subgraph。**
-
-只在 verifier 成功的训练轨迹上，从 final patch 的 producing writes 和必要验证步骤出发。候选模式必须通过 dependency edges 与这些 outcome steps 连通；时间相邻 `NEXT` 只用于顺序恢复，不当作 dependency。这样避免把 submit/status 当作成功模式，也不需要枚举复杂的异构边类型。
-
-### 挑战 2：怎样统一优化“轮次多”和“observation 长”？
-
-一个 observation 不只在产生它的当轮付费；它进入历史后会在后续多轮 prompt 中反复暴露。只给 step 计数或只给当轮 output tokens 计费，会系统性低估早期长输出的代价。
-
-**对应技术：context-exposure node cost。**
-
-给 DAG 中每个 turn 两个可测成本标签：该轮实际 API cost，以及该轮 observation 在后续 context 中的累计暴露成本。图算法用二者定位候选，再用“收缩前 vs 收缩后”的反事实 token 账本计算净节省，而不是用 step 数做代理。
-
-### 挑战 3：怎样从 task-specific 轨迹得到可复用 tool，而不是凭 prompt 猜工具？
-
-单条轨迹中删除了某些 steps，并不能说明应该创建什么 tool。一个 tool 应对应跨任务重复的计算结构，并有稳定的输入、输出和 state effect。
-
-**对应技术：cost-weighted dependency motif mining + graph contraction。**
-
-在多条成功 DAG 中挖掘重复的 dependency-connected 子图，用规范化图签名合并不同文件名下的同构模式。一个候选 tool 就是一次图收缩：子图的入边定义 tool inputs，出边定义必须暴露的 outputs，内部节点和 observations 被隐藏。
-
-### 挑战 4：怎样保证压缩不会降低 performance？
-
-图中缺边、错误参数化或输出截断都可能让一个看似省钱的 tool 失败。仅靠结构分数无法满足“performance 不下降”。
-
-**对应技术：replay equivalence gate + held-out non-inferiority gate。**
-
-候选先在历史 occurrence 的相同 repo snapshot 上重放，再在 held-out tasks 上 rollout。只有通过 state/output equivalence 且满足预注册 non-inferiority margin 的候选才能进入最终 registry。
-
----
-
-## 4. 简单而足够的图模型
-
-每条 trajectory 构成一个 cost-labeled step DAG：
-
-$$G=(V,E,X,C).$$
-
-- 一个节点 $v_i\in V$ 对应一次 LLM turn，保留该轮的全部 tool calls，避免破坏 multi-call 原子性；
-- $E$ 直接复用 v6 的 step dependency，方向为 prerequisite → dependent；
-- `NEXT` 单独存为 order metadata，不参与 dependency reachability；
-- $X(v)$ 只保留挖掘所需属性：operation class、read/write/verify、参数角色、文件角色、return code、observation tokens、repo diff hash；
-- outcome anchors 是节点集合 $A\subseteq V$，不再额外构造一套 TASK/ACTION/OBSERVATION/ARTIFACT 异构本体。
-
-边类型不需要声称完备。v8 只问两个问题：两步是否存在 dependency；一个候选子图能否在 outcome-connected 区域中重复出现。dependency 标注质量通过人工抽样和 replay gate 报告，而不是默认其为 ground truth causality。
-
----
-
-## 5. 核心方法 VCGC
-
-### 5.1 先用一句话理解 VCGC
-
-VCGC 做的事情是：**在历史成功轨迹中找到经常重复的多步操作，把它封装成一个新工具，并验证这个新工具确实能以更少轮次、更短输出完成同样的工作。**
-
-这里的“封装”就是 graph contraction（图收缩）：原来图中有三个 step 节点，封装后用一个 tool 节点替换它们。
-
-```text
-收缩前：SEARCH → READ MATCHES → READ CONTEXT → EDIT
-                    三轮 LLM 决策
-
-收缩后：       LOCATE-SYMBOL ───────────────→ EDIT
-                    一轮 LLM 决策
-```
-
-`EDIT` 没有被封装：agent 仍然阅读定位结果并决定如何修改代码。因此新工具只替代确定性的搜索、读取工作，不替 agent 作 task-specific 的修改决策。
-
-### 5.2 本节术语
-
-| 术语 | 本文中的含义 | 简单例子 |
-|---|---|---|
-| **motif（重复模式）** | 在多条 trajectory 图中反复出现的相似小子图 | 很多任务都有 `搜索符号 → 读取匹配代码` |
-| **occurrence（一次实例）** | 某个 motif 在一条具体 trajectory 中的一次出现 | 在 task A 的第 3–5 轮出现了一次 |
-| **macro / 宏工具** | 将 motif 封装后得到的一个新 function tool | `locate-symbol` |
-| **graph contraction（图收缩）** | 用一个宏工具节点替换原来的多个 step 节点 | 三个 read/search turns 变成一个 turn |
-| **boundary（边界）** | 这个子图从外部需要什么，以及下游需要它输出什么 | 输入 symbol/path，输出 file/line/code context |
-| **contract（工具契约）** | 宏工具的输入、输出、状态影响、失败行为和输出上限 | `max_results=20`，失败返回 nonzero |
-| **registry** | downstream agent 能看到和调用的 tools 集合 | `bash`、`locate-symbol`、`run-tests` |
-
-本文中的 macro 不是一种额外文件格式，也不是 shell macro。它最终就是当前框架中的一个 native function tool，即 `tools.json` 中的一项及 `executor.py` 中对应的执行逻辑。后文统一称为“宏工具”。
-
-### 5.3 一个贯穿全节的例子
-
-假设三条成功轨迹分别修复 Python、TypeScript 和 Go 项目。文件名和命令不同，但 agent 都做了类似操作：
-
-| Turn | Task A | Task B | Task C |
-|---|---|---|---|
-| $T_1$ | `find` 找源文件 | `find` 找源文件 | `find` 找源文件 |
-| $T_2$ | `rg Foo` | `grep Foo` | `rg Foo` |
-| $T_3$ | 读取匹配位置附近代码 | 读取匹配位置附近代码 | 读取匹配位置附近代码 |
-| $T_4$ | 修改代码 | 修改代码 | 修改代码 |
-| $T_5$ | targeted test | targeted test | targeted test |
-
-依赖图都是：
-
-```text
-T1 FIND → T2 SEARCH → T3 READ → T4 EDIT → T5 TEST
-```
-
-其中 $T_4$ 产生 final patch，$T_5$ 验证 patch，所以二者是 outcome steps。$T_1$–$T_3$ 虽然不是结果本身，但通过 dependency path 支持 $T_4$。
-
-假设每条轨迹中：
-
-- $T_1$–$T_3$ 需要 3 次 LLM 调用；
-- 三次 observation 共 25,000 tokens，其中包含大量无关文件名和完整文件内容；
-- 真正供 $T_4$ 使用的只有 3 个匹配位置及附近代码，约 4,000 tokens。
-
-VCGC 要发现的就是重复子图 $T_1\rightarrow T_2\rightarrow T_3$，并把它变成：
-
-```json
-{
-  "name": "locate-symbol",
-  "inputs": ["symbol", "search_path"],
-  "outputs": ["file", "line", "bounded_context"],
-  "limits": {"max_results": 20, "max_chars": 16000}
-}
-```
-
-以后 agent 可以用一轮调用 `locate-symbol(symbol="Foo", search_path="src")`，工具在内部完成 find、search 和局部读取，只返回有界的相关上下文。于是该片段从 3 轮变成 1 轮，进入 LLM context 的 observation 也从约 25,000 tokens 降为约 4,000 tokens。
-
-下面五个阶段只是在回答五个顺序问题：
-
-1. 哪些历史轨迹是成功且可信的？
-2. 哪种多步操作跨任务重复？
-3. 如何把它定义成一个工具？
-4. 它是否真的省钱且值得放入 registry？
-5. 替换后是否仍能正确完成任务？
-
-### 5.4 Stage A：先找对结果，再记录成本
-
-#### 要解决的问题
-
-如果从最后一个 action 开始分析，可能选中 submit 或 `git status`。因此首先要知道轨迹中的哪些 steps 真正产生并验证了 final patch。
-
-#### 训练轨迹的“成功”采用放宽定义
-
-v8 的 motif mining 只在“成功”轨迹上进行，但 §2.4 表明严格 `reward==1` 的轨迹太少（Deep-SWE 仅 1/16），不足以支撑跨任务重复挖掘。因此 v8 对**训练数据筛选**采用放宽的成功定义（downstream 评估仍分别报告严格与放宽两套指标，见 §7）：
-
-一条轨迹进入 motif-mining 训练集，需满足下面任一条，并按可信度分层：
-
-| 层级 | 判据（deep-swe 用 `reward.json`；其他 benchmark 用 verifier `reward`/`f2p`/`partial`） | 用途 |
-|---|---|---|
-| `full_pass` | `reward==1`（全部 fail-to-pass 通过） | 最高置信；tool + instruction 都可学 |
-| `partial_pass` | `f2p>0` 且 `p2p` 未回归（如 `partial≥0.5`）：至少修好了一部分目标测试，且没打破原本通过的测试 | 可用于 tool/motif 挖掘；其锚点必须是**通过了对应测试的 write** |
-| `reject` | `f2p==0` 或引入 p2p 回归 | 只能贡献 §5.8 的“重复失败”待验证假设，不产 tool |
-
-关键约束：`partial_pass` 轨迹的 outcome anchor **只锚定到通过了测试的那部分改动**（把 final diff 与 `f2p_passed` 的测试对应起来），而不是整条 patch。这样即使一条轨迹只解出一半，被挖出的 motif 仍来自“确实产生了可验证正确结果”的子片段。放宽的是“哪些轨迹可用”，不是“哪些 step 可当结果”——后者仍严格由 verifier 证据锚定。
-
-这样做同时服务于 §1 的第二个目标：训练集里包含更多“部分成功”的真实定位/修改片段，evolve 出的工具与 instruction 更可能帮后续 agent **把部分成功推成完全成功**，从而在降本的同时提高成功比例。
-
-#### 做法
-
-rollout 时增加两类日志：
-
-1. 每次修改代码后记录 step id、changed files 和 `git diff` hash；
-2. 每轮记录 prompt、cached、completion 和 observation tokens。
-
-任务结束后，把（通过测试的）final patch 追溯到产生它的最后一次 write，并加入验证该版本的 test step。这些 steps 是 outcome anchors。
-
-在上例中：
-
-```text
-anchors = {T4 EDIT, T5 TEST}
-```
-
-`T1–T3` 能通过 dependency path 到达 $T_4$，所以它们属于与成功结果相关的区域；最后的 submit/status 因为不支持 patch，不进入候选模式。
-
-#### observation 为什么要单独关注
-
-假设 $T_1$ 返回了 10,000 tokens，而且之后还有 4 次 LLM 调用。该输出可能在后续 4 轮 prompt 中被重复携带，所以它的影响远大于“产生时的 10,000 tokens”。v8 将这个累计影响称为 **observation exposure**。
-
-若 observation $o_i$ 在后续 $r_i$ 轮仍然可见，可用下面的量定位高成本节点：
-
-$$
-C_{exposure}(o_i)=|o_i|_{tok}\left(p_{in}+r_i p_{cache}\right).
-$$
-
-它是成本归因信号，不与日志中的 API cost 直接相加，避免重复计费。最终节省量会在 Stage D 中通过“原多轮调用”和“宏工具调用”的完整 token 账本比较得到。
-
-**必须用真实 `p_cache` 标定。** §2.4 的预实验显示，$p_{in}$ 与 $p_{cache}$ 的比值直接决定“缩短 observation”相对“减少 turn”的价值。本项目实际单价是 input=1、cached=0.02（比值 **50×**），远大于 v7 `PriceModel.from_config` 在缺省时回退的 10×。用错折扣会系统性高估或低估 exposure。即便按 50× 折扣，exposure 仍占总成本 34%–38%（§2.4），说明 bounded output 是真实有效的杠杆；但论文的主指标必须用**真实账单/真实单价**换算，不能用 fallback 权重。
-
-### 5.5 Stage B：从多条成功轨迹中找重复模式
-
-#### 要解决的问题
-
-task A 使用 `rg`，task B 使用 `grep`；路径也完全不同。若直接比较命令字符串，它们不会被识别为同一模式。
-
-#### 核心原则：不是让 LLM 自由概括命令
-
-canonicalization（规范化）不应通过 prompt 让 LLM 自由生成一个标签。那样既昂贵，也难以复现。v8 使用一个**确定性的、可拒绝的分层解析器**：
-
-```text
-原始 tool call
-   ↓
-1. 读取结构化 tool name / arguments
-   ↓ 如果是 bash
-2. shell AST 解析命令、参数、管道和重定向
-   ↓
-3. command rule registry 判定操作类型
-   ↓
-4. path resolver 判定路径角色
-   ↓
-5. argument abstractor 删除具体值、保留参数用途
-   ↓
-CanonicalCall + confidence
-   ↓
-confidence 不足或出现未知副作用 → UNKNOWN，不参与 motif mining
-```
-
-“可拒绝”很重要：本方法不要求覆盖所有 shell 命令。宁可只在 70% 的高置信 steps 上挖 motif，也不把 `rm`、复杂脚本或无法理解的管道错误合并成某个通用模式。
-
-#### 5.5.1 规范化后的数据结构
-
-每个 tool call 被转换成下面的结构，而不是一个随意拼接的字符串：
-
-```json
-{
-  "op": "SEARCH",
-  "targets": [{
-    "location": "repo",
-    "granularity": "file",
-    "semantic_role": "source",
-    "outcome_relation": "unchanged",
-    "language": "python"
-  }],
-  "arguments": {
-    "query_role": "identifier",
-    "pattern_mode": "literal_or_plain",
-    "context": "small",
-    "bounded": true
-  },
-  "effects": "read_only",
-  "parser_source": "bash_ast_rule",
-  "confidence": 0.95
-}
-```
-
-原始字符串 `Foo`、`src/a.py`、行号 `30,80` 不进入图标签。它们仍保存在 occurrence 的原始记录中，后续用于推断宏工具参数，但不参与“两个 step 是否同类”的判断。
-
-实现时应同时保存 template 与 bindings：template 用于跨任务比较，bindings 保存该次调用的真实参数。
-
-```json
-{
-  "template": {
-    "op": "SEARCH",
-    "query_slot": {"role": "identifier"},
-    "target_slot": {"semantic_role": "source", "granularity": "file"}
-  },
-  "bindings": {
-    "query_slot": "Foo",
-    "target_slot": "src/a.py"
-  }
-}
-```
-
-motif grouping 只比较 template。分组后，按“节点位置 + 参数角色”对齐 bindings：如果 `query_slot` 在不同 tasks 中分别是 `Foo/Bar/Baz`，它就成为宏工具的输入参数；如果某个 flag 在所有 occurrences 中都是 `-n`，则可作为工具内部固定行为；如果 slots 无法稳定对齐，则该组不能共享一个 contract，应拆组或拒绝。这一步可以理解为受 template 约束的参数 anti-unification，不需要 LLM 猜测参数。
-
-一个 turn 可能包含多个 tool calls。v8 不拆掉 turn，而是先分别规范化 calls，再形成 turn label：
-
-```json
-{
-  "turn_kind": "MULTI_CALL",
-  "calls": [
-    {"op": "SEARCH", "target_role": "source_subtree"},
-    {"op": "READ", "target_role": "source_file"}
-  ]
-}
-```
-
-这样既保留“一轮产生多个 calls”的原子性，也能比较 batching pattern。
-
-后续示例为便于阅读，会用 `source_file` 作为 `{semantic_role: source, granularity: file}` 的简写；落盘数据仍使用完整的多轴结构。
-
-#### 5.5.2 第一层：优先解析 native function tools
-
-native tool 已经有结构化 `function_name` 和 JSON arguments，因此最可靠。例如：
-
-```json
-{
-  "function_name": "read-files",
-  "arguments": {
-    "files": ["src/a.py:30-80", "src/b.py:1-100"]
-  }
-}
-```
-
-通过一个显式 registry 映射：
-
-```python
-NATIVE_TOOL_RULES = {
-    "read-file":  {"op": "READ",   "path_fields": ["file", "path"]},
-    "read-files": {"op": "READ",   "path_fields": ["files"]},
-    "search-code":{"op": "SEARCH", "path_fields": ["path"],
-                    "query_fields": ["pattern", "query"]},
-    "find-files": {"op": "FIND",   "path_fields": ["path"],
-                    "query_fields": ["glob", "pattern"]},
-    "run-tests":  {"op": "VERIFY", "path_fields": ["cwd", "test_path"]},
-    "edit-file":  {"op": "WRITE",  "path_fields": ["file", "path"]}
-}
-```
-
-该 registry 是版本化配置，不由 LLM 临时生成。未知 native tool 先根据其 JSON schema 尝试匹配；仍无法识别则标为 `UNKNOWN`。结构化工具规则的默认置信度可设为 1.0。
-
-仓库现有 `evolve_v7.py` 中的 `_tool_family`、`_call_op_type` 和 `_paths_from_call` 可以作为这一层的起点，但需要把当前字符串 signature 升级为上述结构化对象。
-
-这里必须区分两类 native tools：
-
-1. **primitive tool**：`read-file`、`search-code` 等单一操作，可以直接通过固定 rule 映射为 `READ`、`SEARCH`；
-2. **evolved macro tool**：上一 cycle 生成的 `locate-symbol` 等组合工具，不能只根据名字映射。它需要携带生成时的 contract 和 lineage，说明自己语义上收缩了哪些 primitive operations。
-
-例如第一轮生成 `locate-symbol` 时，同时记录：
-
-```json
-{
-  "tool_id": "locate-symbol",
-  "tool_version": "sha256:...",
-  "created_in_cycle": 1,
-  "semantic_expansion": [
-    {"op": "FIND", "target_role": "source_subtree"},
-    {"op": "SEARCH", "query_role": "identifier"},
-    {"op": "READ", "range": "local_context"}
-  ],
-  "inputs": ["symbol", "search_path"],
-  "outputs": ["file", "line", "bounded_context"],
-  "effects": "read_only",
-  "output_budget": {"max_results": 20, "max_chars": 16000},
-  "derived_from_motif": "wl:..."
-}
-```
-
-该 metadata 不建议塞入 function schema，以免无关字段持续进入 downstream prompt。框架额外维护 `tool_contracts_v8.json`；`tools.json` 仍只包含模型需要看到的 name、description 和 parameters。部署时用 `tools.json + executor.py` 的 hash 绑定 contract version，任一文件变化后 contract cache 都必须重新验证。
-
-第二轮遇到：
-
-```json
-{
-  "function_name": "locate-symbol",
-  "arguments": {"symbol": "Foo", "search_path": "src"}
-}
-```
-
-canonicalizer 先按 `tool_id + tool_version` 查找 contract，而不是把名字猜成 `SEARCH`。它会同时产生两个视图：
-
-```json
-{
-  "execution_view": {
-    "op": "MACRO_CALL",
-    "tool_id": "locate-symbol",
-    "actual_turns": 1,
-    "actual_observation_tokens": 3800
-  },
-  "semantic_view": {
-    "expands_to": ["FIND", "SEARCH", "READ_LOCAL_CONTEXT"],
-    "effects": "read_only"
-  }
-}
-```
-
-- **execution view** 忠实表示第二轮只发生了一次 LLM turn，用于实际成本、采用率和失败率统计；
-- **semantic view** 是只用于跨 cycle pattern matching 的虚拟展开，用来判断它与第一轮的 `FIND → SEARCH → READ` 属于同一类工作；虚拟节点不计 turn cost，也不伪装成真实执行日志。
-
-如果 evolved tool 缺少 contract、version 对不上、或 executor validation 失败，则标为 `UNKNOWN_EVOLVED_TOOL`，不能仅凭 tool name 参与 motif mining。
-
-#### 5.5.3 第二层：将 bash 解析成 AST，而不是用字符串 split
-
-对 `bash` tool 的 `arguments.command` 使用 shell parser（建议固定版本的 `tree-sitter-bash`；也可以使用 `bashlex`），得到 command、argument、pipeline、redirect 等 AST 节点。不能只用 `command.split()`，因为它无法正确处理引号、变量、管道和重定向。
-
-例如：
-
-```bash
-cd repo && rg -n -C 3 'Foo' src | head -50
-```
-
-解析结果应近似为：
-
-```text
-AND
-├── cd(repo)
-└── PIPELINE
-    ├── rg(flags=[-n,-C,3], query=Foo, path=src)
-    └── head(limit=50)
-```
-
-处理规则：
-
-- `cd repo && X`：更新该 call 的 effective cwd，再解析 `X`；`cd` 不单独成为 motif 节点；
-- `A && B` / `A ; B`：保留为同一 turn 内的有序 `COMPOSITE` calls；
-- `A | head -N`：`head` 被记录为输出限制 modifier，主操作仍是 `A`；
-- `cat file | sed -n '30,80p'`：合并成一个 `READ(file, explicit_range)`；
-- 含 `eval`、动态生成命令、无法展开的复杂变量、process substitution 或未知写副作用时：标为 `UNKNOWN`；
-- 解析器只分析日志，不执行命令。
-
-#### 5.5.4 第三层：command rule registry
-
-AST 给出了命令结构，但仍需把具体 executable 映射成有限操作集合。第一版只支持与 code agent 成本最相关的六类：
-
-| Canonical op | 可识别命令 | 关键参数 |
-|---|---|---|
-| `FIND` | `find`, `fd`, `git ls-files` | root、name/glob、type、limit |
-| `SEARCH` | `rg`, `grep`, `git grep` | query、paths、glob、context、limit |
-| `READ` | `cat`, `sed -n`, `head`, `tail`, read native tools | paths、range、limit |
-| `WRITE` | edit/write native tools、`sed -i`, `apply_patch` | target paths、write mode |
-| `VERIFY` | `pytest`, `go test`, `cargo test`, `npm test` | test target、runner、scope |
-| `VCS_READ` | `git status`, `git diff`, `git log`, `git show` | query kind、paths、limit |
-
-`rm`、`mv`、安装、构建、网络请求、任意 Python/Node inline script 首先标为 `OTHER` 或 `UNKNOWN`，不强行归入六类。后续只有当某类在数据中频繁且成本高时，才新增显式规则。
-
-rule registry 中每条规则包含：executable aliases、参数语法、read/write effects 和置信度。例如：
-
-```json
-{
-  "executables": ["rg", "ripgrep"],
-  "op": "SEARCH",
-  "query": "first_positional_after_flags",
-  "paths": "remaining_positionals",
-  "modifiers": {
-    "-F": {"pattern_mode": "literal"},
-    "-i": {"case_sensitive": false},
-    "-C": {"context_from_next_arg": true},
-    "-g": {"glob_from_next_arg": true},
-    "--max-count": {"limit_from_next_arg": true}
-  },
-  "effects": "read_only"
-}
-```
-
-#### 5.5.5 第四层：路径角色抽象
-
-`src/a.py` 不能简单变成 `source_file`；首先要相对当前 cwd 和 repo root 解析路径，再用 repo metadata 判断角色。流程如下：
-
-1. 结合 turn 的 effective cwd，将相对路径转成 repo-relative path；
-2. 只做词法规范化，不访问 repo 外部路径，不跟随逃逸出 repo 的 `..`；
-3. 从几个相互独立的轴描述路径，而不是强迫每个路径只有一个互斥标签；
-4. 删除原始 basename，只保留角色描述。
-
-路径描述包含以下轴：
-
-| 字段 | 判断证据 | 可能取值 |
-|---|---|---|
-| `location` | 是否位于 repo root 内 | `repo`, `external`, `unknown` |
-| `granularity` | 参数指向文件还是目录/集合 | `file`, `subtree`, `repo_root`, `unknown` |
-| `semantic_role` | 测试约定、manifest、source roots、扩展名 | `test`, `source`, `config`, `docs`, `generic`, `unknown` |
-| `outcome_relation` | 是否出现在 final diff changed-files 中 | `changed`, `unchanged`, `unknown` |
-| `language` | 扩展名与 repo manifest | `python`, `typescript`, `go`, `mixed`, `unknown` |
-
-例如一个被本次 patch 修改的测试文件不是在 `changed_file` 和 `test_file` 中二选一，而是：
-
-```json
-{
-  "location": "repo",
-  "granularity": "file",
-  "semantic_role": "test",
-  "outcome_relation": "changed",
-  "language": "python"
-}
-```
-
-其中 source roots 通过轻量 repo adapter 获得。例如 Python 常见 `src/` 和 package dirs，Go 从 `go.mod` 根开始，Node/TS 结合 `package.json`、workspace 和 `tsconfig.json`。不要仅凭目录名中含 `src` 就给高置信角色。
-
-例子：
-
-```text
-/workspace/proj/src/a.py       → repo/file/source/unchanged/python
-/workspace/proj/tests/a.py     → repo/file/test/changed/python
-/workspace/proj/pyproject.toml → repo/file/config/unchanged/python
-/workspace/proj                → repo/repo_root/generic/unchanged/mixed
-/tmp/error.log                 → external/file/unknown/unknown/unknown
-```
-
-#### 5.5.6 第五层：参数角色抽象
-
-参数抽象只保留“参数在操作中的作用”，不保留具体值。第一版采用可复现的规则：
-
-| 原始参数 | 判断规则 | 抽象值 |
-|---|---|---|
-| `Foo` | 匹配语言 identifier 形式，如 `^[A-Za-z_][A-Za-z0-9_:.]*$` | `identifier` |
-| `connection refused` | 含空格且类似错误文本 | `text_fragment` |
-| `foo.*bar` | 含未转义 regex metachar，且未使用 literal flag | `regex` |
-| `*.py` | glob 语法 | `extension_glob` |
-| `30,80` | `sed/head/tail` 的显式范围 | `explicit_range` |
-| `-C 3` | context 行数 1–5 | `small_context` |
-| `--max-count 20` / `head -50` | 存在结果上限 | `bounded_output` |
-| 未提供 limit | 可能返回无界结果 | `unbounded_output` |
-
-不需要判断 `Foo` 在语义上是否真的是某个类名；稳定地标成 `identifier` 已足够让跨 repo 模式对齐。“symbol”只作为宏工具参数名，不作为必须由分类器推断的 ground-truth 语义。
-
-数值也不保留原值，而是分桶，例如 range 长度为 `small(≤100 lines)`、`medium(101–500)`、`large(>500)`。这样 `sed -n 30,80p` 与 `sed -n 100,160p` 会得到相同结构，但读取 5,000 行不会与它们错误合并。
-
-#### 5.5.7 三条示例如何逐步得到标签
-
-示例一：
-
-```bash
-find src -name '*.py'
-```
-
-```text
-AST executable      = find
-rule                = FIND
-root path src       = source_subtree
--name '*.py'        = extension_glob
-没有 head/max count = unbounded_output
-
-CanonicalCall = FIND(
-  target_role=source_subtree,
-  selector=extension_glob,
-  bounded=false,
-  effects=read_only
-)
-```
-
-示例二：
-
-```bash
-rg -n -C 3 'Foo' src/a.py
-```
-
-```text
-AST executable = rg
-rule           = SEARCH
-query Foo      = identifier
-path src/a.py  = source_file
--C 3           = small_context
-单文件搜索      = cardinality_one
-
-CanonicalCall = SEARCH(
-  query_role=identifier,
-  target_role=source_file,
-  context=small,
-  effects=read_only
-)
-```
-
-示例三：
-
-```bash
-sed -n '30,80p' src/a.py
-```
-
-```text
-AST executable = sed
--n + address p = READ，而不是 WRITE
-path src/a.py  = source_file
-30,80          = explicit_range, small
-
-CanonicalCall = READ(
-  target_role=source_file,
-  range=explicit_small_range,
-  effects=read_only
-)
-```
-
-对照例：`sed -i 's/a/b/' src/a.py` 带 `-i`，必须得到 `WRITE(source_file)`；如果规则遗漏 `-i` 并标成 READ，会造成危险碰撞，因此此类 effect flags 必须拥有最高解析优先级。
-
-#### 5.5.8 置信度、拒绝与 LLM fallback
-
-每个标签记录来源和置信度：
-
-| 来源 | 建议置信度 | 使用方式 |
-|---|---:|---|
-| 已知 native tool + schema rule | 1.00 | 可直接参与 mining |
-| shell AST + 完整 command rule | 0.90–0.98 | 可参与 mining |
-| shell AST + 部分参数未知 | 0.70–0.89 | 只用于粗粒度统计，默认不生成 tool |
-| regex/string fallback | ≤0.60 | 不参与 mining |
-| parse failure / unknown effects | 0 | `UNKNOWN` |
-
-第一版可以完全不使用 LLM fallback。若后续为了提高 coverage 加入 LLM，它只能在固定 label schema 中选择，并且输出仍标为低置信候选；没有 rule/replay 支持时不能进入工具生成阶段。
-
-motif 的置信度取其所有节点/边的最低置信度，而不是平均值。这样一个包含危险未知 step 的 5-node motif 不会被另外四个高置信节点“平均洗白”。
-
-#### 5.5.9 从 CanonicalCall 到 motif
-
-完成上述解析后，每个 turn 都有稳定 label。接下来只在成功轨迹的 outcome-connected DAG 中枚举 1–5 node 的 dependency-connected 子图。
-
-对小子图使用 Weisfeiler–Lehman（WL）hash 生成图指纹：初始标签是 `CanonicalCall`，迭代时把 dependency 邻居标签合入。相同 hash 只是“可能属于同一 motif”的快速分组；分组后仍需逐项比较结构化 labels、effects 和 boundary types，不能把 hash 相同直接当成语义等价。
-
-候选 motif 还必须：
-
-- 在多个不同 tasks 中出现，而不只是在同一条轨迹里重复；
-- 所有 occurrences 来自 verifier 成功的轨迹；
-- 通过 dependency path 与 final edit/test 相连；
-- 不包含 `UNKNOWN`、固定 repo 名、绝对路径或 task answer；
-- 具有兼容的 inputs、outputs 和 state effects。
-
-#### 5.5.10 如何验证 canonicalization 本身
-
-该模块需要独立评估，不能只报告最终 benchmark：
-
-1. **Golden tests**：为每种支持命令维护输入命令与期望 `CanonicalCall`；特别覆盖引号、空格、管道、`cd &&`、`sed -i` 和失败解析。
-2. **Invariance tests**：把 `Foo/src/a.py/30,80` 替换为 `Bar/lib/b.py/100,150` 后，角色相同则 canonical label 应不变。
-3. **Separation tests**：READ 与 WRITE、targeted test 与 full test、bounded 与 unbounded output 必须得到不同标签。
-4. **人工抽样**：在 train trajectories 中随机抽取 steps，报告 op、path role、argument role、effect 的 precision/recall。
-5. **Coverage**：报告高置信可解析 steps 比例和 `UNKNOWN` 比例。coverage 低意味着可挖模式较少，不应通过降低阈值隐藏。
-6. **Collision audit**：抽样检查被分到同一 motif 的 occurrences 是否真的可以共享一个 contract。
-
-最重要的边界是：canonicalization 只负责提出“这些 steps 可能是同类”的候选，**不证明它们可安全互换**。真正的可替换性仍由 Stage C 的 contract 和 Stage E 的 replay/held-out rollout 验证。因此，即使规范化规则不完美，也不会未经验证直接生成并部署工具。
-
-#### 5.5.11 代码模块与执行伪代码
-
-建议新增独立模块 `src/evolve/canonicalize.py`，不要把规则继续堆入 motif miner。模块职责如下：
-
-```text
-RepoProfiler
-  └── 从 repo root、manifest、final diff 构造 RepoProfile
-
-NativeToolParser
-  └── 解析已知 function tool 的结构化 arguments
-
-ToolContractResolver
-  └── 按 tool_id/version 解析上一 cycle evolved tool 的 semantic expansion
-
-ShellCallParser
-  └── 用 tree-sitter-bash 将 bash command 转成 primitive commands
-
-CommandRuleRegistry
-  └── 将 executable + flags 映射为 FIND/SEARCH/READ/WRITE/VERIFY/VCS_READ
-
-PathAbstractor
-  └── 将具体路径转成 location/granularity/semantic_role/outcome_relation/language
-
-ArgumentAbstractor
-  └── 将 query、glob、range、limit 转成参数角色
-
-TurnCanonicalizer
-  └── 合并同一 turn 的多个 CanonicalCall，并给出 confidence/reject_reason
-```
-
-核心流程伪代码：
-
-```python
-def canonicalize_call(call, context):
-    # context: repo_profile, cwd, final_changed_files
-    if call.function_name != "bash":
-        evolved_contract = tool_contracts.lookup(
-            tool_id=call.function_name,
-            deployed_registry_hash=context.registry_hash,
-        )
-        if evolved_contract is not None:
-            return CanonicalMacroCall(
-                execution_view=actual_call_metrics(call),
-                semantic_view=evolved_contract.semantic_expansion,
-                bindings=evolved_contract.bind_arguments(call.arguments),
-                tool_version=evolved_contract.tool_version,
-            )
-
-        rule = native_rules.match(call.function_name)
-        if rule is None:
-            return Unknown(reason="unknown_native_tool")
-        primitives = rule.parse_json_arguments(call.arguments)
-        source = "native_schema_rule"
-        base_confidence = 1.0
-    else:
-        ast = shell_parser.parse(call.arguments["command"])
-        if ast.has_parse_error:
-            return Unknown(reason="shell_parse_error")
-        primitives = lower_shell_ast(ast, context.cwd)
-        source = "bash_ast_rule"
-        base_confidence = 0.95
-
-    canonical_calls = []
-    for primitive in primitives:
-        rule = command_rules.match(primitive.executable)
-        if rule is None or rule.has_unknown_side_effect(primitive):
-            return Unknown(reason="unknown_command_or_effect")
-
-        parsed = rule.parse(primitive.arguments)
-        canonical_calls.append(CanonicalCall(
-            op=rule.op,
-            targets=[path_abstractor.apply(p, context.repo_profile)
-                     for p in parsed.paths],
-            arguments=argument_abstractor.apply(parsed),
-            effects=rule.effects(parsed),
-            parser_source=source,
-            confidence=base_confidence * parsed.completeness,
-        ))
-
-    if min(c.confidence for c in canonical_calls) < MIN_MINING_CONFIDENCE:
-        return Rejected(canonical_calls, reason="low_confidence")
-    return canonical_calls
-```
-
-对 trajectory 的处理：
-
-```python
-repo_profile = RepoProfiler.build(
-    repo_root=trajectory.repo_root,
-    manifests=trajectory.repo_manifests,
-    final_changed_files=trajectory.outcome.changed_files,
-)
-
-for turn in trajectory.turns:
-    calls = [canonicalize_call(call, Context(repo_profile, turn.cwd))
-             for call in turn.tool_calls]
-    turn.canonical_label = canonicalize_turn(calls)
-```
-
-规范化结果单独写入 `agent/canonical_steps_v8.json`，避免每次 mining 重复解析：
-
-```json
-{
-  "schema_version": "v8-canonical-1",
-  "rule_registry_version": "2026-07-1",
-  "steps": [
-    {
-      "step_index": 7,
-      "raw_call_hash": "...",
-      "canonical_calls": [
-        {
-          "op": "SEARCH",
-          "targets": [{
-            "location": "repo",
-            "granularity": "file",
-            "semantic_role": "source",
-            "outcome_relation": "unchanged",
-            "language": "python"
-          }],
-          "arguments": {
-            "query_role": "identifier",
-            "context": "small",
-            "bounded": true
-          },
-          "effects": "read_only",
-          "confidence": 0.95
-        }
-      ],
-      "rejected": false,
-      "reject_reason": null
-    }
-  ]
-}
-```
-
-缓存 key 至少包含 `raw_call_hash + effective_cwd + repo_profile_hash + rule_registry_version + tool_contract_registry_version`。规则或 evolved tool contract 升级后 version 变化，旧缓存自动失效，保证实验可复现。
-
-#### 5.5.12 第一版 MVP 的边界
-
-第一版不需要解决任意 shell 程序理解。建议只实现：
-
-- 所有当前 `tools.json` 中的 native read/search/find/test tools；
-- 第一轮生成工具的 `tool_contracts_v8.json` 读写、version 校验和虚拟 semantic expansion；
-- bash 的 `find/fd/rg/grep/git grep/cat/sed -n/head/tail`；
-- `cd && command`、简单 pipeline 和 `head/tail` 输出限制；
-- Python、TypeScript/JavaScript、Go 三类 repo profile；
-- READ/SEARCH/FIND 三类 read-only motif mining。
-
-以下情况全部返回 `UNKNOWN`：inline Python/Node、`eval`、下载命令、复杂变量展开、未知重定向、修改系统环境和无法确定副作用的脚本。WRITE/VERIFY 可以先作为 motif 的下游边界节点，而不进入被收缩子图。
-
-**MVP 的第一步不是挖 motif，而是给现有高频 READ/VERIFY 加 bounded output（由 §2.4 数据决定）。** 预实验显示 observation tokens 里 READ 占 48%–64%、SEARCH/FIND 合计 <12%，且 42%–67% 的 turns 已经是多-op（`FIND → SEARCH → READ` 常常本来就在一条 bash 里，收缩它省不了 turn）。因此“把 `FIND → SEARCH → READ` 收缩成 `locate-symbol`”不是最高收益动作。MVP 的最小可验证闭环应是：
-
-1. **先做 bounded-output 版的 READ 与 VERIFY 工具**（受控 `max_chars` + continuation cursor；test 只返回 exit code + 失败用例名 + log tail，完整日志落盘按需读取），这不需要跨任务 motif mining，直接针对最大成本源；
-2. 用 §5.7 的反事实 token 账本，在 prep 轨迹上离线估算“把每次长 READ/VERIFY observation 截断到预算”能省多少 exposure 成本，验证 §2.4 的 34%–38% exposure 确实可回收；
-3. **之后**再做 read-only 的 `FIND → SEARCH → READ` motif 收缩，作为“额外减少 turn”的次要收益，而不是主线。
-
-这样 MVP 首先验证的是“bounded READ/VERIFY 是否能在不伤 performance 的前提下回收 observation exposure 成本”，这是本项目数据下**成本占比最大、且不依赖成功轨迹数量**的假设；motif 收缩作为第二阶段，只有在成功轨迹放宽后（§5.4）数量足够时才展开。
-
-### 5.6 Stage C：将重复模式定义为宏工具
-
-发现 motif 后，还不能直接生成工具。必须先回答：工具需要什么输入？应该返回什么？会不会修改 repo？
-
-图的边界给出这些答案：
-
-```text
-外部输入                         子图内部                         下游使用
-symbol/path ──→ [FIND → SEARCH → READ] ──→ file/line/context ──→ EDIT
-```
-
-- 左侧进入子图的信息形成工具输入：`symbol`、`search_path`；
-- 右侧下游 edit 所需的信息形成工具输出：`file`、`line`、局部代码；
-- 该子图只有 read 操作，所以 `state_effects=[]`，不会修改代码；
-- 三个中间 observations 属于工具内部，不分别返回给 LLM。
-
-由此得到宏工具契约：
-
-```json
-{
-  "name": "locate-symbol",
-  "inputs": {
-    "symbol": "string",
-    "search_path": "string"
-  },
-  "outputs": "matching file, line number, and bounded local context",
-  "state_effects": [],
-  "failure_behavior": "return nonzero and a short error message",
-  "output_budget": {
-    "max_results": 20,
-    "max_chars": 16000
-  }
-}
-```
-
-输出上限是降低 observation 成本的关键。搜索结果超过限制时，工具返回 continuation cursor，agent 需要时再取下一页；test 工具只返回 exit code、失败用例名和日志尾部，完整日志保存到文件供按需读取。
-
-**注意：bounded output 是 gate 强制的契约，不是 runtime 自带能力。** 当前 v6/v8 共用同一个 `evolve_tools_v6` runtime（`registry.py` / `agent.py` / `executor.py`），它对工具输出**不做任何截断**——observation 长短完全取决于 evolve agent 在 `executor.py` 每个分支里怎么写（这正是 §2.3 里 `read-lines` 返回整段源码的原因）。因此 v8 不能声称“工具 runtime 原生 bounded”；`output_budget` 只有当 §5.8 的 replay gate **实际检查并拒绝超预算输出**、并把 max_chars/cursor 逻辑写进 executor 分支时才生效。实现上有两条路：(a) 在 runtime 的 `run_tool` 外层加一个通用 output-clamp（更稳，推荐）；(b) 要求每个 executor 分支自带 clamp 并由 gate 校验。无论哪条，都必须在验证阶段强制，而非依赖 prompt 纪律。
-
-对于包含 edit 的 stateful motif，还必须在 contract 中声明 changed files 等 state effects。但第一版应优先实现 read-only 的 search/read/test-log 宏工具，因为更容易验证，也不容易破坏代码。
-
-### 5.7 Stage D：判断这个工具是否真的值得加入
-
-创建工具并不是免费的：它的 name、description 和 JSON schema 会在每轮 prompt 中占 token；工具太多还会增加 agent 选错工具的概率。
-
-因此对每次 occurrence 比较两个真实场景：
-
-```text
-原方案：3 次 LLM 调用 + 3 次长 observation + 后续 context 重复暴露
-新方案：1 次 LLM 调用 + 1 次 bounded observation + tool schema overhead
-```
-
-净收益定义为：
-
-$$
-Saving = Cost_{original}-Cost_{macro}-Cost_{schema}.
-$$
-
-这里的 $Cost_{macro}$ 指使用宏工具后的完整 API 成本，不是只计算 executor 的运行时间。系统根据 occurrence 当时的真实 context 重建两边的 prompt/cached/completion tokens，再按模型价格换算。
-
-继续使用上例，下面用一组示意数字展示计算方式（不是对现有 results 的实测结论）。假设一次 occurrence 的 token 账本为：
-
-| 项目 | 原三轮操作 | `locate-symbol` |
-|---|---:|---:|
-| LLM turns | 3 | 1 |
-| observation tokens | 25,000 | 4,000 |
-| 折算 API cost | $0.030 | $0.011 |
-| 分摊 schema cost | $0 | $0.002 |
-| 总成本 | $0.030 | $0.013 |
-
-则一次约节省 $0.017。如果该模式在 20 个 tasks 中稳定出现，才有充分理由实现它。
-
-不能只看平均值：如果工具在 2 个任务中节省很多、在其余任务中经常失败，平均数会掩盖风险。因此对跨任务 saving 做 bootstrap，取保守的置信下界 LCB（lower confidence bound）。直观上，LCB 回答的是：**即使考虑样本波动，我们仍有多大把握认为它能省钱？** 只有 LCB 仍大于 0 的工具才保留。
-
-若同时发现很多候选工具，则在 registry token budget 下按“新增节省 / schema tokens”依次选择。两个工具若覆盖同一批 steps，重叠部分只计算一次，避免注册大量功能重复的工具。这是一个 budgeted weighted coverage 问题，不需要 ILP。
-
-### 5.8 Stage E：先验证替换成立，再交给 evolve agent
-
-图中存在错误 dependency 时，宏工具可能漏掉下游需要的信息。因此成本为正还不够，候选必须依次通过三道 gate：
-
-1. **Contract replay**：在历史 occurrence 的相同 repo state 上执行宏工具。上例要求它仍找到原来的关键 `file:line` 和代码上下文，同时不超过输出上限。
-2. **State/verifier replay**：在宏工具之后重放历史中已经确定的 downstream state-changing actions，检查最终 diff 和 targeted test 是否仍然一致。它验证固定 action 的执行等价性，但不声称 agent 一定能自主生成该 edit。对 stateful 工具，还要直接比较 changed files 和 diff hash。
-3. **Held-out rollout**：将工具临时加入 registry，在没有参与 motif mining 的新 tasks 上重新运行 agent，检查 pass rate 是否满足 non-inferiority，同时实际成本下降。
-
-只有通过验证的候选才形成 evolve sample。样本不再包含两条很长的 positive/negative trajectories，而是一张简短的“工具实现卡”：
-
-```json
-{
-  "pattern": "FIND -> SEARCH -> READ_LOCAL_CONTEXT",
-  "proposed_tool": "locate-symbol",
-  "supported_by": {"tasks": 12, "occurrences": 19},
-  "inputs": ["symbol", "search_path"],
-  "outputs": ["file", "line", "bounded_context"],
-  "output_budget": {"max_results": 20, "max_chars": 16000},
-  "saving": {"mean_usd": 0.017, "lcb_usd": 0.011},
-  "validation": {
-    "contract_replay": "19/19",
-    "verifier_replay": "19/19"
-  }
-}
-```
-
-evolve agent 根据这张卡实现 `tools.json + executor.py`。也就是说，图算法负责回答“应该实现什么、为什么值得实现、是否安全”，evolve agent 只负责把已验证的 contract 写成可执行代码。
-
-`instruction.md` 采用同样原则：只有跨成功轨迹重复、并通过 held-out rollout 的行为规则才能写入。失败轨迹可以提出“重复 retry”之类的待验证假设，但不能直接产生“跳过测试”“直接 commit”等高风险规则。
-
-### 5.9 完整例子的最终变化
-
-| 阶段 | 例子中发生的事 |
-|---|---|
-| Outcome anchoring | 确认 $T_4$ 产生 final patch，$T_5$ 验证 patch |
-| Motif discovery | 在多个成功 tasks 中发现 $T_1\rightarrow T_2\rightarrow T_3$ |
-| Contract construction | 输入为 symbol/path，输出为有界 file/line/context |
-| Graph contraction | 用一个 `locate-symbol` 节点替换三个 turns |
-| Cost selection | 3 turns → 1 turn，25k observation tokens → 4k |
-| Validation | replay 找到同一代码位置，原 edit/test 仍通过 |
-| Evolution | evolve agent 将 contract 实现为 native function tool |
-
-所以，VCGC 并不是“先用复杂图算法求一条最短路径”。它做的是：**从成功经验中找出重复且昂贵的局部工作流，将其编译成输出受控的新工具，并用 replay 和新任务 rollout 验证该替换。**
-
-### 5.10 多轮 evolve 如何工作
-
-#### 为什么不能把每个 cycle 当成独立数据
-
-cycle 1 的 trajectory 主要包含 `bash` 或 primitive tools；生成工具后，cycle 2 会包含三种混合步骤：
-
-```text
-bash / primitive tool
-上一轮生成的 evolved tool
-evolved tool 与额外 bash/tool 组成的新流程
-```
-
-因此 cycle 2 的目标不是从头再生成一套工具，而是根据真实使用结果决定：保留、改进、合并、删除旧工具，或增加新工具。
-
-#### 两个图视图
-
-在构图前，工具 contract 按以下流程进入系统：
-
-1. validated contraction card 已经给出 `proposed_tool`、semantic expansion、inputs/outputs/effects；
-2. evolve agent 根据 card 修改 `tools.json + executor.py`；
-3. validator 检查生成的 schema 是否符合 card，并执行 smoke/replay tests；
-4. 验证通过后，框架计算对应 tool schema 与 executor implementation 的 hash，写入 `tool_contracts_v8.json`；
-5. rollout deployment manifest 记录整个 registry hash，并把它写入每条 trajectory 的 metadata。
-
-```json
-{
-  "tool_registry": {
-    "registry_hash": "sha256:...",
-    "contracts_version": "v8-contracts-1",
-    "tools": {
-      "locate-symbol": "sha256:tool-version-..."
-    }
-  }
-}
-```
-
-因此，即使多个 cycles 都有同名 `locate-symbol`，也能根据 trajectory 的 registry hash 找回当时实际部署的 contract。若旧日志没有 registry hash，只能将该调用标为 legacy/unknown version，不能用于严格的跨 cycle 收益比较。
-
-每轮 trajectory 构建两张逻辑视图，但共享同一份日志：
-
-| 视图 | 节点表示 | 用途 |
-|---|---|---|
-| Execution graph | 实际发生的 turns；一次 evolved tool call 就是一个节点 | 计算真实 turns、tokens、observation、失败率 |
-| Semantic expansion graph | 根据 `tool_contracts_v8.json` 将 evolved tool 虚拟展开为 primitive pattern | 与早期 cycles 对齐 motif、判断已有工具覆盖范围 |
-
-例如：
-
-```text
-Cycle 1 execution: FIND → SEARCH → READ → EDIT
-Cycle 2 execution: LOCATE-SYMBOL → EDIT
-
-Cycle 1 semantic:  FIND → SEARCH → READ → EDIT
-Cycle 2 semantic: [FIND → SEARCH → READ] → EDIT
-                  └── locate-symbol 的虚拟 expansion
-```
-
-两条 semantic paths 可以匹配；但成本计算仍使用 execution graph，所以 cycle 2 被正确计为 2 个 turns，而不是虚构成 4 个。
-
-#### 每个工具维护跨 cycle 统计
-
-每次 rollout 后，按 `tool_id + tool_version` 聚合：
-
-```json
-{
-  "tool_id": "locate-symbol",
-  "version": "sha256:...",
-  "cycle": 2,
-  "available_in_tasks": 64,
-  "adopted_in_tasks": 31,
-  "call_count": 47,
-  "success_count": 44,
-  "mean_observation_tokens": 4200,
-  "fallback_after_call_count": 9,
-  "validated_cost_saving_lcb": 0.008
-}
-```
-
-其中：
-
-- `adopted_in_tasks / available_in_tasks` 衡量 agent 是否愿意使用该工具；
-- `success_count / call_count` 衡量 executor 是否稳定；
-- `fallback_after_call_count` 统计调用工具后是否紧接着用 bash 重做相同工作，是输出不足或工具失败的信号；
-- saving 必须按实际 execution graph 重算，不能沿用创建时的估计。
-
-#### 第二轮可能发现什么
-
-假设 cycle 2 中经常出现：
-
-```text
-LOCATE-SYMBOL → READ_MORE_LINES → EDIT
-```
-
-semantic expansion 为：
-
-```text
-[FIND → SEARCH → READ_LOCAL] → READ_MORE_LINES → EDIT
-```
-
-这说明 `locate-symbol` 虽然被采用，但输出上下文经常不够。系统不应该再创建一个功能重复的 `locate-and-read-symbol-v2`，而应生成 **REFINE** 候选：扩大可配置 `context_lines`、加入 continuation cursor，或修正默认 output budget。
-
-反之，如果 cycle 2 中 `locate-symbol` 几乎无人调用，或者调用后大量 fallback 到原 bash 流程，则它可能产生负 schema overhead，应成为 **REMOVE** 候选。
-
-#### 五类 registry 更新决策
-
-每个 cycle 的候选不再只有“新增工具”，而有五类：
-
-| 决策 | 触发证据 | 操作 |
-|---|---|---|
-| `KEEP` | adopted、稳定、saving LCB > 0 | 保持当前版本 |
-| `REFINE` | 工具被采用，但经常出现固定补充步骤或 bounded-output fallback | 修改同一 tool contract/executor，生成新 version |
-| `MERGE` | 两个已有工具的 semantic expansions 高度重叠，且 registry overhead 过高 | 合并为一个参数化工具 |
-| `REMOVE` | 长期不采用、失败率高、saving LCB ≤ 0 | 从 registry 删除 |
-| `ADD` | 出现未被现有 semantic expansion 覆盖的新高收益 motif | 新增工具 |
-
-registry selection 计算 marginal coverage 时，现有工具已经覆盖的 semantic nodes 不再为新 `ADD` 候选重复计收益。只有新候选能覆盖旧工具未解决的步骤，或能以更低成本替换旧工具时，才有正的边际收益。
-
-#### 多轮数据流
-
-```text
-Cycle k registry + contracts
-        ↓
-rollout，记录 primitive/evolved tool calls
-        ↓
-构建 execution graph（真实成本）
-        +
-构建 semantic expansion graph（跨轮模式对齐）
-        ↓
-更新每个 tool version 的 adoption/success/fallback/saving
-        ↓
-产生 KEEP / REFINE / MERGE / REMOVE / ADD candidates
-        ↓
-replay + held-out validation
-        ↓
-生成 Cycle k+1 registry + 新版本 contracts
-```
-
-#### 防止错误自我强化
-
-多轮 evolve 容易把第一轮错误工具当成“历史常见模式”，然后不断强化。v8 使用以下约束：
-
-1. evolved tool 的一次调用不能增加其原始 motif support；support 仍按独立 tasks 和原始/虚拟 expansion 去重统计；
-2. semantic expansion 只用于对齐，不能作为新成功证据；成功证据来自本轮真实 call、真实 observation 和 verifier；
-3. 工具新版本与旧版本分别统计，不能用旧版本的成功率替新版本背书；
-4. 每轮保留固定 baseline/holdout cases，防止 registry 在自身 rollout 分布上闭环过拟合；
-5. `REFINE/MERGE/ADD` 仍必须重新通过 replay 和 non-inferiority gate。
-
-因此，多轮 evolve 不是“工具越积越多”，而是一个带 lineage 和实测反馈的 registry 更新过程。
-
----
-
-## 6. 为什么该方法比 v6 更有技术性，比 v7 概念更简单
-
-| 设计问题 | v6 | v8 |
-|---|---|---|
-| sample 单位 | 单条轨迹的规则裁剪 | 跨任务重复的 dependency subgraph |
-| sink | 最后一个 action | final-patch producing writes + verifier |
-| 成本 | 主要隐式用 step/trajectory 长度 | LLM cost + observation context exposure（按真实 50× cache 折扣）+ schema overhead |
-| tool 来源 | evolve LLM 阅读日志后猜测 | validated graph contraction contract |
-| observation | 截断主要发生在 evolve prompt | gate 强制的 bounded output + cursor（runtime 需加 output-clamp，见 §5.6） |
-| correctness | positive sample 未验证 | replay + verifier + held-out non-inferiority |
-| 图技术 | ancestor closure | cost-weighted motif hashing、boundary contraction、budgeted coverage |
-
-v8 的技术深度来自一个闭环：**成本标注的图 → 重复子图 → 边界保持的图收缩 → 有预算的选择 → 等价性验证**。每一步都服务于“少轮次、短 observation、performance 不下降”，而不是为了丰富术语。
-
-**关于“比 v7 简单”的诚实限定。** v8 相对 v7 更简单，仅指**算法/理论层**：不引入异构 provenance 本体、边类型完备性主张、AND/OR support sets、ILP、Steiner Tree、gSpan、未验证的 minimal positive trajectory，以及仅凭日志做 causal identification 的主张。在**工程实现层，v8 并不比 v7 轻**：它新增了 5 层确定性 canonicalizer、repo profiler、`tool_contracts_v8.json` 版本管理、execution/semantic 双视图、WL hash、boundary contraction、budgeted coverage、replay/held-out gate 与 5 类 registry 决策。其中最重的前置依赖是 **per-step repo snapshot instrumentation**（replay gate 的先决条件，v7 §9 至今未落地）。因此实现顺序（§8）必须把便宜、不依赖成功轨迹数量的 bounded-output 先做，把重型 motif/replay 机制往后放。
-
----
-
-## 7. 实验设计
-
-### 7.1 Research questions
-
-- **RQ1：** VCGC 是否在 non-inferiority 条件下降低每题实际 API cost？
-- **RQ2：** context-exposure cost 相比 step-only cost，是否更能降低 observation tokens 和累计 prompt tokens？
-- **RQ3：** dependency-connected motifs 相比 v6 trajectory pruning，是否提高 tool adoption、tool success 和净收益？
-- **RQ4：** replay/verifier gates 是否显著降低 evolved agent 的回归率？
-- **RQ5：** execution/semantic 双视图与 tool lineage 是否减少跨 cycle 的重复工具，并支持有效的 REFINE/REMOVE？
-- **RQ6（新增，对应 §1 的第二目标）：** 在成本不升的前提下，VCGC 是否**提高**成功比例？分别报告严格 pass rate 与放宽成功比例（partial/f2p），验证“成本↓ 且 成功↑”能否同时成立，而不仅是“成本↓ 且 成功不降”。
-- **RQ7（对应 §2.4 假设 B）：** 单独给现有高频 READ/VERIFY 加 bounded output（不挖任何 motif）能回收多少 observation exposure 成本，且是否伤 performance？这是最便宜、不依赖成功轨迹数量的杠杆，应作为独立结论。
-
-### 7.2 必要 ablations
-
-1. v6 full method；
-2. v8，但 node cost 只用 turn count；
-3. v8，但不计 observation exposure；
-4. v8，用连续窗口替代 dependency-connected motif；
-5. v8，不计 schema overhead；
-6. v8，去掉 replay/verifier gate；
-7. v8，将上一轮 evolved tool 当成 opaque tool name，不使用 semantic expansion；
-8. instruction-only、tools-only、tools + instruction；
-9. **bounded-output-only**（只做 §5.6 的 READ/VERIFY output-clamp，不做任何 motif 收缩）——用于隔离 §2.4 假设 B 的独立贡献；
-10. **严格成功 vs 放宽成功训练集**（§5.4）——验证放宽成功定义是否真的提高 tool 质量与最终成功比例，而非引入噪声。
-
-### 7.3 指标与统计
-
-主指标是同一批 case、同一模型配置下的 paired API cost difference，**用真实单价换算**（input=1、output=2、cached=0.02 元/百万 token；cache 折扣 50×），不使用 v7 fallback 的 10× 权重（§2.4）。次指标包括 uncached/cached/completion tokens、LLM turns、observation tokens（并按 op 类型分解，重点看 READ/VERIFY，见 §2.4）、peak context、tool adoption rate、tool failure rate、schema tokens 和 wall time。多轮实验还报告 registry size、重复 semantic coverage、tool version churn、KEEP/REFINE/MERGE/REMOVE/ADD 数量，以及工具创建后各 cycle 的净收益变化。
-
-Performance 用**双口径**同时报告：(1) 严格 `reward==1` 的 paired non-inferiority（预注册 margin $\epsilon$ + 置信区间）；(2) 放宽成功比例（`f2p>0` 且无 p2p 回归 / `partial≥0.5`）的**改进量**，对应 RQ6。同时报告 success-only cost 与 expected cost per task，避免通过更早失败来“降低成本”。至少使用多个随机 seeds，train/validation/test 按 repository 隔离，所有 motif mining 和阈值选择只在 train/validation 完成。**数据可用性前提**：SWE-Atlas QA 的 prep 轨迹当前全部崩溃（§2.4），必须先重新 rollout 才能纳入；否则该 split 仅用于最终 held-out 评估、不参与 mining。
-
----
-
-## 8. 最小实现路线
-
-顺序按“先便宜、先验证成本大头、先不依赖成功轨迹数量”重排（依据 §2.4 预实验）：
-
-0. **（已完成）可行性预实验**：`scripts/v8_feasibility.py` 在 `results/prep` 上量化了 turn-collapse 比例、真实 50× cache 折扣下的 exposure 占比、各 benchmark 成功轨迹数（结果落 `results/v8_feasibility_result.json`）。它确立了下面的优先级：bounded READ/VERIFY 是最大杠杆、turn-collapse 是次要收益、成功定义必须放宽。
-1. **修 baseline 注入 bug**：删除/降级 `SEED_INSTRUCTION_MD` 中未验证的高风险规则（“skip tests then commit / submit best-effort”），作为 evolve 前的干净起点（§2.3）。
-2. **在 runtime 加通用 output-clamp + cursor**，并把现有 READ / VERIFY 类工具改成 bounded output（§5.6）；这是不依赖 motif mining 的最大成本源。
-3. **用真实单价的 per-turn token 账本 + exposure 成本**（input=1/cache=0.02/out=2），在 prep 轨迹上离线估算 bounded READ/VERIFY 可回收多少 exposure（对应 RQ7 / ablation #9）。per-turn tokens 现有 trajectory 已具备（`metrics.{prompt,cached,completion}_tokens`），无需新 instrumentation。
-4. **补齐 outcome instrumentation**：per-write diff hash、final-hunk anchors，并按 §5.4 的放宽成功定义把 `partial_pass` 轨迹的 anchor 对齐到通过测试的改动；这是 replay gate 与 motif mining 的前置。
-5. 实现 canonicalizer、`tool_contracts_v8.json` 和 execution/semantic 双视图；
-6. 只实现 size 1–5 的 WL motif hash 与 boundary contract，不实现通用子图挖掘器；先做 read-only 的 `FIND→SEARCH→READ` 收缩，作为“额外减 turn”的次要收益，再扩展有 state effects 的 edit 宏工具；
-7. 实现 replay/verifier gate（依赖第 4 步的 per-step snapshot）、held-out non-inferiority、registry budget 和 KEEP/REFINE/MERGE/REMOVE/ADD；
-8. 最后接回 v6 evolver，让 evolve agent 只消费 validated contraction cards。
-
-第 2–3 步就能独立发一个“bounded-output 降本、performance 非劣”的最小结论（RQ7）；第 4–7 步形成完整 VCGC 算法；第 8 步只是把 contraction contract 编译成当前仓库所需的 native tools。
-
----
-
 ## 9. Introduction（论文引言草稿）
 
 ### 9.1 LLM agent 及其高昂成本
@@ -1208,7 +14,7 @@ Performance 用**双口径**同时报告：(1) 严格 `reward==1` 的 paired non
 
 ### 9.3 本文方案:基于自进化算法的成本优化框架
 
-本文提出一个**基于 agent 自进化(self-evolve)的成本优化框架**。我们不在推理时压历史,而是在**进化阶段**改造 agent 自身:先让 baseline agent 在代码任务上跑出轨迹,再从这些轨迹里找出反复出现、成本高昂的操作,把它们自动进化成两类产物——**native function tools**(本框架中即 `tools.json` + `executor.py`)和 **instruction**。进化后的 agent 用更少的轮次、更短的 observation 完成同样的工作。整个过程是一个闭环:rollout → 分析 → 进化 → 再 rollout。
+本文提出一个**基于 agent 自进化(self-evolve)的成本优化框架**。我们不在推理时压历史,而是在**进化阶段**改造 agent 自身:先让 baseline agent 在代码任务上跑出轨迹,再从轨迹中形成两条并行但共用验证门的候选链。第一条把跨任务重复的昂贵执行子图收缩为 **native function tools**(`tools.json` + `executor.py`);第二条把可识别的无效决策尾部收缩为经过验证的 **instruction policy**(`instruction.md`),例如何时早退、何时用低成本替代验证、何时尝试有边界且可回滚的风险动作。进化后的 agent 用更少的轮次、更短的 observation 完成同样的工作。整个过程是一个闭环:rollout → 分析 → 候选干预 → 验证 → 再 rollout。
 
 自进化能解决压缩解决不了的问题,原因很直接。**它在源头减负,而不是事后压缩。** 进化出的工具在**产生 observation 之前**就限定了输出:读文件只回相关片段,跑测试只回结果和关键日志,长输出落盘、按需再取。昂贵的内容从一开始就没进上下文,因此根本不需要改写历史前缀,**天生不破坏 cache**。而且工具和 instruction 是跨任务持久的资产,一次进化的收益能摊到之后所有任务上。更进一步,把定位、读取这类确定性工作交给受控工具,既省 token,又为真正的推理和修改腾出上下文预算,从而**降低"因上下文膨胀或步数耗尽而失败"的比例**。所以我们的目标是双向的:在成功率不下降的底线上,**主动争取成功率提升**。
 
@@ -1218,9 +24,9 @@ Performance 用**双口径**同时报告：(1) 严格 `reward==1` 的 paired non
 
 **难点一:如何发现自进化过程中值得优化的昂贵操作?** 难点在于,同一个意图在不同任务里长得很不一样(有的用 `rg`、有的用 `grep`,路径参数各不相同),直接比命令字符串认不出它们是同一模式;而让 LLM 自由概括又贵、又不可复现。我们的解法是**确定性归一化 + 图挖掘**:先把每次调用规范化成统一的语义标签,抹平表面差异,再在执行图上挖出跨任务反复出现的昂贵子图,作为值得沉淀成工具的候选。
 
-**难点二:如何在自进化闭环里降本,同时保证正确性?** 我们省钱的手段,是把一串操作收缩成一个工具,工具内部照常干活,但只返回必要的结果、把中间又长又贵的 observation 藏起来不进上下文(因为没有改写历史前缀,这样做天生不破坏 cache,这也是它区别于事后压缩、能真正省钱的原因)。可是"藏信息"本身就有风险:工具可能恰好藏掉了后续真正需要的内容,悄悄改变 agent 的行为、导致失败——**省得越狠,越容易出错**。而自进化是个闭环,这样一个"看着省钱、其实有害"的工具一旦被采纳,就会在之后每一轮里被反复复用,错误被不断放大。我们的解法是给每个候选工具加一道**验证门**,过了才准进入工具库:第一步,把它放回原本出现的场景里重放一遍,检查产出结果与原来等价(找到的文件、最终的 diff 一致);第二步,在一批**没参与挖掘的新任务**上带着这个工具重新跑,确认成功率不下降。两关都过才收录,而且工具库可回退——某一轮发现变差就撤掉。正因为有这道门兜底,我们才敢把目标定成双向的:在成功率不降的底线上,主动争取它变得更高。
+**难点二:如何在自进化闭环里降本,同时保证正确性?** 我们省钱的手段,是把一串操作收缩成一个工具,工具内部照常干活,但只返回必要的结果、把中间又长又贵的 observation 藏起来不进上下文(因为没有改写历史前缀,这样做天生不破坏 cache,这也是它区别于事后压缩、能真正省钱的原因)。可是"藏信息"本身就有风险:工具可能恰好藏掉了后续真正需要的内容,悄悄改变 agent 的行为、导致失败——**省得越狠,越容易出错**。instruction policy 的风险更隐蔽:失败轨迹只能说明“这里可能浪费”,不能直接证明应该早退、跳过检查或承担风险。我们的解法是给两类候选都加**验证门**:工具先做原场景/下游一致性重放,policy 则进入隔离的单候选 paired canary;二者最后都必须在没参与挖掘的新任务上满足 non-inferiority 与成本条件。验证通过才收录,registry 可随时回退。正因为有这道门兜底,我们才敢把目标定成双向的:在成功率不降的底线上,主动争取它变得更高。
 
-综上,VCGC 是一个自洽的闭环:**成本标注的执行图 → 跨任务重复子图 → 边界保持的收缩 → 有预算的工具选择 → 等价性与非劣性验证**。它从源头削减轮次和 observation 暴露,不破坏 cache、不损失信息,并为成功率的提升留出空间。我们在多个代码 benchmark 上验证该框架,并用 ablation 分离出各组件的独立贡献。
+综上,VCGC 是一个自洽的双通道闭环。执行通道是**成本标注的执行图 → 跨任务重复子图 → 边界保持的工具收缩**;决策通道是**决策 episode → 正负样本 → policy hypothesis → 单候选干预**。二者最终都经过 candidate-specific paired canary 和 held-out non-inferiority 门,再编译进同一个 registry。它从源头削减轮次和 observation 暴露,不破坏 cache,并为成功率的提升留出空间。
 
 ---
 
@@ -1228,59 +34,455 @@ Performance 用**双口径**同时报告：(1) 严格 `reward==1` 的 paired non
 
 ### 10.1 Overview
 
-我们的框架 **VCGC(Validated Cost-Aware Graph Contraction)** 是一个进化闭环:baseline agent 先在代码任务上 rollout 出一批轨迹,框架从这些轨迹里挖出"值得优化的昂贵操作",把它们编译成新的 native function tool,验证通过后交给下一轮 agent 使用,如此循环。
+我们的框架叫 **VCGC(Validated Cost-Aware Graph Contraction)**,是一个进化闭环:baseline agent 先在代码任务上跑出一批轨迹,框架从这些轨迹里挖出"值得优化的昂贵操作",把它们编译成新的 native function tool,验证通过后交给下一轮 agent 使用,如此循环。
 
-整个方法围绕 §9.4 的两个难点组织,可以分成两个部分:
+整章就回答 §9.4 的两个难点:**§10.2 讲怎么发现值得优化的昂贵操作,§10.3 讲怎么在闭环里安全地降本。**
 
-- **发现(对应难点一)**:把每条轨迹表示成一张带成本标签的执行图,在图上找出跨任务反复出现、又贵又确定的多步操作(§10.2、§10.3)。
-- **安全降本(对应难点二)**:把这些操作收缩成一个"在源头限定输出"的工具,用净收益筛掉不划算的候选,再用一道验证门确保它不损害正确性,才允许进入工具库;多轮之间用 lineage 和固定 held-out 防止错误自我强化(§10.4–§10.7)。
+先看一个贯穿全章的例子。很多任务都要做同一件事:**搜索一个符号 → 读它周围的代码 → 再动手改**。前两步是确定性的、跨任务重复的,而且返回的 observation 又长又贵。VCGC 会把"搜索 + 读取"收缩成一个 `locate-symbol` 工具——agent 一次调用就拿到有界的相关上下文,3 轮 LLM 决策压成 1 轮,约 25k tokens 的中间输出压到约 4k;而"怎么改代码"仍然留给 agent 自己决定。下面两节,就是让这件事既能自动发现、又能保证不出错。
 
-一个贯穿全章的例子:很多任务都要"搜索一个符号 → 读取它周围的代码 → 再动手改"。搜索和读取是确定性的、跨任务重复的,而且返回的 observation 又长又贵。VCGC 会把"搜索 + 读取"这两三步收缩成一个 `locate-symbol` 工具:agent 一次调用就拿到有界的相关上下文,把 3 轮 LLM 决策压成 1 轮、把约 25k tokens 的中间输出压到约 4k;而"怎么改代码"仍留给 agent 自己决定。
+### 10.2 应对挑战一:发现值得优化的昂贵操作
 
-### 10.2 成本标注的执行图
+要发现"值得优化的昂贵操作",得先回答两个问题:成本到底记在哪(§10.2.1),以及怎么在成千上万次调用里认出跨任务重复的那些(§10.2.2)。
 
-每条轨迹被表示成一张 cost-labeled step DAG $G=(V,E,X,C)$:一个节点是一次 LLM turn(保留该轮所有 tool call,不破坏原子性),边是 step 之间的依赖(prerequisite → dependent),时间顺序单独存为 metadata、不当作依赖。每个节点带上挖掘所需的属性 $X$(操作类别、读/写/验证、参数与文件角色、返回码、observation token 数、repo diff hash),以及两类成本标签 $C$。
+#### 10.2.1 为什么这样定义图,以及怎么把它建出来
 
-**只在真正产生结果的地方记成本(outcome anchoring)。** 如果从轨迹的最后一个 action 往回找,常常选中 submit 或 `git status` 这类不产生结果的收尾动作。因此我们先定位"真正产生并通过测试的改动步骤",把它们标为 outcome anchor,成本与收益都锚定到这些 anchor 及其依赖闭包。为缓解严格全通过轨迹太少的问题,训练集的成功定义放宽到**部分通过**(修好了此前失败的目标测试、且没有打破原本通过的测试),但此时 anchor **只对齐到确实通过了测试的那部分改动**——放宽的是"哪些轨迹可用",不是"哪些 step 算结果"。
+**为什么用图。** 我们的目标是找出"一串经常一起出现、又贵的操作",而"一起出现"本质上是操作之间的依赖关系,"贵"要能落到具体的某几步上。一张带成本标签的依赖图恰好能同时表达这两件事,所以我们把每条轨迹建成一张 DAG $G=(V,E,X,C)$。
 
-**两类成本都要计,收益用反事实账本算。** 只数轮次会低估长输出的代价,只算当轮 output token 又忽略它在后续每一轮 prompt 里的重复暴露。所以每个节点带两类成本:该轮的实际 API 成本,以及它的 observation 在后续轮次里的 **exposure 成本**(按真实的 prompt-cache 折扣计价)。任何"收缩能省多少"都通过重建"收缩前 vs 收缩后"的完整 token 账本得到,而不是用轮次数当代理。
+**节点和边怎么定。** 一个节点 $v\in V$ 就是**一次 LLM turn**,并且保留该轮里的所有 tool call——因为同一轮的多个 call 是一个原子决策,拆开会破坏语义。一条边 $e\in E$ 是两步之间的**依赖**(前置 → 后继),表示"后一步用到了前一步的产物"。这里有一个刻意的选择:**轨迹的先后顺序(谁在谁之后发生)只作为 metadata 存着,不当成依赖边**。因为时间相邻不等于有因果关系,把"下一步"当依赖会挖出大量假模式;我们只让真实的数据依赖进入 $E$,依赖标注的质量再由后面的 replay(§10.3.3)和人工抽样来检验,而不是默认它就是对的。每个节点还带一组属性 $X$:操作类别(读/写/验证)、参数与文件角色、返回码、observation 的 token 数、以及该轮之后的 repo diff hash——这些是后面归一化和挖掘要用的。
 
-### 10.3 发现值得优化的昂贵操作
+**成本标在哪:一次 observation 贵在"之后"。** 每个节点带两类成本标签 $C$:一是**这一轮自己的 API 成本**;二是这一轮的 observation 的**暴露成本**——它一旦进入对话历史,就会在**之后每一轮 prompt 里被反复携带**,按真实的 prompt-cache 折扣累计计价。这一点是整套成本观的关键:一次读文件真正贵的地方,往往不是产生它的那一轮,而是它在后续所有轮次里的长期驻留。所以后面凡是算"收缩能省多少",都用重建"收缩前 vs 收缩后"的完整 token 账本来算,而不是简单数省了几轮。
 
-**先归一化,再挖掘。** 同一个意图在不同任务里表面形态差异很大(`rg` 与 `grep`、路径与参数各不相同),直接比命令字符串认不出同一模式;而让 LLM 自由概括又贵、不可复现、难以审计。我们用一个**确定性、可拒绝的分层规范化器**把每次调用映射成统一的语义标签:结构化 tool schema → shell AST(而非字符串 split)→ command rule registry → 路径角色 → 参数角色。每个标签带一个置信度,**低置信或副作用未知的调用直接拒绝、不参与挖掘**,LLM 只在少数低置信情形做兜底、且其判定同样要过后续验证。这样表面差异被可复现地抹平,`rg Foo` 与 `grep Foo` 都归一化成同一个 `SEARCH(symbol)`。
+**建图时只把成本锚到"真正产生结果"的步骤。** 如果偷懒从轨迹最后一个 action 往回找,常常锚到 submit、`git status` 这类不产生结果的收尾动作上,挖出来的东西没有意义。所以我们先在图上标出 **outcome anchor**——真正改出代码、并且通过了测试的那些步骤,成本和后续分析都围绕这些 anchor 及其依赖闭包展开。为了让可用轨迹多一些,我们把训练轨迹的"成功"放宽到**部分通过**(修好了此前失败的目标测试、又没打破原本通过的测试);但即便如此,anchor **只对准确实通过了测试的那部分改动**——放宽的是"哪条轨迹能用",绝不是"哪一步算结果"。
 
-**在归一化后的图上挖跨任务重复子图。** 我们用 Weisfeiler–Lehman hash 给小子图(实际只需 size 1–5)分组,把在**多个独立任务**里都出现的依赖连通子图作为 motif 候选。support 按去重后的独立 task 计,避免同一任务里的多次出现虚增频次。得到的每个 motif,就是一个"跨任务重复、又贵又确定"的操作模式——它才是值得沉淀成工具的东西。
+#### 10.2.2 怎么归一化,以及怎么挖出重复的昂贵操作
 
-### 10.4 边界保持的收缩:在源头省钱且不破 cache
+**先归一化:让不同写法的同一操作能对上。** 同一个意图在不同任务里表面差别很大——有的用 `rg`、有的用 `grep`,路径、参数各不相同。直接比命令字符串,认不出它们是一回事;而把整段日志丢给 LLM 让它自由概括,又贵、又不可复现、还没法审计。我们的做法是一个**确定性的、可以拒绝的分层归一化器**,一层层把一次调用翻译成统一的语义标签:
 
-发现 motif 后,子图的**边界**直接给出工具契约:进入子图的信息是工具输入,下游真正需要的信息是工具输出,内部的中间 observation 被封装、不再逐条返回给 LLM。对上例,`FIND → SEARCH → READ` 收缩成 `locate-symbol(symbol, search_path) → {file, line, bounded_context}`,`state_effects=[]`(只读、不改代码)。
+1. **结构化 tool schema**:如果这一步本来就是个 native function tool,直接读它的 schema,最可靠;
+2. **shell 语法树**:普通 shell 命令先解析成 AST,而不是按空格 split,避免管道、引号、子命令把字符串切错;
+3. **命令规则表**:用一张 `grep/rg/find/pytest/...` 的规则表,把命令识别成 `SEARCH / FIND / READ / TEST` 等操作类别;
+4. **路径角色**:把具体路径抽象成角色(源码目录、测试文件、临时文件……),抹掉与任务绑定的具体名字;
+5. **参数角色**:把参数抽象成角色(要搜的符号、行号范围、超时……)。
 
-**关键在于工具在产生 observation 之前就限定输出**(bounded output + continuation cursor):读文件只回相关片段、跑测试只回 exit code + 失败用例名 + 日志尾部,超出上限的部分落盘、返回一个游标供按需再取。昂贵的中间结果从一开始就没进上下文,因此**根本不涉及改写历史前缀,天生不破坏 prefix cache**——这正是它区别于事后压缩、能真正省钱的原因。
+每个标签都带一个**置信度**,**拿不准或副作用不明的调用直接拒绝、不进入挖掘**,只在少数低置信情形才退回让 LLM 兜底,而且它的判断同样要过后面的验证门。归一化之后,`rg Foo` 和 `grep Foo` 就都变成同一个 `SEARCH(symbol=Foo, path=<src>)`。
 
-需要强调,bounded output 是**由验证门强制的契约,而非 runtime 自带能力**:当前 runtime 对工具输出不做截断,输出长短取决于 executor 分支的实现。因此我们在 runtime 外层加一个通用的 output-clamp,并由 §10.6 的 gate 实际检查、拒绝超预算输出,而不依赖 prompt 纪律。第一版优先实现只读的 search/read/test-log 类工具,因为更易验证、也不易破坏代码;带 edit 的 stateful 工具必须在契约里声明 changed files 等 state effect 后才引入。
+**再挖掘:找跨任务反复出现的重复子图。** 在归一化后的图上,我们找那些**在多个不同任务里都出现**的依赖连通子图。为了高效判断"两个小子图是不是同一个模式",我们给每个小子图(实际只需 size 1–5)算一个 **Weisfeiler–Lehman hash**,hash 相同的归为同一个 motif。这里有个关键的计数规则:**support(支持度)按去重后的独立任务数算**,同一个任务里出现很多次也只算一次——这样才不会被某条啰嗦的轨迹刷出一堆假高频。最后再叠加 §10.2.1 的成本标签:一个 motif 值不值得关注,取决于它**既跨任务重复、又确实贵**(内部 observation 暴露成本高)。挑出来的这些"重复且昂贵的多步操作",就是下一步要收缩成工具的候选。
 
-### 10.5 有预算的工具选择
+### 10.3 应对挑战二:在闭环里安全地降本
 
-造一个工具不是免费的:它的 name/description/schema 会在每轮 prompt 里占 token,工具太多还会增加 agent 选错工具的概率。因此对每个候选算净收益
+拿到候选之后,降本要闯四关:把它收缩成一个"从源头就省"的工具(§10.3.1),判断它是不是真划算(§10.3.2),验证它没把行为改坏(§10.3.3),以及在多轮里不让坏工具越滚越大(§10.3.4)。
 
-$$Saving = Cost_{original} - Cost_{macro} - Cost_{schema},$$
+#### 10.3.1 收缩:让省钱发生在"产生 observation 之前"
 
-其中 $Cost_{macro}$ 是改用工具后的完整 API 成本(按 occurrence 当时的真实 context 重建两边账本),$Cost_{schema}$ 是 schema 的长期占用。**不能只看均值**:一个工具若在少数任务省很多、在其余任务经常失败,均值会掩盖风险,所以我们对跨任务 saving 做 bootstrap,只保留置信下界 LCB 仍大于 0 的候选。若同时有多个候选,则在固定的 registry token 预算下按"边际新增节省 / schema tokens"贪心选择,覆盖同一批 step 的重叠部分只计一次——这是一个 budgeted weighted coverage 问题,不需要 ILP。
+**边界直接定义工具长什么样。** 一个重复子图的**边界**天然告诉我们工具的接口:从外面进入子图的信息就是**输入**,子图下游真正要用的信息就是**输出**,而中间那些又长又贵的 observation 属于工具**内部**、不再逐条塞回对话。拿贯穿全章的例子:`FIND → SEARCH → READ` 这个子图,输入是 `symbol` 和 `search_path`,输出是 `file / line / 有界的局部代码`,内部三次读取的完整内容全部封在工具里。它只有读操作,所以标记 `state_effects=[]`(不改代码)。
 
-### 10.6 验证门:保证收缩不损害正确性
+**关键:输出在"产生之前"就被限定住,所以不破 cache。** 这一步是整个框架能真正省钱的核心。工具在**生成输出之前**就把它卡在一个上限内——读文件只回相关片段,跑测试只回 exit code、失败用例名和日志尾部,超出的部分落盘、返回一个游标供 agent 按需再取。于是昂贵内容**从一开始就没进入上下文**,自然也就**不需要事后去改写对话历史**;而不改写历史前缀,就**天生不破坏 prefix cache**——这正是它和 trajectory 压缩的根本区别:压缩是在已经付过费、已经进了 cache 的历史上做有损裁剪,而收缩是让昂贵内容压根不产生。需要如实说明一点:这个输出上限是我们在 runtime 外层加的一个统一 output-clamp、并由 §10.3.3 的验证门强制执行的**契约**,不是底层 runtime 自带的能力,所以不能靠 prompt 自觉,必须在验证阶段真的去检查、拒绝超预算的输出。第一版我们只做只读的 search/read/test-log 类工具(容易验证、不会改坏代码);带 edit 的有状态工具必须先在契约里声明它会改哪些文件,才允许引入。
 
-净收益为正还不够。图里可能有缺失或错误的依赖,导致工具漏掉下游真正需要的信息,悄悄改变 agent 行为。因此每个候选必须依次通过三道 gate,才能进入工具库:
+#### 10.3.2 筛选:只留下真的划算的工具
 
-1. **Contract replay**:在该 motif 历史 occurrence 的相同 repo 状态上执行工具,要求它仍能复现原来的关键 `file:line` 与代码上下文,且输出不超预算。
-2. **State/verifier replay**:在工具之后重放历史中已确定的下游改动步骤,检查最终 diff 与目标测试是否仍一致(stateful 工具还要直接比对 changed files 与 diff hash)。
-3. **Held-out rollout**:把工具临时加入 registry,在**没有参与 motif mining 的新任务**上重新跑 agent,确认 pass rate 满足预注册的 non-inferiority 约束、同时成本确实下降。
+**造工具本身是有代价的。** 一个工具的 name/description/schema 会在**每一轮 prompt 里**都占 token,工具太多还会让 agent 更容易选错。所以对每个候选算一笔净账:
 
-只有全部通过的候选才形成一张简短的"工具实现卡"(pattern、inputs/outputs、output budget、saving 的均值与 LCB、各 replay 的通过率),交给 evolve agent 去实现 `tools.json + executor.py`。也就是说,**图算法负责回答"该实现什么、为什么值得、是否安全",evolve agent 只负责把已验证的契约写成可执行代码**,而不是自己凭 prompt 猜工具。`instruction.md` 遵循同一原则:只有跨成功轨迹重复、并通过 held-out rollout 的行为规则才能写入;失败轨迹只能提出待验证假设,不能直接变成"跳过测试""直接 commit"这类高风险规则。
+$$Saving = Cost_{\text{原方案}} - Cost_{\text{用工具}} - Cost_{\text{schema占用}},$$
 
-正因为有这道门兜底,我们才把优化目标设成**双向**的:在成功率非劣的底线之上,主动争取它变得更高——放宽的成功定义让训练集包含更多"部分成功"的真实定位/修改片段,进化出的工具与 instruction 更可能帮后续 agent 把部分成功推成完全成功。
+其中 $Cost_{\text{用工具}}$ 是改用工具后的**完整** API 成本(按这次出现时的真实上下文,把两边的 prompt/cached/completion token 都重建出来再折算),$Cost_{\text{schema占用}}$ 是它长期挂在 registry 里的开销。
 
-### 10.7 多轮进化与防止错误自我强化
+**不能只看平均值。** 一个工具要是在少数任务里省很多、在其余任务里经常失败,平均数会把风险盖住。所以我们对它跨任务的 saving 做 bootstrap,取一个保守的**置信下界**,只有下界仍然大于 0 的工具才留下——直观说就是:即便考虑样本波动,我们仍有把握它是省钱的。如果一次挖出很多候选,就在固定的 registry 预算下按"**边际新增节省**"贪心地挑,两个工具覆盖同一批步骤时,重叠部分只算一次,避免收进一堆功能重复的工具。
 
-进化是闭环:上一轮生成的工具会出现在下一轮的轨迹里。因此从第二轮起,候选不再只有"新增",而是对现有工具做 **KEEP / REFINE / MERGE / REMOVE / ADD** 五类决策(依据是真实使用中的 adoption、成功率、fallback 频率与 saving LCB)。为了跨轮对齐模式,我们维护两个图视图:**execution graph** 记真实成本,**semantic expansion graph** 把一次工具调用虚拟展开回它代表的原始 motif,仅用于对齐、不作为新的成功证据。
+#### 10.3.3 验证:确保省钱没有偷偷把行为改坏
 
-一个"看着省钱、其实有害"的工具一旦进库,可能在后续每轮被反复复用、错误被放大。我们用几条约束把它挡住:(1) 一次工具调用不增加其原始 motif 的 support,support 仍按去重后的独立 task 统计;(2) semantic expansion 只用于对齐,成功证据只来自本轮真实调用与 verifier;(3) 工具的新旧版本分别统计,不能用旧版本成绩为新版本背书;(4) 每轮保留**固定的 baseline/held-out 任务**,防止 registry 在自己产生的 rollout 分布上闭环过拟合;(5) REFINE/MERGE/ADD 一律要重新过 §10.6 的门。因此多轮进化不是"工具越积越多",而是一个带 lineage、可回退、由实测反馈驱动的受控更新过程。
+**省钱靠"藏信息",而藏信息天然有风险。** 我们省钱的手段就是把中间的 observation 藏进工具内部;可万一图里有条依赖标错了、工具恰好藏掉了下游真正需要的东西,agent 的行为就被悄悄带偏——**省得越狠,越容易出错**。所以净收益为正还远远不够,每个候选必须依次闯过三道门,才准进工具库:
+
+1. **原场景重放**:把工具放回它当初出现的那些 occurrence、在相同的 repo 状态上跑一遍,要求它仍能复现出原来的关键 `file:line` 和代码上下文,而且输出不超预算;
+2. **下游一致性重放**:在工具之后,把历史里已经确定的下游改动步骤重放一遍,检查最终 diff 和目标测试是否还和原来一致(有状态的工具还要直接比对改了哪些文件);
+3. **新任务实测**:把工具临时装进 registry,在一批**完全没参与过挖掘的新任务**上重新跑 agent,确认成功率满足预先声明的 non-inferiority 底线、同时成本确实下降。
+
+**三关全过,才写成一张"工具实现卡"交给 evolve agent。** 这张卡很短:它记录这个模式是什么、输入输出、输出上限、saving 的均值和下界、以及各道 replay 的通过率。evolve agent 只负责照着这张已验证的卡去实现 `tools.json + executor.py`。也就是说,**判断"该做什么、值不值、安不安全"由图算法完成,evolve agent 不再凭 prompt 猜工具**,它只把已经验证过的契约翻译成可执行代码。
+
+#### 10.3.3.1 Instruction policy:样本只提出假设,干预才能签发规则
+
+`instruction.md` 不能把失败轨迹里的相关性直接写成因果规则。一个失败且很长的轨迹不证明“更早退出”一定更好;一次没跑测试但最终成功不证明“跳过验证”安全;一次高风险动作碰巧成功也不证明值得推广。因此 instruction 使用独立的数据链:
+
+1. `InstructionSampleBuilder` 从 discovery trajectory 抽取三类 **decision episode**。`early_exit` 记录重复无新证据/硬阻塞的窗口以及后来又取得进展的反例;`verification_skip` 记录修改后验证确实抓到问题的负例,以及外部 verifier 成功但 agent 内部没有验证的待干预假设;`bounded_risk` 只识别保存前态、随后验证的可回滚动作,缺少任一边界就作为负例。
+2. `InstructionCandidateBuilder` 按独立 task 聚合。样本中的 `hypothesis` 不是 positive label;只有跨任务重复 support 且存在相似触发条件下的 negative control,候选才有资格进入一个**单独的 policy-only canary arm**。
+3. canary arm 一次只放一个 instruction candidate,并保持 `tools.json`、`executor.py` 字节不变,避免把工具收益错误归因给 instruction。框架要求 policy 在轨迹行为指标上被真实触发,而不是仅仅出现在 prompt 中。
+4. `InstructionValidationGate` 重新计算 discovery/held-out 的 paired 成功率和成本。跳过验证的 treatment 仍必须通过框架外部 verifier;bounded-risk treatment 还必须证明回滚路径可用且没有 external side effect。也就是说,**下游 agent 可以跳过一次低价值验证,框架绝不跳过对“允许跳过”这条规则的验证**。
+5. 只有 candidate fingerprint、触发证据、成本下降、零 correctness regression 和 held-out 隔离全部满足,才签发 `InstructionCard`;compile agent 只负责把 card 翻译成短的 tool-agnostic contract。
+
+三条 baseline governance 不宣称来自样本,它们是永远存在的安全边界:没有新证据时不要重复同一思路;无法执行相关验证时必须使用最低成本替代并披露;风险动作必须有界、可逆、可立即检查,不可逆或外部副作用必须先取得授权。样本只负责学习这些边界内更具体的触发条件,不得学习固定的无条件 step 上限、泛化的“跳过测试”或不可逆动作。
+
+#### 10.3.4 闭环:别让一个坏工具越滚越大
+
+**进化是循环,坏工具会自我强化。** 这一轮造出来的工具,会出现在下一轮的轨迹里被继续使用;一个"看着省钱、其实有害"的工具一旦进库,就可能被后面每一轮反复复用、错误被不断放大,甚至新工具还建在它之上。所以从第二轮起,我们要做的不是从头再造一套,而是根据真实使用情况对已有工具做**保留 / 改进 / 合并 / 删除 / 新增**的决策(依据是它被采用得多不多、成功率高不高、是否老要打补丁、以及 saving 下界还正不正)。
+
+**几条硬规矩挡住自我强化:** 一个工具的成功证据只能来自它**本轮真实的调用和 verifier 结果**,不能拿它所代表的"历史老模式"给自己背书;工具的新旧版本分开统计,不能用旧版本的成绩替新版本担保;每一轮都留一批**固定的 held-out 任务**,防止 registry 在自己产生的数据分布上闭环过拟合;任何改进、合并、新增,都必须**重新过一遍 §10.3.3 的三道门**。因此多轮进化不是"工具越堆越多",而是一个带版本血缘、能实测反馈、也随时能回退删除的受控更新过程。
+
+---
+
+## 11. v8 工程实现方案
+
+### 11.1 范围与不可违反的约束
+
+v8 复用 v6 的 benchmark rollout、`tools.json + executor.py + instruction.md` 注册方式和 native-tool runtime，但替换“直接把 contrastive sample 交给 evolve agent 猜产物”的中间过程。新的主链路是：
+
+```text
+                         ┌─ execution subgraph → tool candidate → replay gates → ToolCard
+rollout → annotate/graph ┤
+                         └─ decision episode → policy hypothesis → paired canary → InstructionCard
+
+ToolCard + InstructionCard → compile → held-out registry gate → promote/rollback
+```
+
+第一版只自动接纳 `SEARCH / FIND / READ / TEST` 这类只读候选。无法确定副作用、归一化置信度不足、没有 outcome anchor、saving 置信下界不为正、三道验证任一道缺证据的候选均 fail-closed：可以写入审计报告，但不能进入 evolve prompt 或正式 registry。时间相邻只记录为 `turn_index`，绝不自动生成依赖边。
+
+新增 instruction 链使用 `vcgc.v8.2` schema，是对 v8.1 的加法扩展：原有 `graphs/motifs/candidates/validation/cards` 字段与 tool runtime 不变；旧 cycle 没有 instruction artifacts 时按空集合处理，仍可读取、验证和继续 tool-only evolve。
+
+### 11.2 模块与数据产物
+
+实现文件为 `src/evolve/evolve_v8.py`，继续调用 v6 的 `RolloutAgent` 和 native-tool 部署逻辑，新增以下确定性组件：
+
+1. `ShellNormalizer`：优先读取结构化 function call；对 bash 使用 `shlex` 解析管道/复合命令，再用白名单规则归一化为语义操作。输出 `op / path_role / arg_roles / confidence / rejected_reason / state_effects`。
+2. `CostLedger`：从每轮 usage 中读取 prompt、cached prompt 和 completion token；从 observation 估算其 token 量，并按它在后续轮次中的 cache/non-cache 比例计算 exposure cost。所有价格均为 CLI 参数，不把某家模型价格写死。
+3. `ExecutionGraphBuilder`：一轮一个节点、该轮所有 tool calls 保持原子性；只消费 trajectory 中显式的 `dependencies`；识别通过 verifier/测试支撑的 write 作为 anchor，并取其依赖闭包。输出每任务一个 `graph.json`。
+4. `MotifMiner`：仅枚举 anchor 闭包内、弱连通、大小 1–5 的只读子图；用确定性的 WL refinement + canonical edge serialization 生成 hash；support 按独立 task 去重，保存 occurrence 边界和覆盖步骤。
+5. `CandidateSelector`：重建每个 occurrence 的“原轨迹 vs 收缩后”账本，扣除 schema 常驻成本；以固定随机种子的 task-level bootstrap 得到 saving 下界；在 registry token 预算内按去重覆盖后的边际 LCB 贪心选择。
+6. `ValidationGate`：显式记录 `scenario_replay / downstream_replay / heldout` 三关。它只读取真实产生的证据文件并校验 diff、关键 `file:line`、测试、输出上限、成功率 non-inferiority 和成本下降；缺文件或字段就是 pending/failed，绝不默认通过。
+7. `InstructionSampleBuilder / InstructionCandidateBuilder`：从 discovery 图提取 early-exit、verification-skip、bounded-risk episode，保留 hypothesis/negative 证据角色并按独立 task 聚合；观察到成功本身不能生成 positive label。
+8. `InstructionValidationGate / InstructionCardCompiler`：每次只验证一个 policy-only arm；要求行为真实触发、paired cost 下降、无 correctness regression、held-out 不与 support 重叠。verification-skip 额外要求外部 verifier，bounded-risk 额外要求 rollback 与 external-side-effect 证据。
+9. `ToolCardCompiler`：只把三关均通过、版本与本轮证据一致的候选写成短 tool card；evolve agent 只看到卡片并负责翻译为 `tools.json + executor.py`。生成后继续使用 v6 parser 校验，并额外执行 schema/executor 同步检查和 output-clamp smoke test。
+10. `RegistryManager`：每轮保存版本、父版本、采用次数、saving LCB、验证证据和状态；新 registry 先写 staging，held-out 通过后原子 promote，否则保留上一版并记录 rollback。
+
+每轮目录固定为：
+
+```text
+cycle-N/
+  split.json                 # discovery / held-out，首次生成后固定
+  graphs/<task>.json
+  motifs.json
+  candidates.json
+  validation/<candidate>.json
+  cards.json                 # 只含 fully validated tool 候选
+  instruction_samples.json   # hypothesis / negative decision episodes
+  instruction_candidates.json
+  instruction_validation/<policy>.json
+  instruction_cards.json     # 只含 paired-canary validated policy
+  staging/                   # 待验证 registry
+  registry.json              # 版本血缘与 promote/rollback 决策
+  report.json
+```
+
+这些 JSON 都带 `schema_version`，并用排序 key 和稳定 hash 保证同一输入可复现。
+
+### 11.3 三道验证门的文件契约
+
+工具候选 `candidate_id` 的验证证据是 `validation/<candidate_id>.json`。`scenario_replay` 必须逐 occurrence 给出关键位置集合、输出字符数和复现结果；`downstream_replay` 必须给出原/新 diff hash、目标测试结果和声明的 state effects；`heldout` 必须给出彼此独立的 baseline/treatment task id、成功数、总数和完整成本。验证器同时要求 held-out task 不与 discovery support 相交，并用单侧 non-inferiority 下界检查 `success_treatment - success_baseline > -margin`。
+
+instruction 候选的证据是 `instruction_validation/<policy_id>.json`，包含 candidate-specific discovery/held-out baseline 与 treatment 行。treatment 必须显式记录 `policy_triggered`；verification-skip 记录 `external_verifier_passed`；bounded-risk 记录 `rollback_verified` 与 `external_side_effects`。任一门的 `passed` 都不能由输入文件直接宣称，而由 gate 根据原始字段和 candidate fingerprint 重算。
+
+由于真正的原 repo 状态重放和 held-out rollout 需要 benchmark 容器，CLI 将验证拆为两个动作：`prepare` 产出候选与待运行的证据模板；外部 runner 填充原始结果；`validate` 重算并签发 card。`run` 串联完整闭环。`--dry-run` 只展示计划和产物路径，不会把候选标为已验证。
+
+### 11.4 CLI 与闭环行为
+
+提供四个入口：
+
+```bash
+python -m src.evolve.evolve_v8 prepare --run-dir <rollout> --work-dir <cycle-dir>
+python -m src.evolve.evolve_v8 validate --work-dir <cycle-dir>
+python -m src.evolve.evolve_v8 compile --work-dir <cycle-dir> --scripts-dir <registry> \
+  --config <yaml> --execute
+python -m src.evolve.evolve_v8 promote --work-dir <cycle-dir> --scripts-dir <registry> \
+  --postcompile-evidence <json>
+python -m src.evolve.evolve_v8 run --benchmark swebench --config <yaml> \
+  --eval-cases-file <cases> --scripts-dir <registry> --work-dir <work>
+```
+
+`prepare` 可独立用于离线检查图、motif 和 decision episode；`validate` 在证据不全时返回非零并列出缺口；`compile` 在 tool/instruction card 都为空时拒绝修改现有 registry；`run` 固定 discovery/held-out 切分，cycle 1 可复用 baseline，此后只 rollout 已 promote 的 registry。instruction canary 与 tool canary 不在同一实验臂中出现；两类候选同时存在时，多轮实验默认 tool-first 交替，失败过的稳定 `policy_id` 会被后续 cycle 隔离。policy-only compile 后若模型误改工具文件，框架从 canary 前快照强制恢复 `tools.json/executor.py`。每一轮失败都保留上一版可运行 registry，不做半完成覆盖。
+
+### 11.5 验收标准
+
+- 单元测试覆盖 shell 归一化/拒绝、显式依赖而非时间边、anchor 闭包、task 去重 support、WL hash 稳定性、exposure 账本、bootstrap 可复现、重叠预算选择和三门 fail-closed。
+- 集成测试用最小 synthetic trajectory 跑通 `prepare → validate`，证明无证据不能生成 card，三门真实字段满足时才能生成。
+- 对生成 registry 运行 JSON、AST、schema/executor 同步和输出上限检查；任何失败均不 promote。
+- 报告同时给出 raw token、按 cache 价格折算的成本、成功率、候选各门状态和 rollback 原因，使论文中的每个结论都能回溯到任务级证据。
+
+---
+
+## 12. 基于 `results/prep` 的实现审计与效果预估
+
+### 12.1 数据画像
+
+本节只读取 `results/prep` 下的原始 `trajectory.json`、`result.json`、`verifier/reward.json` 和 log，不使用其中已有的 v7/contrastive 产物。价格按本次 rollout 的 `deepseekv4_flash.yaml`：输入 1 元/M token、输出 2 元/M token、cache 0.02 元/M token。
+
+| benchmark | case | 有效 action turns | baseline 成功 | prompt / cached / completion token | cache ratio | observation chars | 实际 API cost |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| deep-swe | 16 | 1,934 | 1/16 (6.25%) | 154.16M / 152.97M / 0.97M | 99.23% | 3.48M | 6.175 元 |
+| swebench-verified | 16 | 988 | 11/16 (68.75%) | 26.81M / 26.30M / 0.32M | 98.11% | 1.40M | 1.681 元 |
+| swe-atlas-tw | 16 | 533 | 4/16 (25.00%) | 18.52M / 17.93M / 0.29M | 96.84% | 1.67M | 1.520 元 |
+| swe-atlas-qa | 16 | 0 | 不可用 | 0 | — | 0 | 0 |
+
+swe-atlas-qa 的 trajectory 只有 system/user 两步和 `dependencies={"0":[]}`，说明 rollout 本身没有留下 agent action，不能拿来挖 motif 或估计效果。其余 48 个 case 合计 3,455 个 turn、约 9.376 元。三个有效集合的 median turn 分别是 115、56、31.5；observation 单次最大分别达到 33,650、25,234、32,242 chars，符合“长 observation + 多轮累计暴露”这一目标场景。
+
+cache ratio 达到 96.84%–99.23%，所以 introduction 对 trajectory rewrite 的担忧在本数据上成立：历史前缀非常便宜，重写它容易得不偿失。v8 应优先减少**未来 LLM call 数**以及 observation 第一次进入 prompt 时的未缓存 token，而不是把已经缓存的旧前缀摘要掉。
+
+### 12.2 真实命令分布带来的实现调整
+
+原始日志不是简单的 `rg Foo`，而是大量 `cd /repo && ...`：deep-swe 1,426 次、SWE-bench 711 次、swe-atlas-tw 208 次；pipeline 分别有 585、394、264 次。最常见的有效主体是 `cat/nl/sed/grep/find/ls`，验证则同时包含 `python -m pytest`、`go test`、`cargo test`、`yarn test`。因此代码允许无副作用的 `cd/export` 前缀、stderr 丢弃/合并和只读 pipeline，并补齐上述命令；heredoc、重定向、任意 Python/Node 脚本、install/build 和未知副作用仍拒绝。
+
+调整后，确定性 normalizer 能安全接纳为只读/验证操作的 turn 比例约为 deep-swe 50.1%、SWE-bench 44.1%、swe-atlas-tw 58.5%；被拒绝比例仍有 44.3%、55.0%、40.7%。这个 recall 不算高，但符合 v8 第一版 fail-closed 的定位：复杂脚本宁可不挖，也不能误当只读工具收缩。
+
+### 12.3 在真实数据上运行 `prepare` 的结果
+
+固定 75% discovery / 25% held-out、`min_support=2` 的诊断运行结果如下（当前正式默认值为 2）：
+
+| benchmark | discovery / held-out | 可用图（含 held-out） | motif | 入选候选 | 历史非重叠 saving 上界 |
+|---|---:|---:|---:|---:|---:|
+| deep-swe | 12 / 4 | 12/16 | 247 | 10 | 约 discovery cost 的 6.4% |
+| swebench-verified | 12 / 4 | 11/16 | 31 | 10 | 约 6.8% |
+| swe-atlas-tw | 12 / 4 | 4/16 | 0 | 0 | 0% |
+
+这里的 6.4%/6.8% 是“历史 occurrence 全被未来 agent 采用、按非重叠步骤重算、已扣 schema”的**上界**，不是线上收益承诺。deep-swe 的 247 个 motif 中 213 个 support 只有 2；SWE-bench 的 31 个里 23 个 support 只有 2。当前默认 `min_support=2` 允许在两个不同 case 中重复的模式进入候选阶段，随后仍由候选筛选、编译校验和 paired canary 淘汰偶然模式。swe-atlas-tw 在 held-out 切分后没有跨 discovery task 重复 motif，说明当前 16-case 样本仍可能不足，不能把候选数量直接视为有效工具数量。
+
+deep-swe 有 6 个 discovery task 触发每图 5,000 个子图的确定性枚举上限。这避免了组合爆炸和 OOM，但也意味着 motif 排名带有截断偏差；正式实验应改成闭合/最大 motif、beam search 或两阶段频繁边扩展，而不是简单提高上限。
+
+若理想化地把**所有** observation 都压到 1,000 token、且 agent 从不需要回取，三套有效数据的 token 账本上界分别可省约 20.3%、11.8%、24.0%。真实工具只覆盖其中一部分，而且 cursor 回取会吃掉收益；结合实际 motif 覆盖，第一轮更可信的预期是：deep-swe / SWE-bench 降 2%–5%，swe-atlas-tw 目前 0%–2%，三套按现有成本加权约 2%–4%。随着 case 数增加、support≥3 的 motif 变多并真正压掉 LLM turn，目标可向 5%–10% 靠近；当前数据不支持宣称 20% 以上。
+
+### 12.4 代码对设计方案的兑现程度
+
+已兑现且有测试覆盖的部分：
+
+- 一 turn 一节点、显式 dependency edge、时间顺序不造边；
+- 确定性归一化、置信拒绝、路径/参数角色和只读白名单；
+- outcome anchor、partial-pass 且不破坏 P2P 的轨迹准入、anchor 依赖闭包；
+- cache-aware direct/exposure ledger、task-level support、稳定 WL hash、size 2–5 连通 motif；
+- task bootstrap LCB、schema 成本、registry token budget 和重叠覆盖去重；
+- 固定 discovery/held-out split、三门证据重新计算、缺证据 fail-closed；
+- fully validated card、staging registry、静态 schema/executor/clamp 检查、post-compile 证据后原子 promote 和版本血缘。
+
+仍是部分实现、不能在论文里写成“已经解决”的部分：
+
+1. shell 层使用 `shlex` tokenization + 白名单语法规则，不是真正覆盖 Bash 全语法的 AST；复杂 heredoc/子 shell 会拒绝。
+2. 原始 trajectory 没有每 turn 的 repo diff hash；当前 anchor 用 annotator 的 `op_type`、内部通过测试和 external partial verifier 组合推断，尚不能把每个 F2P 测试精确归因到某次 write。
+3. observation token 用 chars/4 估算；cost counterfactual 考虑首次未缓存、后续 cache ratio，但没有调用模型 tokenizer 精确重放每个 prompt。
+4. `experiment` 已能执行 16-case paired canary、完整性检查、逐 case 回归检查、成本检查、promotion/rollback 和最多三轮闭环；但“恢复每个 occurrence 的原 repo 状态并独立重放 downstream diff”仍只有 evidence contract，尚未成为独立的 container producer。因此线上 canary 是最终硬门，离线三门仍不能冒充已全部自动化。
+5. output clamp 不再只做静态检查：validator 会真实构造溢出输入，验证顶层整数游标、续读推进、4000 字符上限、`max_matches=1` 的提前停止，并用 AST 拒绝 `shell=True`、任意命令参数和不受限 `read/readlines`。不同工具的业务语义仍需要 paired canary 验证。
+
+对应代码测试为 `tests/test_evolve_v8.py`，当前 17 个测试在 conda `0622`（Python 3.12.11）中全部通过。
+
+### 12.5 能否“保证 performance，同时降低 API cost”
+
+严格答案是：**设计有能力把它变成一个可检验目标，但仅凭当前 prep 数据和当前代码，还不能给出统计意义上的保证。** 当前实现最安全的性质是证据不足时不生成 card、不 promote，所以它能保证“不冒险上线”，代价是可能完全不降本；它不能凭离线历史保证新任务的成功率。
+
+performance 风险相对可控的原因是第一版只收只读工具、保留 bash fallback、三门验证、固定 held-out 和 rollback。潜在正收益来自少读长输出、少耗尽 turn budget，deep-swe 的 median 115 turn 最可能受益。但现有 held-out 每套只有 4 个 task：即使 treatment 4/4 不退化，也只能说明这 4 个 case 上没有观察到回归，远不足以支撑 5 percentage points non-inferiority 的强结论。按不同 baseline success rate，通常至少需要约 150–500 个 paired held-out case（配对设计可降低实际需求），并应顺序累计而不是每轮换一批。
+
+因此建议论文/实验把目标分两档报告：
+
+- **Pilot gate**：当前 4–16 个 held-out 要求逐 case 无新增失败且成本下降，只允许 staging/canary；
+- **Promotion gate**：累计足够多 paired case 后报告 success-rate difference 的预注册单侧下界、API cost difference 的 bootstrap 下界，再允许正式 promote。
+
+在补齐 container replay producer、扩大 held-out、把 deep-swe 的 motif 截断改成更稳健的搜索后，“成功率统计非劣、API cost 下降”仍是可以继续研究的目标；但 §13 的真实 SWE canary 已否定了当前工具化方案能稳定达到 3%–8% 的原预估。对“成功率显著提升”目前也只有机制上的可能，没有数据证据。以现状直接宣称既保证 performance 又显著降本，会超过代码和实验能支持的结论。
+
+---
+
+## 13. 真实 benchmark 实验与中间产物分析（2026-07-14）
+
+### 13.1 统一设置与执行环境
+
+所有正式 driver、测试和 compile agent 均在 conda `0622` 中运行（Python 3.12.11、mini-swe-agent 2.4.2）。SWE evolve 使用 prep 中固定的 16 个 astropy case，baseline 为 `prep-swebench-deepseek-v4-flash-0708-144910`，目标轮数 3，并行度 16。每轮固定 12 discovery / 4 held-out；cycle 1 的 `prepare` 均得到 16 张图、11 张 eligible graph、4 个 motif、4 个 selected candidate，未触发枚举上限。
+
+严格遵守“先 SWE，有效后再 deep-swe/DAB”：由于下面两个有效 SWE paired canary 均未通过 promotion gate，**deep-swe、DAB 和 64-case eval 没有启动**。这不是漏跑，而是 fail-closed 顺序门的预期行为；在 SWE 已观测到 performance 回归时继续花费另外两个 benchmark 的 API cost 会违反实验约束。
+
+### 13.2 编译阶段为何经历多次失败
+
+编译失败产物被保留而不是覆盖，它们揭示了 validator 必须检查的真实边界：
+
+| work dir | 中间产物/问题 | 闸门行为与修复 |
+|---|---|---|
+| `0714-1748` | evolve agent 生成名为 `bash` 的通用 `shell=True` wrapper | canary 前人工终止；随后禁止保留工具名、任意 command/cmd/script/code 参数、`shell=True`、`os.system/popen` |
+| `0714-1810` | 生成 `read_file/search_file/list_directory` 三个 primitive，而非 2+ turn contraction | schema/AST 通过但 16-case canary 暴露成本 +25%；compiler 改为只允许 card 对应的 `batch_read/search_context` |
+| `0714-1835` | `batch_read` 的 schema 声明 integer offset，executor 却返回字符串 cursor；`search_context` 忽略 offset | 新增真实两页 smoke；两项均在 canary 前被拒绝 |
+| `0714-1843` | 生成 `tool_name` 而不是运行时 `name`，且 validator 在排序空 name 时异常 | validator 改为畸形 schema 稳定 fail-closed；prompt 固定 OpenAI function schema |
+| `0714-1846` | staging 起初没有 `.runtime`，16 个容器无法 import `evolve_tools_v6` | 完整性门得到 0 trajectory 并拒绝统计；canary 前显式向 staging 部署 runtime/config |
+| `0714-1846` 后续 | `search_context` 先读取全仓库、收集全部 path/match，16 并发出现 exit 137 | 增加禁止整文件 `read/readlines`、lazy path、bounded deque、`max_matches=1` 最多打开 2 个文件的动态测试 |
+| `0714-1900` | memory-bounded 版本最后一页没有返回 `next_offset` | 自动 compile-repair 回路收到具体 warning 并修复；最终 staging 全部语义 smoke 通过 |
+
+这条链路说明“生成代码自称测试通过”不能作为证据。最终 validator 同时检查 JSON schema、候选 ID 覆盖、工具名精确一致、AST 安全性、flat arguments、结果类型、真实溢出分页和提前停止。代码级测试最终为 17/17 passed。
+
+### 13.3 SWE canary A：`batch_read + search_context`
+
+有效 run 为 `results/swebench-verified/v8c1-canary-swebench-212165`。16/16 trajectory、16/16 verifier、0 exception，耗时 15m38s。结果：
+
+- success：10/16，baseline 11/16；新增通过 `13236`，回归 `13033`、`14369`；
+- API cost：1.704018 元，baseline 1.680608 元，**增加 1.39%**；
+- turns：1026，baseline 988；
+- native calls：96；实际 native output 均不超过 4000 字符；
+- gate：rollback，原因同时包含 baseline-success regression 和 cost 未下降。
+
+逐 case 结果如下：
+
+| case | success B→T | turns B→T | cost B→T（元） | cost 变化 | native calls |
+|---|---:|---:|---:|---:|---:|
+| 12907 | 1→1 | 23→40 | .0302→.0596 | +97.7% | 3 |
+| 13033 | 1→0 | 57→61 | .0908→.0756 | -16.7% | 6 |
+| 13236 | 0→1 | 110→106 | .1419→.1497 | +5.5% | 12 |
+| 13398 | 0→0 | 52→129 | .1138→.2773 | +143.8% | 6 |
+| 13453 | 1→1 | 78→53 | .1121→.0840 | -25.0% | 14 |
+| 13579 | 1→1 | 55→36 | .0997→.1519 | +52.4% | 2 |
+| 13977 | 1→1 | 75→62 | .1082→.0813 | -24.9% | 9 |
+| 14096 | 1→1 | 72→66 | .1555→.1097 | -29.5% | 7 |
+| 14182 | 0→0 | 97→111 | .1952→.1544 | -20.9% | 6 |
+| 14309 | 1→1 | 39→47 | .0539→.0671 | +24.6% | 5 |
+| 14365 | 0→0 | 42→44 | .0795→.0532 | -33.1% | 0 |
+| 14369 | 1→0 | 48→59 | .0829→.1050 | +26.7% | 3 |
+| 14508 | 1→1 | 66→54 | .1140→.0888 | -22.1% | 4 |
+| 14539 | 1→1 | 45→47 | .0495→.0486 | -1.7% | 5 |
+| 14598 | 0→0 | 92→67 | .1885→.1312 | -30.4% | 11 |
+| 14995 | 1→1 | 37→44 | .0651→.0665 | +2.2% | 3 |
+
+`13398` 单独增加 77 turns，是总成本反转的最大来源；排除该 case，treatment 成本比 baseline 约低 8.9%，说明 contraction 确实在一部分任务中省钱，但长尾策略漂移足以吞掉全部收益。更关键的是 `13033` 在早期 primitive canary 和最终 contraction canary 中都回归，不能把所有 performance 下降解释为随机方差。其原生调用显示 agent 先对完整文件做 `batch_read`，只看到 4000 字符首屏且没有继续 cursor，随后形成错误修复方向；“存在 cursor”不等于模型会正确回取。
+
+### 13.4 SWE canary B：隔离 `batch_read` 的 search-only 消融
+
+为检验回归是否主要由整文件首屏锚定导致，第二个 staging 用审计参数 `--exclude-tool-name batch_read`，只保留严格合并 SEARCH+READ 的 `search_context`。两次 16 并发启动各有 2 个容器在任何模型请求之前随机 exit 137；宿主仍有约 89 GiB available，且两次失败 case 不同。最终保留同配置 run `v8c1-canary-swebench-1670414` 的 14 个有效 trial，只对基础设施失败的 `12907/13236` 用相同 registry 补跑，并把来源写入 `composite_treatment_stats.json`。这是 infrastructure-retry composite，不把失败启动计为模型失败。
+
+合成的 16-case 结果：
+
+- success：9/16，baseline 11/16；新增通过 `13236`，回归 `13033/13977/14369`；
+- API cost：2.058369 元，baseline 1.680608 元，**增加 22.48%**；
+- native calls：45；
+- 主要长尾：`13398` 52→123 turns、`14369` 48→108、`14539` 45→125；
+- gate：rollback。旧统计曾把 JSON observation wrapper 长度误当 native output，误报 `13977` cap violation；现已改为解析 result payload 的真实 `output`，该项不是实际越界，但不影响 performance/cost 两项失败结论。
+
+该消融否定了“只删除 batch_read 就能稳定恢复 performance/cost”的假设。即使只有一个只读、有界、可提前停止的 search 工具，工具 schema、首轮 instruction 和工具选择本身仍会改变 agent 的搜索路径；少数 case 的巨大 turn 膨胀决定了总成本。
+
+### 13.5 阶段产物是否符合预期
+
+| 阶段 | 是否符合 | 证据与结论 |
+|---|---|---|
+| graph construction | 基本符合 | 16 graph、11 eligible；显式 dependency、anchor closure 可复现 |
+| motif mining | 符合工程契约 | 4 motif、support≥3、无枚举截断；但“历史重复”不足以预测新策略效果 |
+| offline saving selection | 数学上符合，预测力不足 | LCB 为正且扣 schema，但反事实假设 agent 会用工具替换原步骤、且不改变后续策略；线上长尾证明该假设过强 |
+| compiler | 最终符合 | 精确 card、无通用 shell、schema/executor 同步；自动 repair 能根据 validator warning 收敛 |
+| semantic validation | 符合 | 游标、输出上限、early-stop、memory bound 都真实执行；成功拦截多批无效产物 |
+| runtime wiring | 修复后符合 | staging runtime/config 可导入，16-case 有效 run 0 exception |
+| paired pilot | 符合且发挥作用 | 两个 treatment 都因真实回归/增费 rollback，没有污染 active registry |
+| 三轮 evolve | 未进入第 2/3 轮 | cycle 1 promotion gate 失败；继续基于失败 registry 进化会违反“坏工具不能自我强化” |
+| 64-case eval | 未运行 | 只有通过 16-case pilot 的 registry 才有资格 eval；当前没有候选版本满足条件 |
+| deep-swe / DAB | 未运行 | 用户要求 SWE 有效后再跑，SWE 未有效 |
+
+### 13.6 最终判断
+
+当前 v8 **实现了安全发现、编译、语义验证和回滚**，但没有实现“保证 performance 的同时降低 API cost”的效果目标。安全目标达成：所有已知不安全/畸形/不可分页/高内存实现均在付 canary 成本前被挡住，两次有效但有害的 registry 也没有 promote。效果目标未达成：最佳完整 canary 仍是 success -1、cost +1.39%，search-only 更差。
+
+下一步不应直接扩大到 deep-swe/DAB，而应修改实验因果结构：对每个 candidate 做 factorial/逐工具 canary；将“agent 是否继续 cursor、后续 turn 是否增加”纳入 candidate saving，而不是只重建历史 observation 账本；给长尾设置 paired sequential stop；并用重复 seed/多次 paired run 区分策略方差与工具因果效应。在这些改变之前，v8 应被描述为一个**可靠拒绝坏 registry 的研究原型**，而不是已经验证的降本方案。
+
+---
+
+## 14. 放松效果门与失败后继续进化
+
+§13 记录的是修改前的历史实验；当时 pilot 任意 baseline-success case 回归或成本没有严格下降就立即停止全部循环。考虑到 LLM rollout 的随机性，当前实现将 gate 拆成两类。
+
+### 14.1 仍然严格的工程安全门
+
+以下条件不属于统计波动，继续 fail-closed，不能通过提高容忍度绕过：
+
+- baseline/treatment case 覆盖必须与固定 split 完全一致；
+- tool arm 的 staging 工具必须至少被真实采用一次；instruction arm 则必须在 paired trajectory 的行为指标上被观测到触发；
+- native output 不得突破字符上限；
+- registry schema、executor、安全 AST、分页、early-stop 和 memory-bound smoke 必须通过；
+- rollout 不完整时不能用缺失 case 计算 performance/cost。
+
+### 14.2 默认放松的效果门
+
+默认阈值为：
+
+| 参数 | 默认值 | 含义 |
+|---|---:|---|
+| `--max-regression-rate` | 0.20 | baseline 成功 case 中，允许最多 20% 在当前随机 rollout 失败 |
+| `--max-heldout-regression-rate` | 0.25 | held-out baseline 成功 case 中允许的回归比例 |
+| `--max-success-drop-rate` | 0.10 | treatment 总成功数相对 baseline 成功数最多下降 10% |
+| `--max-cost-increase-rate` | 0.03 | 中间进化轮允许最多 3% 成本上涨，以换取后续轮修复空间 |
+
+只有所有效果指标都在阈值内，gate 才返回 `passed=true`；若存在被容忍的波动，状态为 `passed_with_tolerance`，并在 `tolerated_variations` 中逐项记录，而不是把回归隐藏掉。例如历史 full-tool SWE canary 的 2/11 回归率为 18.18%、成功数下降 9.09%、成本上涨 1.39%，在新默认值下属于 `passed_with_tolerance`。阈值均写入 gate JSON，避免实验后改口径。
+
+### 14.3 第 i 轮失败后的行为
+
+当前循环不再在第一个失败轮次 `break`。对于 compile validation 失败、rollout 不完整或 pilot gate 失败，执行：
+
+1. 不调用 `RegistryManager.promote`，将本轮 staging 标记为 `staging_abandoned=true`；
+2. active registry 和 `current_run` 保持为最近一次成功 promote 的版本；如果从未 promote，则继续使用原始 baseline；
+3. 写出 `cycle-i/evolution_summary.json`，记录 baseline/treatment 成功数与成本、回归/改善 case、每个工具的调用数、回归 case 的工具归因、cost/turn 增长最大的五个 case、gate 原因和下一轮建议；
+4. 将摘要追加到根目录 `evolution_history.json`；
+5. 把最近三轮摘要放入第 i+1 轮 compile prompt，明确说明失败实现已放弃，禁止原样复制，要求在不削弱 tool card 安全契约的前提下修复问题；
+6. 进入第 i+1 轮，直到达到 `--n-cycles`。
+
+因此下一轮使用的是“上一版 active registry + 失败经验”，而不是用失败 treatment 的 trajectory 自我强化。`no candidates` 也会记录并继续到轮数上限，便于审计每一轮为什么没有产生可用变化。
+
+### 14.4 验证
+
+conda `0622` 下项目 `tests/` 回归当前为 35/35 tests passed。新增测试覆盖：
+
+- 20% regression、10% success drop、2% cost increase能以 `passed_with_tolerance` 通过；
+- 5% cost increase超过默认阈值时失败；
+- 连续三轮 pilot 失败时，三轮均执行、均 rollback-and-continue、无版本被 promote，并产生三条 evolution history。
+- 缺少内部验证的成功轨迹只能形成 hypothesis，不能直接签发“跳过验证”；
+- instruction candidate 必须有跨任务 support、negative control、单候选 paired evidence 和真实 policy adoption；
+- verification-skip 缺少外部 verifier、bounded-risk 缺少 rollback 证据时均 fail-closed。
+
+---
+
+## 15. 跨 codebase 采样与 native-tool 运行隔离
+
+SWE final64 暴露出两个此前 gate 没覆盖的系统问题：字典序采样使 16 个 evolve case 全部来自 Astropy；promoted executor 又在 agent 主进程内运行，导致异常工具调用可以直接杀死整个 agent。当前实现增加以下约束。
+
+### 15.1 Codebase-diverse evolve set
+
+`scripts/select_evolve_cases.py` 从 Harbor flat task 目录提取 codebase identity。SWE-bench 使用 `owner/repository`，deep-swe 优先读取 `task.toml` 的 `metadata.repository_url`，DAB/DataMind 按 dataset 分组。默认 `EVOLVE_CASE_SELECTION=diverse`：对稳定哈希排序后的 group 做 round-robin，每个 codebase 先取一个 case，再开始第二轮。选择结果同时写入 `case_selection.json`，记录每个 case 的 codebase 和 selection policy。`EVOLVE_CASE_SELECTION=sorted` 仅用于复现旧实验。
+
+最终 eval 使用同一个 selector 从排除了 evolve set 的剩余 pool 中选择 64 个 case，并构建只包含这 64 个 case 的 exact Harbor taskdir。`final_eval_cases.txt`、`final_eval_case_selection.json` 和 `experiment_split_manifest.json` 在 rollout 前写入，且交集非零时 fail-fast；rollout 后再从 trial `config.json` 提取 `eval_cases_used.txt` 与预选集合核对。因此 evolve 的 16 个 case 只用于挖掘和 gate，不能进入 final64。
+
+### 15.2 Hard timeout 与进程隔离
+
+evolved executor 不再由 agent 进程直接调用。稳定 runtime 为每次调用启动 disposable stdlib worker：
+
+- 默认 hard timeout 为 30 秒，可用 `EVOLVE_TOOLS_V6_TIMEOUT_SECONDS` 调整，上限 300 秒；
+- 默认 worker address-space limit 为 1024 MiB，可用 `EVOLVE_TOOLS_V6_MEMORY_MB` 调整；
+- timeout 返回 `returncode=124` 和 `ToolTimeoutError` observation；
+- worker crash、MemoryError、协议错误返回 `returncode=125`；
+- observation 建议不要原样重试；优先缩小 evolved-tool 的 path/query 或操作范围，也可以回退到等价 bash command，由 LLM 根据上下文选择；
+- pagination 的 `next_offset` 会跨 worker 边界保留；
+- executor 顶层代码也只在 worker 内 import，agent 侧只做不执行代码的 AST validation。
+
+因此 evolved tool 超时或资源异常只损失一次 tool call，不再把整个 case 变成无 trajectory 的 `exit 137`。
+
+### 15.3 Compile gate 加强
+
+compile prompt 现在要求路径 containment、有限的 context/offset/file/byte bounds，并禁止 `list/tuple/set` 物化递归发现结果。validator 会静态拒绝 `list(_sorted_files_recursive(...))`、`list(os.walk(...))` 等实现，避免小型 smoke 文件掩盖大仓库风险。
+
+---
+
+## 16. 移除固定工具类型限制
+
+早期实现中的 `ToolCardCompiler.prototype_cards` 把所有 `SEARCH+READ` motif 强制合并为 `search_context`，其余候选强制合并为 `batch_read`。这使 registry 在 compiler agent 运行前就被人为限制为最多两个工具，违背从执行图自由发现 compound tool 的目标。该限制现已删除。
+
+当前链路遵循以下规则：
+
+1. 每个 selected candidate 先形成独立 evidence card，保留原始 node labels、edge signature、support tasks、representative calls 和 saving 估计；代码不再预先指定工具名或工具 family。
+2. compiler agent 根据 evidence card 自由选择描述性工具名和最窄的结构化 schema。
+3. 只有 input/output/execution contract 完全等价的 cards 才允许合并；不能仅因为都包含 READ 或 SEARCH 就合并。
+4. 每个 candidate ID 必须在 registry 工具描述中恰好出现一次。validator 检查缺失、重复和未授权 candidate ID，但不检查固定工具名。
+5. semantic smoke 根据生成后的 JSON schema 构造通用测试输入；生产 validator 不再包含 `batch_read/search_context` 名称白名单或专用分支。
+
+这项修改移除的是工具类型上限，不等于允许无证据地任意发明工具。候选行为仍必须能收缩已观察到的多轮 motif，并继续受到只读、结构化参数、路径 containment、输出上限、timeout、memory bound、canary 和 promotion gate 的约束。
+
+---
+
+## 17. 开放式 instruction 候选发现
+
+旧实现只从 `early_exit`、`verification_skip`、`bounded_risk` 三个预写模板中选择规则，导致真实轨迹即使包含稳定的工作流经验，也无法形成候选。当前实现保留这三类安全规则的兼容处理，但不再把它们作为候选类型白名单。
+
+新增流程从执行图中归一化并聚合实际出现的行为信号，包括操作阶段转换（例如 `SEARCH→READ`、`TEST→READ`）、修改前的证据收集以及修改后的检查行为。候选名称、触发条件和规则内容由实际信号派生；新的信号可以形成新的候选类型，不需要预先加入固定类别集合。
+
+成功轨迹只提供 hypothesis，包含相同行为的失败轨迹提供 negative control。候选仍要求至少两个不同 discovery case 的成功支持和至少一个失败对照，随后必须通过独立 paired canary。为控制 prompt 和验证预算，每轮最多保留按支持度、对照数量和风险排序后的 15 个候选；这是数量预算，不是策略类型限制。
+
+每个候选携带 `adoption_signal`。baseline/treatment 分析会从轨迹重新计算相同信号，因此 canary 能判断开放式规则是否被实际执行，而不再只认识三个旧策略名称。
+
+完整候选池写入 `instruction_candidate_cards.json`。为保持因果归因，`prototype_instruction_cards.json` 仍只记录当轮被隔离测试的一张规则；工具轮不会偷偷改写 instruction，instruction 轮也会保持工具文件不变。

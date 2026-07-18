@@ -2,9 +2,10 @@
 """Generate Harbor task directories for DataAgentBench (DAB).
 
 The adapter emits one Harbor task per DAB query. Each generated task contains
-the original query, validator, dataset description, db_config, and the relevant
-dataset files. Database files are hard-linked when possible to avoid consuming
-extra disk space in the generated task tree.
+the original query, a verifier-private validator, dataset description,
+db_config, and the relevant dataset files.  Ground truth and validator source
+are never copied into the agent image. Database files are hard-linked when
+possible to avoid consuming extra disk space in the generated task tree.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ except ImportError as exc:  # pragma: no cover
 ROOT = Path(__file__).resolve().parent
 DEFAULT_DAB_ROOT = ROOT / "DataAgentBench"
 DEFAULT_OUTPUT = ROOT / "harbor" / "datasets" / "dab"
+SCHEMA_VERSION = "dab-harbor.v2-blind"
 
 
 def sanitize(value: str) -> str:
@@ -498,6 +500,7 @@ from pathlib import Path
 
 APP = Path("/app")
 DAB = APP / "dab"
+PRIVATE_QUERY = Path("/tests/dab_query")
 ANSWER = APP / "answer.txt"
 REWARD = Path("/logs/verifier/reward.txt")
 DETAILS = Path("/logs/verifier/dab_result.json")
@@ -519,7 +522,7 @@ def main() -> int:
         result = {"is_valid": False, "reason": "/app/answer.txt not found"}
     else:
         answer = ANSWER.read_text(encoding="utf-8", errors="replace").strip()
-        validate = load_validator(DAB / "query" / "validate.py")
+        validate = load_validator(PRIVATE_QUERY / "validate.py")
         ok, reason = validate(answer)
         result = {"is_valid": bool(ok), "reason": str(reason), "llm_answer": answer}
     DETAILS.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -567,11 +570,10 @@ Working files:
 - `/app/dab/query/query.json`: the original question JSON.
 - `/app/dab/db_config.yaml`: logical database names and physical database files.
 - `/app/dab/query_db.py`: helper CLI for database access.
-- `/app/dab/query/ground_truth.csv`: present for verifier compatibility. Do not read it while solving.
 
 Use `/app/dab/query_db.py dbs` to list logical databases, `/app/dab/query_db.py tables <logical_db_name>` to inspect tables or collections, and `/app/dab/query_db.py query <logical_db_name> '<SQL-or-Mongo-JSON>'` to run read-only queries. For MongoDB queries, pass a JSON object such as `{{"collection":"items","filter":{{}},"limit":5}}`.
 
-Write only your final answer to `/app/answer.txt`. The verifier will run the original DAB `validate.py` against that file.
+Write only your final answer to `/app/answer.txt`. A private verifier will check that file after the agent exits.
 '''
 
 
@@ -597,12 +599,19 @@ def generate_task(dab_root: Path, output_root: Path, dataset_dir: Path, query_di
     write(out / "environment" / "docker-compose.yaml", docker_compose(types))
     write(out / "tests" / "evaluate.py", evaluate_py(), 0o755)
     write(out / "tests" / "test.sh", test_sh(), 0o755)
+    # Harbor mounts /tests only for verification. Keep both the validator and
+    # any answer file it reads next to each other there; neither is baked into
+    # the agent-visible /app image.
+    link_or_copy(query_dir / "validate.py", out / "tests" / "dab_query" / "validate.py")
+    link_or_copy(query_dir / "ground_truth.csv", out / "tests" / "dab_query" / "ground_truth.csv")
     write(out / "solution" / "solve.sh", solve_sh(ground_truth), 0o755)
 
     dab = out / "environment" / "dab"
     copy_tree_linked(dab_root / "common_scaffold", dab / "common_scaffold")
     copy_tree_linked(dataset_dir / "query_dataset", dab / "query_dataset")
-    copy_tree_linked(query_dir, dab / "query")
+    # The question is public task input.  Never copy the whole original query
+    # directory: it also contains ground_truth.csv and validate.py.
+    link_or_copy(query_dir / "query.json", dab / "query" / "query.json")
     for name in ("db_config.yaml", "db_description.txt", "db_description_withhint.txt"):
         src = dataset_dir / name
         if src.exists():
@@ -656,6 +665,7 @@ def main() -> int:
             break
 
     manifest = {
+        "schema_version": SCHEMA_VERSION,
         "benchmark": "DataAgentBench",
         "dab_root": str(dab_root),
         "use_hints": args.use_hints,

@@ -36,6 +36,7 @@ import argparse
 import ast
 import json
 import logging
+import os
 import shutil
 from pathlib import Path
 from typing import Any
@@ -237,6 +238,17 @@ def config_yaml_text(
     if max_completion_tokens:
         lines += ["  model_kwargs:", f"    max_completion_tokens: {max_completion_tokens}"]
     lines += ["agent:", f"  agent_class: {ac}"]
+    # DAB's original ExecTool budget is 600s.  Benchmark runners pass that via
+    # EVOLVE_TOOLS_V6_TIMEOUT_SECONDS; adding it to the mini-swe environment
+    # config keeps the ordinary bash path and native-tool path aligned.
+    raw_timeout = os.environ.get("EVOLVE_TOOLS_V6_TIMEOUT_SECONDS")
+    if raw_timeout:
+        try:
+            command_timeout = max(1, min(int(raw_timeout), 600))
+        except (TypeError, ValueError):
+            command_timeout = 0
+        if command_timeout:
+            lines += ["environment:", f"  timeout: {command_timeout}"]
     return "\n".join(lines) + "\n"
 
 

@@ -1,20 +1,23 @@
 # Cost-saving instructions
 
-## General principles
-- Batch multiple independent actions into one step rather than sequential calls.
-- Prefer one tool call that achieves multiple actions over separate calls for each.
-- Read multiple files or file sections in a single step; batch grep/sed reads together.
+## Batching
+- Batch independent reads, searches, and edits into one step per phase.
+- Merge adjacent reads into one range read; batch multiple files per call.
+- Chain edits sequentially without testing between them.
+- Execute ad-hoc analysis inline rather than writing scripts to disk; consolidate all work into one comprehensive execution per phase without incremental refinement.
 
-## Verification and testing
-- Combine multiple verification/test commands into a single call (e.g., run all `go test` targets together, not one at a time).
-- Avoid `npx` — it frequently times out; use direct `node`/`npm` commands or pre-installed tools instead.
-- If a verification command times out once, retry with a longer timeout before giving up.
-- If a verification command fails, stop after 2 failed attempts and re-evaluate the approach before retrying.
+## Give up / pivot
+- After two failures of the same approach, re-read the issue and pivot strategy.
+- When targeted tests fail repeatedly, search test source for assertions instead of re-running.
+- If pytest is missing after one install attempt, use inline Python verification.
+- Try the simplest correct answer first before multi-step exploration.
 
-## When to give up / stop trying
-- If the same approach fails twice, stop and re-read the original issue before retrying.
-- If a dependency install fails twice, skip it and work with what is available.
-- If you have been reading different ranges of the same file across 3+ steps, batch remaining reads into one call.
+## Early exit
+- Trust successful edits and proceed without re-reading or syntax-checking.
+- Once you have the definitive answer, write it and stop. No follow-up queries.
+- **Stop exploring when the first query already yields core information. Do not re-query the same data through different interfaces or refine analysis incrementally—one comprehensive execution is enough.**
 
-## When to exit early
-- If the issue is clearly infeasible given the current environment, submit a best-effort fix without full validation.
+## Risky moves / skip validation
+- After inline Python verification passes, skip re-running through different runners.
+- Do NOT build or install packages to test changes; run targeted tests directly.
+- If the fix is trivially correct or the test environment is unreliable, submit without full test suite validation.
