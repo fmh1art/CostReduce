@@ -1,173 +1,206 @@
 [
-    {
-        "name": "run-tests",
-        "description": "Run a repo's tests in a given directory, auto-detecting Go (go.mod), Django (runtests.py) vs pytest. Checks pytest availability before running.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "tests": {
-                    "type": "string",
-                    "description": "Test target(s): pytest path/node-id(s), Go package path(s) (e.g. './...'), or for Django a space-separated list of dotted test labels (e.g. 'auth.tests.test_x'). Empty runs the default suite."
-                },
-                "cwd": {
-                    "type": "string",
-                    "description": "Directory to run the tests in (repo root or subdir). Defaults to the agent's current working directory."
-                },
-                "extra_args": {
-                    "type": "string",
-                    "description": "Optional extra CLI args passed through to the underlying runner."
-                }
-            },
-            "required": []
+  {
+    "name": "run-tests",
+    "description": "Run a repo's tests, auto-detecting Go (go.mod), Django (runtests.py), or pytest. Use instead of raw pytest/python -m pytest commands.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "tests": {
+          "type": "string",
+          "description": "Test target(s): pytest path/node-id(s), Go package path(s) (e.g. './...'), or for Django a space-separated list of dotted test labels (e.g. 'auth.tests.test_x'). Empty runs the default suite."
+        },
+        "cwd": {
+          "type": "string",
+          "description": "Directory to run the tests in (repo root or subdir). Defaults to the agent's current working directory."
+        },
+        "extra_args": {
+          "type": "string",
+          "description": "Optional extra CLI args passed through to the underlying runner."
         }
-    },
-    {
-        "name": "read-lines",
-        "description": "Read lines from one or more files with optional head/tail/line-range and line numbering. Accepts a single 'file' string or a 'files' array to batch-read multiple files in one step. Defaults to first 50 lines per file.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "file": {
-                    "type": "string",
-                    "description": "Single file path to read (alternative to 'files')."
-                },
-                "files": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    },
-                    "description": "Array of file paths to read in a single batch (alternative to 'file')."
-                },
-                "head": {
-                    "type": "integer",
-                    "description": "First N lines to show per file. Defaults to 50 if no head/tail/lines/start given."
-                },
-                "tail": {
-                    "type": "integer",
-                    "description": "Last N lines to show per file."
-                },
-                "lines": {
-                    "type": "string",
-                    "description": "Line range as 'start-end' (e.g. '100-130'), 1-indexed inclusive. Preferred over separate start/end. Use with number=true for line-numbered output."
-                },
-                "start": {
-                    "type": "integer",
-                    "description": "Starting line number (1-indexed, inclusive). Alternative to 'lines' string."
-                },
-                "end": {
-                    "type": "integer",
-                    "description": "Ending line number (inclusive). Use with 'start' as alternative to 'lines'."
-                },
-                "number": {
-                    "type": "boolean",
-                    "description": "Prefix each line with its line number (like nl -ba or cat -n). Helps reference lines in subsequent edit calls."
-                }
-            },
-            "required": []
-        }
-    },
-    {
-        "name": "search-code",
-        "description": "Search for a regex pattern in file contents across a directory tree, optionally filtering by file extension glob. Returns file:line:content matches.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "pattern": {
-                    "type": "string",
-                    "description": "Regex pattern to search for."
-                },
-                "path": {
-                    "type": "string",
-                    "description": "Root directory to search (default: current working directory)."
-                },
-                "include": {
-                    "type": "string",
-                    "description": "Only search files whose relative path matches this glob (e.g. '*.py', '*_test.py', 'src/*.py'). Uses fnmatch syntax (supports * and ? wildcards, not brace expansion)."
-                },
-                "max_results": {
-                    "type": "integer",
-                    "description": "Maximum number of matching lines to return (default 50, -1 for unlimited)."
-                }
-            },
-            "required": [
-                "pattern"
-            ]
-        }
-    },
-    {
-        "name": "find-files",
-        "description": "Find files and/or directories matching a glob pattern within a directory tree, with optional depth limit.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "pattern": {
-                    "type": "string",
-                    "description": "Glob pattern to match (e.g. '*.py', '**/models.py'). Defaults to '*' if omitted."
-                },
-                "path": {
-                    "type": "string",
-                    "description": "Root directory to search (default: current working directory)."
-                },
-                "max_results": {
-                    "type": "integer",
-                    "description": "Maximum number of results to return (default 50, -1 for unlimited)."
-                },
-                "type": {
-                    "type": "string",
-                    "description": "Type to search: 'files' or 'f' (default), 'dirs' or 'd', or 'both'."
-                },
-                "max_depth": {
-                    "type": "integer",
-                    "description": "Maximum directory depth to traverse (default: unlimited). Use 1 for current dir only, 2 for current + immediate children, etc."
-                }
-            },
-            "required": []
-        }
-    },
-    {
-        "name": "edit-file",
-        "description": "Perform a string replacement in a file using Python str.replace (not regex). Replaces only the first occurrence. Returns the lines changed.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "file": {
-                    "type": "string",
-                    "description": "Path to the file to edit."
-                },
-                "old_string": {
-                    "type": "string",
-                    "description": "The exact string to be replaced."
-                },
-                "new_string": {
-                    "type": "string",
-                    "description": "The replacement string."
-                }
-            },
-            "required": [
-                "file",
-                "old_string",
-                "new_string"
-            ]
-        }
-    },
-    {
-        "name": "run-python",
-        "description": "Execute Python code inline. Writes code to a temp file, runs it with sys.executable, and returns stdout+stderr. Consolidates multi-step data analysis into one call.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "type": "string",
-                    "description": "Python source code to execute. Can include imports, file I/O, print statements \u2014 everything a standalone .py file would contain."
-                },
-                "args": {
-                    "type": "string",
-                    "description": "Optional command-line arguments passed to the Python script (sys.argv)."
-                }
-            },
-            "required": [
-                "code"
-            ]
-        }
+      },
+      "required": []
     }
+  },
+  {
+    "name": "read-lines",
+    "description": "Read lines from one or more files with optional head/tail/line-range and line numbering. Use instead of sed/head/tail/cat for file reading. Accepts a single 'file' (string) or a 'files' array to batch-read multiple files in one step. Each 'files' entry can be a string (file path) or an object with 'file' key plus optional per-file overrides for head/tail/lines/start/end/number. Top-level parameters serve as defaults for all files. Defaults to first 50 lines per file.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "file": {
+          "type": "string",
+          "description": "Single file path to read (alternative to 'files')."
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {"type": "string", "description": "File path string."},
+              {
+                "type": "object",
+                "properties": {
+                  "file": {"type": "string", "description": "File path."},
+                  "head": {"type": "integer", "description": "Per-file override for first N lines."},
+                  "tail": {"type": "integer", "description": "Per-file override for last N lines."},
+                  "lines": {"type": "string", "description": "Per-file override for line range (e.g. '100-130')."},
+                  "start": {"type": "integer", "description": "Per-file override for starting line number."},
+                  "end": {"type": "integer", "description": "Per-file override for ending line number."},
+                  "number": {"type": "boolean", "description": "Per-file override for line numbering."}
+                },
+                "required": ["file"]
+              }
+            ]
+          },
+          "description": "Array of file paths (strings) or per-file spec objects to read in a single batch (alternative to 'file')."
+        },
+        "head": {
+          "type": "integer",
+          "description": "First N lines to show per file. Defaults to 50 if no head/tail/lines/start given."
+        },
+        "tail": {
+          "type": "integer",
+          "description": "Last N lines to show per file."
+        },
+        "lines": {
+          "type": "string",
+          "description": "Line range as 'start-end' (e.g. '100-130'), 1-indexed inclusive. Preferred over separate start/end."
+        },
+        "start": {
+          "type": "integer",
+          "description": "Starting line number (1-indexed, inclusive). Alternative to 'lines' string."
+        },
+        "end": {
+          "type": "integer",
+          "description": "Ending line number (inclusive). Use with 'start' as alternative to 'lines'."
+        },
+        "number": {
+          "type": "boolean",
+          "description": "Prefix each line with its line number (like nl -ba or cat -n). Helps reference lines in subsequent edit calls."
+        }
+      },
+      "required": []
+    }
+  },
+  {
+    "name": "write-file",
+    "description": "Create a new file or completely overwrite an existing file with the given content. Use instead of 'cat > file << EOF' heredoc patterns for file creation and full rewrites. For targeted edits to existing files, use edit-file instead.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "file": {
+          "type": "string",
+          "description": "Path to the file to create or overwrite."
+        },
+        "content": {
+          "type": "string",
+          "description": "The full content to write to the file."
+        }
+      },
+      "required": ["file", "content"]
+    }
+  },
+  {
+    "name": "search-code",
+    "description": "Search for a regex pattern in file contents across a directory tree, optionally filtering by file extension glob. Use instead of grep -r. Returns truncated file:line:content matches. Set 'files_with_matches' to true to list only file paths containing matches (like grep -l). Skips .git, node_modules, __pycache__, venv, dist, and build directories.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "pattern": {
+          "type": "string",
+          "description": "Regex pattern to search for."
+        },
+        "path": {
+          "type": "string",
+          "description": "Root directory to search (default: current working directory)."
+        },
+        "include": {
+          "type": "string",
+          "description": "Only search files whose relative path matches this glob (e.g. '*.py', '*_test.py'). Uses fnmatch syntax."
+        },
+        "max_results": {
+          "type": "integer",
+          "description": "Maximum number of matching lines to return (default 50, -1 for unlimited)."
+        },
+        "files_with_matches": {
+          "type": "boolean",
+          "description": "If true, list only file paths containing at least one match instead of individual matching lines (like grep -l)."
+        }
+      },
+      "required": ["pattern"]
+    }
+  },
+  {
+    "name": "find-files",
+    "description": "Find files and/or directories matching a glob pattern within a directory tree, with optional depth limit. Use instead of find/ls for targeted file discovery. Skips .git, node_modules, __pycache__, venv, dist, and build directories.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "pattern": {
+          "type": "string",
+          "description": "Glob pattern to match (e.g. '*.py', '*/models.py'). Defaults to '*' if omitted."
+        },
+        "path": {
+          "type": "string",
+          "description": "Root directory to search (default: current working directory)."
+        },
+        "max_results": {
+          "type": "integer",
+          "description": "Maximum number of results to return (default 50, -1 for unlimited)."
+        },
+        "type": {
+          "type": "string",
+          "description": "Type to search: 'files' or 'f' (default), 'dirs' or 'd', or 'both'."
+        },
+        "max_depth": {
+          "type": "integer",
+          "description": "Maximum directory depth to traverse (default: unlimited). Use 1 for current dir only, 2 for current + immediate children, etc."
+        }
+      },
+      "required": []
+    }
+  },
+  {
+    "name": "edit-file",
+    "description": "Perform a string replacement in a file using Python str.replace (not regex). Use instead of sed -i for editing. Replaces only the first occurrence. Returns error (returncode 1) if 'old_string' is not found in the file.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "file": {
+          "type": "string",
+          "description": "Path to the file to edit."
+        },
+        "old_string": {
+          "type": "string",
+          "description": "The exact string to be replaced. Must exist in the file exactly as given."
+        },
+        "new_string": {
+          "type": "string",
+          "description": "The replacement string."
+        }
+      },
+      "required": ["file", "old_string", "new_string"]
+    }
+  },
+  {
+    "name": "run-python",
+    "description": "Execute Python code inline and return stdout+stderr with truncated output. Use instead of 'bash python -c' or writing temporary scripts. Code is written to a temp file and executed as a standalone script.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Python source code to execute. Can include imports, file I/O, print statements — everything a standalone .py file would contain."
+        },
+        "cwd": {
+          "type": "string",
+          "description": "Working directory to execute the Python code in. Defaults to the agent's current working directory."
+        },
+        "args": {
+          "type": "string",
+          "description": "Optional command-line arguments passed to the Python script (sys.argv)."
+        }
+      },
+      "required": ["code"]
+    }
+  }
 ]

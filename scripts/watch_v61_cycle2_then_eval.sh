@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Supervise an already-running v6.1 experiment, stop only after the requested
+# Supervise an already-running COAT (v6.1) experiment, stop only after the requested
 # cycle is durably complete, then resume the same work directory with that
 # cycle count so run_exp.sh naturally proceeds to final eval.
 
@@ -40,8 +40,9 @@ WORK_DIR="${WORK_DIR%/}"
 [[ -d "$WORK_DIR" ]] || die "WORK_DIR does not exist: $WORK_DIR"
 [[ -f "$WORK_DIR/v6_1_run_manifest.json" ]] \
   || die "not a v6.1 work directory: $WORK_DIR"
-[[ "$WORK_DIR" == */results/evolve/v61cycle/* ]] \
-  || die "refusing unexpected work-directory layout: $WORK_DIR"
+[[ "$WORK_DIR" == */results/*/evolve*_eval*/evolve/coat/* \
+   || "$WORK_DIR" == */results/*/evolve*_eval*/evolve/v61cycle/* ]] \
+  || die "refusing unexpected COAT work-directory layout: $WORK_DIR"
 is_uint "$TARGET_CYCLES" && (( TARGET_CYCLES >= 1 )) \
   || die "TARGET_CYCLES must be a positive integer"
 is_uint "$POLL_SECONDS" && (( POLL_SECONDS >= 1 )) \
@@ -100,7 +101,7 @@ pid_is_expected_orchestrator() {
   [[ -r "/proc/$pid/cmdline" ]] || return 1
   cmd="$(tr '\0' ' ' < "/proc/$pid/cmdline")"
   work_tag="$(basename "$WORK_DIR")"
-  [[ "$cmd" == *"src.evolve.evolve_v6_1_cycle"* \
+  [[ ( "$cmd" == *"src.evolve.coat"* || "$cmd" == *"src.evolve.evolve_v6_1_cycle"* ) \
       && "$cmd" == *"--work-dir"* \
       && "$cmd" == *"$work_tag"* ]]
 }
@@ -112,7 +113,7 @@ discover_original_pid() {
       printf '%s\n' "$pid"
       return 0
     fi
-  done < <(pgrep -f 'python(3)? -m src\.evolve\.evolve_v6_1_cycle run' || true)
+  done < <(pgrep -f 'python(3)? -m src\.evolve\.(coat|evolve_v6_1_cycle) run' || true)
   return 1
 }
 
@@ -218,13 +219,14 @@ resume_and_eval() {
     log "resume attempt $attempt/$MAX_RESUME_ATTEMPTS via exact entry: $RUN_EXP"
     env \
       BENCHMARKS="$BENCHMARK" \
+      EVOLVE_FRAMEWORK=coat \
       EVOLVE_VERSION=v6.1 \
       N_CONCURRENT=16 \
       EVOLVE_WORKERS=16 \
       EVAL_N_TASKS=64 \
       EVOLVE_CASE_COUNT=16 \
       EVOLVE_CASES_PER_PROMPT=2 \
-      V61_N_CYCLES="$TARGET_CYCLES" \
+      COAT_N_CYCLES="$TARGET_CYCLES" \
       V61_MAX_PROMPT_CHARS=50000 \
       V61_MAX_OBSERVATION_CHARS=1000 \
       V61_ANNOTATE_EXECUTION=exact-global \

@@ -13,29 +13,12 @@ N_TASKS="${N_TASKS:-1000}"
 SWE_ATLAS_SPLITS="${SWE_ATLAS_SPLITS:-qa}"
 HARBOR_AGENT_SETUP_TIMEOUT_MULTIPLIER="${HARBOR_AGENT_SETUP_TIMEOUT_MULTIPLIER:-4}"
 PROXY_URL="${PROXY_URL:-http://sys-proxy-rd-relay.byted.org:8118}"
-# verifier / LLM judge 统一用 deepseek-v4-flash（与 swe-atlas 的 VERIFIER_CONFIG 一致）。
-# 默认从 _config/deepseekv4_flash.yaml 派生 VERIFIER_API_KEY/BASE_URL/MODEL；各 run 脚本
-# 可用 VERIFIER_CONFIG 覆盖（如 responses 路由的 gpt53_codex.yaml）。swe-atlas 在自身脚本
-# 里重复解析 VERIFIER_CONFIG 并会覆盖此处默认值；这里仅作 fallback 与非 swe-atlas 入口用。
-VERIFIER_CONFIG="${VERIFIER_CONFIG:-${ROOT_DIR}/_config/deepseekv4_flash.yaml}"
-if [[ -z "${VERIFIER_API_KEY:-}${VERIFIER_BASE_URL:-}${VERIFIER_MODEL:-}" ]]; then
-  eval "$(python - "$VERIFIER_CONFIG" <<'PY'
-from pathlib import Path
-import shlex, sys
-data = {}
-for line in Path(sys.argv[1]).read_text().splitlines():
-    if ':' in line and not line.startswith(' '):
-        k, v = line.split(':', 1)
-        data[k.strip()] = v.strip().strip("\"'")
-for k, vk in [('VERIFIER_API_KEY','key'), ('VERIFIER_MODEL','llm_name'),
-              ('VERIFIER_BASE_URL','openai_base_url')]:
-    if vk in data:
-        print(f'export {k}={shlex.quote(data[vk])}')
-PY
-)"
-fi
 HARBOR_ENV="${HARBOR_ENV:-docker}"
 UV_BIN="${UV_BIN:-uv}"
+API_RETRY_PAUSE_SECONDS="${API_RETRY_PAUSE_SECONDS:-60}"
+MSWEA_MODEL_RETRY_WAIT_SECONDS="${MSWEA_MODEL_RETRY_WAIT_SECONDS:-${API_RETRY_PAUSE_SECONDS}}"
+API_RETRY_RUNTIME_HOST="${API_RETRY_RUNTIME_HOST:-${ROOT_DIR}/src/tools/api_retry_runtime}"
+API_RETRY_RUNTIME_TARGET="${API_RETRY_RUNTIME_TARGET:-/opt/optiharness_api_retry}"
 
 # 可选：要 bind mount 到容器 workspace 根目录的辅助 bash 脚本目录。
 # 不设或为空时，沿用 Pier 默认行为（不附加任何额外挂载，使用默认的 code agent）。
@@ -64,9 +47,9 @@ EVOLVE_SKIP_FILE="${EVOLVE_SKIP_FILE-auto}"
 
 load_llm_config() {
   # 使用 Python 解析简单 YAML 配置，并输出可被当前 shell eval 的 export 语句。
-  # api_type=responses 时（bytedance aidp 网关只暴露 Responses API）：
+  # api_type=azure_chat/responses 时：
   #   MODEL=azure/<llm_name>，额外导出 AZURE_API_KEY/AZURE_API_BASE/AZURE_API_VERSION，
-  #   litellm.responses(azure/...) 据此路由到网关 responses 端点。
+  #   前者走 chat-completions，后者走 responses。
   eval "$(python - "$LLM_CONFIG" <<'PY'
 from pathlib import Path
 import shlex
@@ -78,17 +61,29 @@ for line in Path(sys.argv[1]).read_text().splitlines():
         key, value = line.split(':', 1)
         data[key.strip()] = value.strip().strip('"\'')
 
-api_type = data.get('api_type', '').strip().lower()
+api_type = data.get('api_type', '').strip().lower() or 'chat'
+if api_type not in {'chat', 'azure_chat', 'responses'}:
+    raise ValueError(f"unsupported api_type={api_type!r}")
 api_key = data['key']
-temperature = data.get('temperature', '0')
+temperature = data.get('temperature', '')
+thinking = data.get('thinking', '').strip().lower()
+if thinking not in {'', 'enabled', 'disabled', 'auto'}:
+    raise ValueError(f'unsupported thinking={thinking!r}')
 exports = {
     'OPENAI_API_KEY': api_key,
     'MSWEA_API_KEY': api_key,
     'JUDGE_API_KEY': api_key,
+    'JUDGE_MODEL': data['llm_name'],
+    'LLM_API_TYPE': api_type,
+    'JUDGE_API_TYPE': api_type,
+    'JUDGE_TEMPERATURE': temperature,
     'TEMPERATURE': temperature,
+    'LLM_THINKING': thinking,
 }
-if api_type == 'responses':
-    azure_endpoint = data['azure_endpoint']
+if api_type in {'azure_chat', 'responses'}:
+    azure_endpoint = data.get('azure_endpoint') or data.get('openai_base_url')
+    if not azure_endpoint:
+        raise ValueError(f'api_type={api_type} requires azure_endpoint')
     exports.update({
         'MODEL': 'azure/' + data['llm_name'],
         'AZURE_API_KEY': api_key,
@@ -98,6 +93,7 @@ if api_type == 'responses':
         'OPENAI_BASE_URL': azure_endpoint,
         'OPENAI_API_BASE': azure_endpoint,
         'JUDGE_BASE_URL': azure_endpoint,
+        'JUDGE_API_VERSION': data.get('api_version', '2024-03-01-preview'),
     })
 else:
     base_url = data['openai_base_url']
@@ -115,13 +111,24 @@ PY
 
 agent_env_args() {
   # 将 LLM API 相关环境变量转换成 Harbor/Pier 的 --ae 参数列表。
+  # PYTHONPATH 只能注入一次。Pier/Harbor 对重复 --ae KEY=value 采用后值覆盖，
+  # 因此在 evolved rollout 中必须把 API retry runtime 与 native-tools runtime
+  # 合并后再传入，不能让后面的通用 agent env 覆盖前者。
+  local agent_pythonpath="${API_RETRY_RUNTIME_TARGET}"
+  if [[ -n "${EVOLVE_SCRIPTS_DIR:-}" ]]; then
+    agent_pythonpath="${agent_pythonpath}:${EVOLVE_SCRIPTS_TARGET:-/app/.preinstalled_scripts}/.runtime"
+  fi
   printf '%s\n' \
     --ae "OPENAI_API_KEY=${OPENAI_API_KEY}" \
     --ae "MSWEA_API_KEY=${MSWEA_API_KEY}" \
     --ae "OPENAI_BASE_URL=${OPENAI_BASE_URL}" \
-    --ae "OPENAI_API_BASE=${OPENAI_API_BASE}"
-  # responses 配置额外注入 AZURE_*，让容器内 litellm.responses(azure/...) 路由到网关。
-  if [[ -n "${AZURE_API_KEY:-}" ]]; then
+    --ae "OPENAI_API_BASE=${OPENAI_API_BASE}" \
+    --ae "MSWEA_COST_TRACKING=ignore_errors" \
+    --ae "API_RETRY_PAUSE_SECONDS=${API_RETRY_PAUSE_SECONDS}" \
+    --ae "MSWEA_MODEL_RETRY_WAIT_SECONDS=${MSWEA_MODEL_RETRY_WAIT_SECONDS}" \
+    --ae "PYTHONPATH=${agent_pythonpath}"
+  # 两种 Azure 协议都需要 AZURE_*；model_class 决定 chat 还是 responses。
+  if [[ "${LLM_API_TYPE:-chat}" == "azure_chat" || "${LLM_API_TYPE:-chat}" == "responses" ]]; then
     printf '%s\n' \
       --ae "AZURE_API_KEY=${AZURE_API_KEY}" \
       --ae "AZURE_API_BASE=${AZURE_API_BASE}" \
@@ -129,58 +136,71 @@ agent_env_args() {
   fi
 }
 
-mswea_responses_config_file() {
-  # 入参 $1: 原 mswea run_config yaml 路径。
-  # 非 responses 配置（AZURE_API_KEY 未设）时原样返回原路径。
-  # responses 配置时：复制该 yaml 并把 model.model_class 改成 litellm_response
-  # （让 mini-swe-agent 走 litellm.responses 而非 chat-completions），打印临时文件路径。
-  # 调用方负责在用完后删除返回的临时文件。
-  local src="${1:-}"
-  if [[ -z "${src}" ]]; then return 0; fi
-  if [[ -z "${AZURE_API_KEY:-}" ]]; then printf '%s\n' "${src}"; return 0; fi
-  local tmp
-  tmp="$(mktemp -t mswea_resp_cfg.XXXXXX.yaml)"
-  python - "$src" "$tmp" <<'PY'
+mswea_llm_config_file() {
+  # Merge the model controls from the single LLM_CONFIG into any mini-swe-agent
+  # config used by prep, rollout, evolve, or final eval.  The generated file
+  # intentionally excludes credentials; only temperature/thinking and an
+  # optional protocol-specific model_class are copied.  $3 can override the
+  # mini-swe-agent environment timeout for benchmarks (such as DAB) whose task
+  # budget differs from the default.
+  local src="${1:-}" model_class="${2:-}" environment_timeout="${3:-}" tmp
+  tmp="$(mktemp -t mswea_llm_cfg.XXXXXX.yaml)"
+  python - "$src" "$tmp" "$LLM_CONFIG" "$model_class" "$environment_timeout" <<'PY'
 from pathlib import Path
 import sys
+import yaml
 
-src, dst = Path(sys.argv[1]), Path(sys.argv[2])
-lines = src.read_text(encoding="utf-8").splitlines()
-out, replaced = [], False
-for line in lines:
-    stripped = line.lstrip()
-    if stripped.startswith("model_class:") and not replaced:
-        indent = line[: len(line) - len(stripped)]
-        out.append(f"{indent}model_class: litellm_response")
-        replaced = True
-    else:
-        out.append(line)
-if not replaced:
-    for i, line in enumerate(out):
-        if line.rstrip() == "model:":
-            out.insert(i + 1, "  model_class: litellm_response")
-            replaced = True
-            break
-if not replaced:
-    out = ["model:", "  model_class: litellm_response", ""] + out
-dst.write_text("\n".join(out) + "\n", encoding="utf-8")
+src, dst, llm_path, model_class, environment_timeout = sys.argv[1:]
+base = {}
+if src and Path(src).is_file():
+    base = yaml.safe_load(Path(src).read_text(encoding="utf-8")) or {}
+llm = yaml.safe_load(Path(llm_path).read_text(encoding="utf-8")) or {}
+model = base.setdefault("model", {})
+if model_class:
+    model["model_class"] = model_class
+kwargs = model.setdefault("model_kwargs", {})
+temperature = llm.get("temperature")
+if temperature not in (None, ""):
+    kwargs["temperature"] = float(temperature)
+thinking = str(llm.get("thinking") or "").strip().lower()
+if thinking:
+    if thinking not in {"enabled", "disabled", "auto"}:
+        raise ValueError(f"unsupported thinking={thinking!r}")
+    extra_body = kwargs.setdefault("extra_body", {})
+    extra_body["thinking"] = {"type": thinking}
+if not kwargs:
+    model.pop("model_kwargs", None)
+if environment_timeout:
+    base.setdefault("environment", {})["timeout"] = int(environment_timeout)
+Path(dst).write_text(
+    # The experiment shell may resolve ``python`` to the repository's legacy
+    # Python 3.7 environment, whose PyYAML predates the sort_keys argument.
+    yaml.safe_dump(base, allow_unicode=True, default_flow_style=False),
+    encoding="utf-8",
+)
 PY
-  printf '%s\n' "${tmp}"
+  printf '%s\n' "$tmp"
 }
 
 proxy_env_args() {
   # 将代理环境变量转换成 Harbor/Pier 的 --ae 参数列表，用于容器内 apt/curl/pip 等联网步骤。
+  local no_proxy="localhost,127.0.0.1,::1"
+  if [[ "${OPENAI_BASE_URL:-}" == *"bytedance.net"* ]]; then
+    no_proxy=".bytedance.net,bytedance.net,${no_proxy}"
+  fi
   printf '%s\n' \
     --ae "HTTP_PROXY=${PROXY_URL}" \
     --ae "HTTPS_PROXY=${PROXY_URL}" \
     --ae "http_proxy=${PROXY_URL}" \
     --ae "https_proxy=${PROXY_URL}" \
-    --ae "NO_PROXY=localhost,127.0.0.1,::1" \
-    --ae "no_proxy=localhost,127.0.0.1,::1"
+    --ae "NO_PROXY=${no_proxy}" \
+    --ae "no_proxy=${no_proxy}"
 }
 
 verifier_env_args() {
-  # 将 SWE-Atlas LLM verifier 的配置转换成 Harbor 的 --ve 参数列表。
+  # 将 SWE-Atlas LLM verifier 的独立配置转换成 Harbor 的 --ve 参数列表。
+  # 这些 VERIFIER_* 只由 run_swe_atlas.sh 的 ATLAS_EVAL_CONFIG 设置，不从
+  # LLM_CONFIG 派生；这是统一 LLM_CONFIG 参数链的唯一例外。
   # EVAL_API_TYPE=responses（aidp 网关）时追加 AZURE_*，让 evaluate_tests.py 用
   # AzureOpenAI + responses.create 路由到网关 Responses API；chat 路径维持原样。
   local args=(
@@ -210,37 +230,40 @@ evolve_scripts_mounts_json() {
   # 根据 EVOLVE_SCRIPTS_DIR / EVOLVE_SCRIPTS_TARGET 生成 Pier --mounts-json 参数。
   #
   # 入参（来自环境变量）：
-  #   EVOLVE_SCRIPTS_DIR       host 上要 bind mount 进容器的辅助 bash 脚本目录。空则不生成。
+  #   EVOLVE_SCRIPTS_DIR       host 上要 bind mount 进容器的辅助 bash 脚本目录，可为空。
   #   EVOLVE_SCRIPTS_TARGET    容器内挂载根目录，默认 /app/.preinstalled_scripts。
   #   EVOLVE_SCRIPTS_READONLY  1=只读（默认），0=读写。
   #
   # 输出：
-  #   stdout 打印一行 JSON 字符串。EVOLVE_SCRIPTS_DIR 为空时打印空串。
+  #   stdout 打印一行 JSON 字符串。即使没有 evolved scripts，也会挂载 API retry runtime。
   #
   # 说明：因为显式传 --mounts-json 会覆盖 Pier 默认的 logs/agent、logs/verifier、
   # logs/artifacts 三个 bind mount，所以这里同时把这三个默认 mount 加回去，
   # 否则 agent/verifier 日志和 artifact 都会丢失。
   local scripts_dir="${EVOLVE_SCRIPTS_DIR:-}"
-  if [[ -z "${scripts_dir}" ]]; then
-    printf ''
-    return 0
-  fi
-  if [[ ! -d "${scripts_dir}" ]]; then
+  if [[ -n "${scripts_dir}" && ! -d "${scripts_dir}" ]]; then
     echo "[evolve_scripts_mounts_json] EVOLVE_SCRIPTS_DIR='${scripts_dir}' is not a directory" >&2
     return 1
   fi
+  [[ -d "${API_RETRY_RUNTIME_HOST}" ]] \
+    || { echo "[evolve_scripts_mounts_json] API retry runtime missing: ${API_RETRY_RUNTIME_HOST}" >&2; return 1; }
 
-  EVOLVE_SCRIPTS_DIR_ABS="$(cd "${scripts_dir}" && pwd)" \
+  EVOLVE_SCRIPTS_DIR_ABS="${scripts_dir:+$(cd "${scripts_dir}" && pwd)}" \
   EVOLVE_SCRIPTS_TARGET="${EVOLVE_SCRIPTS_TARGET}" \
   EVOLVE_SCRIPTS_READONLY="${EVOLVE_SCRIPTS_READONLY}" \
   EVOLVE_SCRIPTS_INCLUDE_DEFAULT_LOG_MOUNTS="${EVOLVE_SCRIPTS_INCLUDE_DEFAULT_LOG_MOUNTS}" \
+  API_RETRY_RUNTIME_HOST="$(cd "${API_RETRY_RUNTIME_HOST}" && pwd)" \
+  API_RETRY_RUNTIME_TARGET="${API_RETRY_RUNTIME_TARGET}" \
   python - <<'PY'
 import json
 import os
 from pathlib import Path
 
-scripts_dir = Path(os.environ["EVOLVE_SCRIPTS_DIR_ABS"])
+scripts_raw = os.environ.get("EVOLVE_SCRIPTS_DIR_ABS", "")
+scripts_dir = Path(scripts_raw) if scripts_raw else None
 target_root = os.environ.get("EVOLVE_SCRIPTS_TARGET", "/app/.preinstalled_scripts").rstrip("/") or "/"
+retry_runtime = Path(os.environ["API_RETRY_RUNTIME_HOST"])
+retry_target = os.environ.get("API_RETRY_RUNTIME_TARGET", "/opt/optiharness_api_retry")
 read_only = os.environ.get("EVOLVE_SCRIPTS_READONLY", "1") not in ("0", "", "false", "False")
 include_default_logs = os.environ.get("EVOLVE_SCRIPTS_INCLUDE_DEFAULT_LOG_MOUNTS", "1") not in ("0", "", "false", "False")
 
@@ -268,37 +291,38 @@ if include_default_logs:
         },
     ])
 
-for entry in sorted(scripts_dir.iterdir()):
-    target = f"{target_root}/{entry.name}" if target_root != "/" else f"/{entry.name}"
-    mount = {
-        "type": "bind",
-        "source": str(entry.resolve()),
-        "target": target,
-    }
-    if read_only:
-        mount["read_only"] = True
-    mounts.append(mount)
+mounts.append({
+    "type": "bind",
+    "source": str(retry_runtime.resolve()),
+    "target": retry_target,
+    "read_only": True,
+})
+
+if scripts_dir is not None:
+    for entry in sorted(scripts_dir.iterdir()):
+        target = f"{target_root}/{entry.name}" if target_root != "/" else f"/{entry.name}"
+        mount = {
+            "type": "bind",
+            "source": str(entry.resolve()),
+            "target": target,
+        }
+        if read_only:
+            mount["read_only"] = True
+        mounts.append(mount)
 
 print(json.dumps(mounts))
 PY
 }
 
 evolve_scripts_deploy() {
-  # Build the native-function-tool artifacts from evolved scripts so the rollout
-  # agent calls them as real function tools (not via `bash <path>/main.sh`).
-  # Two modes selected by EVOLVE_TOOLS_MODE:
-  #   manifest (default, v2/v5): evolve agent wrote <name>/{main.sh,intro.json};
-  #       build .tools_manifest.json + .runtime/evolve_tools/ + .evolve_tools_config.yaml
-  #       (src/evolve/native_tools.py). Runtime reads the manifest + bash main.sh.
-  #   registry (v6):             evolve agent wrote tools.json + executor.py directly;
-  #       build .runtime/evolve_tools_v6/ + .evolve_tools_v6_config.yaml
-  #       (src/evolve/native_tools_v6.py). Runtime loads tools.json + executor.py.
+  # Deploy COAT's tools.json + executor.py as native function tools via the
+  # stable evolve_tools_v6 runtime/config.
   # Idempotent; safe to call before every rollout. No-op if EVOLVE_SCRIPTS_DIR is empty.
   #
   # Sets a global for the caller:
   #   EVOLVE_TOOLS_CONFIG_HOST  host path of the config yaml → pass via `--ak config_file=`
   #
-  # api_type=responses when AZURE_API_KEY is set (aidp gateway), else chat.
+  # 使用配置中声明的协议；不能用 AZURE_API_KEY 推断，因为 azure_chat 同样使用该 key。
   # max_completion_tokens is read from MSWEA_MAXTOK_CONFIG when present (swebench path).
   local scripts_dir="${EVOLVE_SCRIPTS_DIR:-}"
   if [[ -z "${scripts_dir}" ]]; then
@@ -308,37 +332,25 @@ evolve_scripts_deploy() {
     echo "[evolve_scripts_deploy] EVOLVE_SCRIPTS_DIR='${scripts_dir}' is not a directory" >&2
     return 1
   fi
-  local api_type="chat"
-  [[ -n "${AZURE_API_KEY:-}" ]] && api_type="responses"
-  local mode="${EVOLVE_TOOLS_MODE:-manifest}"
-  local module="src.evolve.native_tools"
-  [[ "$mode" == "registry" ]] && module="src.evolve.native_tools_v6"
+  local api_type="${LLM_API_TYPE:-chat}"
   local deploy_args=(--scripts-dir "${scripts_dir}" --api-type "${api_type}")
   if [[ -f "${MSWEA_MAXTOK_CONFIG:-}" ]]; then
     local mt
     mt="$(grep -E '^[[:space:]]*max_completion_tokens:' "${MSWEA_MAXTOK_CONFIG}" 2>/dev/null | head -1 | awk '{print $2}')"
     [[ -n "${mt}" ]] && deploy_args+=(--max-completion-tokens "${mt}")
   fi
+  [[ -n "${TEMPERATURE:-}" ]] && deploy_args+=(--temperature "${TEMPERATURE}")
+  [[ -n "${LLM_THINKING:-}" ]] && deploy_args+=(--thinking "${LLM_THINKING}")
   local json_out
-  json_out="$(cd "$ROOT_DIR" && PYTHONPATH="$ROOT_DIR${PYTHONPATH:+:$PYTHONPATH}" python -m "$module" deploy "${deploy_args[@]}")" \
-    || { echo "[evolve_scripts_deploy] deploy failed (mode=${mode}, api_type=${api_type})" >&2; return 1; }
+  json_out="$(cd "$ROOT_DIR" && PYTHONPATH="$ROOT_DIR${PYTHONPATH:+:$PYTHONPATH}" python -m src.evolve.native_tools_v6 deploy "${deploy_args[@]}")" \
+    || { echo "[evolve_scripts_deploy] deploy failed (framework=coat, api_type=${api_type})" >&2; return 1; }
   EVOLVE_TOOLS_CONFIG_HOST="$(python -c "import json,sys; print(json.load(sys.stdin)['config'])" <<<"${json_out}")"
-  echo "[evolve_scripts_deploy] mode=${mode} api_type=${api_type} scripts=${scripts_dir} config=${EVOLVE_TOOLS_CONFIG_HOST}" >&2
+  echo "[evolve_scripts_deploy] framework=coat api_type=${api_type} scripts=${scripts_dir} config=${EVOLVE_TOOLS_CONFIG_HOST}" >&2
 }
 
 evolve_scripts_native_tools_args() {
-  # Emit pier/harbor args that register evolved tools as native function tools
-  # inside the rollout container. Mode follows EVOLVE_TOOLS_MODE (default manifest).
-  #   manifest (v2/v5):
-  #     --ak config_file=<host yaml>   sets model_class+agent_class to evolve_tools.*
-  #     --ae EVOLVE_TOOLS_MANIFEST     container path to .tools_manifest.json
-  #     --ae EVOLVE_TOOLS_SCRIPTS_DIR  container scripts root (manifest paths are relative)
-  #     --ae PYTHONPATH                container dir holding the evolve_tools package
-  #   registry (v6):
-  #     --ak config_file=<host yaml>   sets model_class+agent_class to evolve_tools_v6.*
-  #     --ae EVOLVE_TOOLS_V6_REGISTRY  container path to tools.json
-  #     --ae EVOLVE_TOOLS_V6_EXECUTOR  container path to executor.py
-  #     --ae PYTHONPATH                container dir holding the evolve_tools_v6 package
+  # Emit pier/harbor args that register COAT's evolved native tools inside the
+  # rollout container.
   # Pier's mini-swe-agent adapter defaults model_class=auto and maps openai/*
   # to litellm_response, which breaks OpenAI-compatible chat endpoints such as
   # DeepSeek and also overrides our native-tools config. An empty model_class
@@ -349,36 +361,21 @@ evolve_scripts_native_tools_args() {
     return 0
   fi
   local target="${EVOLVE_SCRIPTS_TARGET:-/app/.preinstalled_scripts}"
-  local mode="${EVOLVE_TOOLS_MODE:-manifest}"
-  if [[ "$mode" == "registry" ]]; then
-    printf '%s\n' \
-      --ak "model_class=" \
-      --ak "config_file=${EVOLVE_TOOLS_CONFIG_HOST}" \
-      --ae "EVOLVE_TOOLS_V6_REGISTRY=${target}/tools.json" \
-      --ae "EVOLVE_TOOLS_V6_EXECUTOR=${target}/executor.py" \
-      --ae "EVOLVE_TOOLS_V6_TIMEOUT_SECONDS=${EVOLVE_TOOLS_V6_TIMEOUT_SECONDS}" \
-      --ae "EVOLVE_TOOLS_V6_MEMORY_MB=${EVOLVE_TOOLS_V6_MEMORY_MB}" \
-      --ae "EVOLVE_TOOLS_V6_OUTPUT_TOKENS=${EVOLVE_TOOLS_V6_OUTPUT_TOKENS}" \
-      --ae "PYTHONPATH=${target}/.runtime"
-  else
-    printf '%s\n' \
-      --ak "model_class=" \
-      --ak "config_file=${EVOLVE_TOOLS_CONFIG_HOST}" \
-      --ae "EVOLVE_TOOLS_MANIFEST=${target}/.tools_manifest.json" \
-      --ae "EVOLVE_TOOLS_SCRIPTS_DIR=${target}" \
-      --ae "PYTHONPATH=${target}/.runtime"
-  fi
+  printf '%s\n' \
+    --ak "model_class=" \
+    --ak "config_file=${EVOLVE_TOOLS_CONFIG_HOST}" \
+    --ae "EVOLVE_TOOLS_V6_REGISTRY=${target}/tools.json" \
+    --ae "EVOLVE_TOOLS_V6_EXECUTOR=${target}/executor.py" \
+    --ae "EVOLVE_TOOLS_V6_TIMEOUT_SECONDS=${EVOLVE_TOOLS_V6_TIMEOUT_SECONDS}" \
+    --ae "EVOLVE_TOOLS_V6_MEMORY_MB=${EVOLVE_TOOLS_V6_MEMORY_MB}" \
+    --ae "EVOLVE_TOOLS_V6_OUTPUT_TOKENS=${EVOLVE_TOOLS_V6_OUTPUT_TOKENS}"
 }
 
 evolve_scripts_prompt_template() {
   # Build a Jinja2 prompt template from EVOLVE_SCRIPTS_DIR/instruction.md only.
   #
-  # Evolved scripts are exposed to the agent as native function tools — their
-  # schemas come from each intro.json via the evolve_tools registry (loaded from
-  # .tools_manifest.json), so the LLM sees them as first-class `function` tools
-  # it calls by name. The prompt therefore no longer carries a bash-invocation
-  # "tools block"; it carries only the high-level cost-saving guidance from
-  # instruction.md, followed by the live {{ instruction }} placeholder.
+  # Tool schemas come from tools.json, so the prompt carries only the
+  # high-level guidance from instruction.md followed by {{ instruction }}.
   #
   # Pier/harbor's render_prompt_template requires the template to contain
   # {{ instruction }}; it is rendered then passed to mini-swe-agent --task=...
@@ -410,82 +407,6 @@ evolve_scripts_prompt_template() {
     printf '\n{%% endraw %%}\n\n---\n\n{{ instruction }}\n'
   } > "${tmp}"
   printf '%s\n' "${tmp}"
-}
-
-evolve_scripts_tools_block() {
-  # LEGACY — bash pseudo-tool prompt block for non-mini-swe-agent agents only.
-  #
-  # All mini-swe-agent rollouts (run_deep_swe / run_swe_bench / run_swe_atlas /
-  # run_datamind_harbor) now register evolved scripts as NATIVE function tools
-  # via `evolve_scripts_deploy` (evolve_tools.model.* + EvolveToolsAgent), so the
-  # LLM calls them by name with structured params — no bash-invocation prompt.
-  #
-  # This helper remains ONLY for agents that cannot consume native function
-  # tools (e.g. DSGym's `multi_turn_react_ds_agent` used by run_datamind.sh).
-  # It scans $EVOLVE_SCRIPTS_DIR/*/intro.json into a markdown tool list with
-  # absolute entrypoint paths, for appending to such an agent's system prompt.
-  #
-  # 输出（stdout）：无 intro.json 时输出空串；否则输出 markdown 工具清单。
-  local scripts_dir="${EVOLVE_SCRIPTS_DIR:-}"
-  if [[ -z "${scripts_dir}" ]] || [[ ! -d "${scripts_dir}" ]]; then
-    return 0
-  fi
-  local target_root="${EVOLVE_SCRIPTS_TARGET_ROOT:-/app/.preinstalled_scripts}"
-  EVOLVE_SCRIPTS_DIR_ABS="$(cd "${scripts_dir}" && pwd)" \
-  EVOLVE_SCRIPTS_TARGET_ROOT="${target_root}" \
-  python - <<'PY'
-import json, os, sys
-from pathlib import Path
-
-DESC_LIMIT, RATIONALE_LIMIT, EXPECTED_LIMIT, CALL_LIMIT = 240, 200, 160, 320
-
-def clip(text, limit):
-    text = " ".join(("" if text is None else str(text)).split())
-    return text if len(text) <= limit else text[:limit].rstrip() + "..."
-
-scripts_dir = Path(os.environ["EVOLVE_SCRIPTS_DIR_ABS"])
-target_root = os.environ.get("EVOLVE_SCRIPTS_TARGET_ROOT", "/app/.preinstalled_scripts").rstrip("/") or "/"
-intros = []
-for d in sorted(scripts_dir.iterdir()):
-    if not d.is_dir():
-        continue
-    intro = d / "intro.json"
-    if not intro.exists():
-        continue
-    try:
-        data = json.loads(intro.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        print(f"[evolve_scripts_tools_block] skip {intro}: invalid JSON: {exc}", file=sys.stderr)
-        continue
-    if isinstance(data, dict):
-        intros.append((d.name, data))
-if not intros:
-    sys.exit(0)
-
-lines = [
-    "## Available bash helper scripts (legacy pseudo-tool path)",
-    "",
-    "Invoke each script with the `bash` tool using its full path, e.g.",
-    f"`bash {target_root}/<name>/main.sh <args>`.",
-    "",
-]
-for name, data in intros:
-    entrypoint = data.get("entrypoint", "main.sh")
-    abs_path = f"{target_root}/{name}/{entrypoint}" if target_root != "/" else f"/{name}/{entrypoint}"
-    lines.append(f"### {name}")
-    lines.append(f"- description: {clip(data.get('description', '(no description)'), DESC_LIMIT)}")
-    lines.append(f"- entrypoint: {abs_path}")
-    examples = data.get("examples") or []
-    if isinstance(examples, list) and examples and isinstance(examples[0], dict):
-        call = clip(examples[0].get("call", ""), CALL_LIMIT)
-        expected = clip(examples[0].get("expected", ""), EXPECTED_LIMIT)
-        lines.append(f"- example: {call}  ->  {expected}")
-    rationale = data.get("cost_saving_rationale")
-    if rationale:
-        lines.append(f"- cost_saving_rationale: {clip(rationale, RATIONALE_LIMIT)}")
-    lines.append("")
-print("\n".join(lines))
-PY
 }
 
 evolve_skip_exclude_args() {

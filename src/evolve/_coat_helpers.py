@@ -1,4 +1,4 @@
-"""Pure helper functions for v2 chunk-based evolve pipeline.
+"""Deterministic metadata helpers for COAT's focused-DAG pipeline.
 
 Functions here are stateless and fall into four groups:
 
@@ -11,9 +11,8 @@ Functions here are stateless and fall into four groups:
    the most valuable step in a chunk and trace its dependency closure,
    filtering failed steps
 
-These helpers are used by both the annotator (Stage 1) and the contrastive
-builder (Stage 2) in ``evolve_v2_chunk.py``. Keeping them here lets the v2
-file focus on class-level wiring.
+The module is framework-private so COAT never imports an older versioned
+evolution entrypoint.
 """
 
 from __future__ import annotations

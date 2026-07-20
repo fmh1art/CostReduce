@@ -1,22 +1,6 @@
-from .annotator import TrajectoryAnnotator
-from .contrastive import ContrastiveSampleBuilder
-from .evolver import (
-    AgentRunner,
-    EvolvePromptBuilder,
-    MiniSweAgentRunner,
-    ScriptEvolver,
-    TrajectorySerializer,
-)
-from .pipeline import ScriptEvolvePipeline, Stage
+"""COAT trajectory-evolution framework.
 
-__all__ = [
-    "TrajectoryAnnotator",
-    "ContrastiveSampleBuilder",
-    "ScriptEvolver",
-    "ScriptEvolvePipeline",
-    "Stage",
-    "TrajectorySerializer",
-    "EvolvePromptBuilder",
-    "AgentRunner",
-    "MiniSweAgentRunner",
-]
+The canonical executable module is :mod:`src.evolve.coat`.  Package import is
+kept intentionally side-effect free so ``python -m src.evolve.coat`` does not
+pre-import the command module through ``src.evolve``.
+"""

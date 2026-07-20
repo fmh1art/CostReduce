@@ -54,17 +54,6 @@ dab_verifier_proxy_args() {
     --ve "UV_HTTP_TIMEOUT=300"
 }
 
-dab_responses_config_file() {
-  if [[ -z "${AZURE_API_KEY:-}" ]]; then return 0; fi
-  local tmp maxtok
-  maxtok="$(grep -E '^\s*max_completion_tokens:' "$MSWEA_MAXTOK_CONFIG" 2>/dev/null | head -1 | awk '{print $2}')"
-  maxtok="${maxtok:-16384}"
-  tmp="$(mktemp -t dab_resp_cfg.XXXXXX.yaml)"
-  printf 'model:\n  model_class: litellm_response\n  model_kwargs:\n    max_completion_tokens: %s\nenvironment:\n  timeout: %s\n' \
-    "$maxtok" "$EVOLVE_TOOLS_V6_TIMEOUT_SECONDS" > "$tmp"
-  printf '%s\n' "$tmp"
-}
-
 MSWEA_CFG_TMP=""
 EVOLVE_PROMPT_TEMPLATE=""
 cleanup() {
@@ -164,11 +153,11 @@ mapfile -t SKIP_ARGS < <(evolve_skip_exclude_args)
 EVOLVE_MOUNTS_ARGS=()
 EVOLVE_PROMPT_ARGS=()
 EVOLVE_NATIVE_ARGS=()
+EVOLVE_MOUNTS_JSON="$(EVOLVE_SCRIPTS_INCLUDE_DEFAULT_LOG_MOUNTS=0 evolve_scripts_mounts_json)"
+if [[ -n "${EVOLVE_MOUNTS_JSON}" ]]; then
+  EVOLVE_MOUNTS_ARGS=(--mounts "${EVOLVE_MOUNTS_JSON}")
+fi
 if [[ -n "${EVOLVE_SCRIPTS_DIR:-}" ]]; then
-  EVOLVE_MOUNTS_JSON="$(EVOLVE_SCRIPTS_INCLUDE_DEFAULT_LOG_MOUNTS=0 evolve_scripts_mounts_json)"
-  if [[ -n "${EVOLVE_MOUNTS_JSON}" ]]; then
-    EVOLVE_MOUNTS_ARGS=(--mounts "${EVOLVE_MOUNTS_JSON}")
-  fi
   EVOLVE_PROMPT_TEMPLATE="$(evolve_scripts_prompt_template)"
   if [[ -n "${EVOLVE_PROMPT_TEMPLATE}" ]]; then
     EVOLVE_PROMPT_ARGS=(--ak "prompt_template_path=${EVOLVE_PROMPT_TEMPLATE}")
@@ -178,17 +167,12 @@ if [[ -n "${EVOLVE_SCRIPTS_DIR:-}" ]]; then
 fi
 
 MSWEA_CFG_ARGS=()
-if [[ -z "${EVOLVE_TOOLS_CONFIG_HOST:-}" ]]; then
-  if [[ -n "${DAB_MSWEA_CONFIG}" ]]; then
-    MSWEA_CFG_ARGS=(--ak "config_file=${DAB_MSWEA_CONFIG}")
-  else
-    MSWEA_CFG_TMP="$(dab_responses_config_file)"
-    if [[ -n "${MSWEA_CFG_TMP}" ]]; then
-      MSWEA_CFG_ARGS=(--ak "config_file=${MSWEA_CFG_TMP}")
-    elif [[ -f "${MSWEA_MAXTOK_CONFIG}" ]]; then
-      MSWEA_CFG_ARGS=(--ak "config_file=${MSWEA_MAXTOK_CONFIG}")
-    fi
-  fi
+if [[ ${#EVOLVE_NATIVE_ARGS[@]} -eq 0 ]]; then
+  MSWEA_CFG_BASE="${DAB_MSWEA_CONFIG:-${MSWEA_MAXTOK_CONFIG}}"
+  MSWEA_MODEL_CLASS=""
+  [[ "${LLM_API_TYPE:-chat}" == "responses" ]] && MSWEA_MODEL_CLASS="litellm_response"
+  MSWEA_CFG_TMP="$(mswea_llm_config_file "$MSWEA_CFG_BASE" "$MSWEA_MODEL_CLASS" "$EVOLVE_TOOLS_V6_TIMEOUT_SECONDS")"
+  MSWEA_CFG_ARGS=(--ak "config_file=${MSWEA_CFG_TMP}")
 fi
 
 "$UV_BIN" run --directory "$ROOT_DIR/tmp/harbor" harbor run \

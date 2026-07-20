@@ -14,9 +14,8 @@ cd "$ROOT_DIR/benchmark/SWE-Atlas"
 mkdir -p "$RESULTS_DIR"
 
 # SWE-Atlas 数据根目录，其下按 split（qa/tw/rf）分子目录。
-# 默认仓库内 benchmark/SWE-Atlas/data；V3 闭环（src/evolve/evolve_v3_cycle.py）
-# 会把 16 个 evolve case 软链到 <临时目录>/<split>/<case> 并把根目录赋给
-# SWE_ATLAS_DATA_DIR，从而只在 16 个 case 上跑一轮验证。未设置时沿用默认，行为不变。
+# 默认仓库内 benchmark/SWE-Atlas/data；COAT 实验入口会把选中的 evolve case
+# 软链到 <临时目录>/<split>/<case> 并通过 SWE_ATLAS_DATA_DIR 传入。
 SWE_ATLAS_DATA_DIR="${SWE_ATLAS_DATA_DIR:-$ROOT_DIR/benchmark/SWE-Atlas/data}"
 
 # 生成传给 mini-swe-agent 容器/进程的 OpenAI-compatible 环境变量参数。
@@ -25,14 +24,15 @@ mapfile -t AGENT_ENV < <(agent_env_args)
 # 生成传给 Harbor agent setup/运行阶段的代理环境变量参数，帮助容器内 apt/curl/pip 访问外网。
 mapfile -t PROXY_ENV < <(proxy_env_args)
 
-# SWE-Atlas verifier(evaluator) 的 LLM judge 配置：默认 deepseekv4_pro（chat），
-# 可用 VERIFIER_CONFIG 覆盖（如 _config/gpt53_codex.yaml，走 responses）。
+# SWE-Atlas verifier(evaluator) 是统一 LLM_CONFIG 参数链的唯一例外：默认使用
+# deepseekv4_flash，可用 ATLAS_EVAL_CONFIG 覆盖。为兼容旧调用，也接受
+# VERIFIER_CONFIG 作为 ATLAS_EVAL_CONFIG 的后备别名。
 # 解析该 yaml 的 api_type：
 #   - responses：导出 EVAL_API_TYPE=responses + AZURE_API_KEY/BASE/VERSION，
 #     evaluate_tests.py 据此用 AzureOpenAI + responses.create 路由到 aidp 网关。
 #   - chat（默认）：导出 VERIFIER_API_KEY/BASE_URL/MODEL（= EVAL_*），维持原行为。
-VERIFIER_CONFIG="${VERIFIER_CONFIG:-$ROOT_DIR/_config/deepseekv4_flash.yaml}"
-eval "$(python - "$VERIFIER_CONFIG" <<'PY'
+ATLAS_EVAL_CONFIG="${ATLAS_EVAL_CONFIG:-${VERIFIER_CONFIG:-$ROOT_DIR/_config/deepseekv4_flash.yaml}}"
+eval "$(python - "$ATLAS_EVAL_CONFIG" <<'PY'
 from pathlib import Path
 import shlex
 import sys
@@ -61,7 +61,7 @@ for key, value in exports.items():
 PY
 )"
 
-# 生成传给 SWE-Atlas verifier 的 LLM judge 配置（已切换为 deepseekv4_pro）。
+# 生成传给 SWE-Atlas verifier 的独立 LLM judge 配置。
 mapfile -t VERIFIER_ENV < <(verifier_env_args)
 
 # 可选：通过 EVOLVE_SKIP_FILE 跳过指定 case id（默认从 EVOLVE_SCRIPTS_DIR
@@ -76,6 +76,12 @@ EVOLVE_MOUNTS_ARGS=()
 EVOLVE_PROMPT_ARGS=()
 EVOLVE_NATIVE_ARGS=()
 EVOLVE_PROMPT_TEMPLATE=""
+MSWEA_CFG_TMP=""
+cleanup() {
+  if [[ -n "${MSWEA_CFG_TMP:-}" && -f "${MSWEA_CFG_TMP}" ]]; then rm -f "${MSWEA_CFG_TMP}"; fi
+  if [[ -n "${EVOLVE_PROMPT_TEMPLATE:-}" && -f "${EVOLVE_PROMPT_TEMPLATE}" ]]; then rm -f "${EVOLVE_PROMPT_TEMPLATE}"; fi
+}
+trap cleanup EXIT
 if [[ -n "${EVOLVE_SCRIPTS_DIR:-}" ]]; then
   EVOLVE_MOUNTS_JSON="$(EVOLVE_SCRIPTS_INCLUDE_DEFAULT_LOG_MOUNTS=0 evolve_scripts_mounts_json)"
   if [[ -n "${EVOLVE_MOUNTS_JSON}" ]]; then
@@ -83,8 +89,6 @@ if [[ -n "${EVOLVE_SCRIPTS_DIR:-}" ]]; then
   fi
   EVOLVE_PROMPT_TEMPLATE="$(evolve_scripts_prompt_template)"
   if [[ -n "${EVOLVE_PROMPT_TEMPLATE}" ]]; then
-    # 退出时清理临时模板文件。
-    trap '[[ -n "${EVOLVE_PROMPT_TEMPLATE:-}" && -f "${EVOLVE_PROMPT_TEMPLATE}" ]] && rm -f "${EVOLVE_PROMPT_TEMPLATE}"' EXIT
     EVOLVE_PROMPT_ARGS=(--ak "prompt_template_path=${EVOLVE_PROMPT_TEMPLATE}")
   fi
   # 把 evolved scripts 注册成 native function tools（生成 manifest/runtime/config，
@@ -96,19 +100,17 @@ fi
 
 # 依次评测 SWE_ATLAS_SPLITS 指定的 split；默认只跑 qa，便于先做 1 个 case 的 smoke test。
 for split in ${SWE_ATLAS_SPLITS//,/ }; do
-  # responses 配置时用一份把 model.model_class 改成 litellm_response 的临时 mswea 配置，
-  # 让 mini-swe-agent 走 litellm.responses；否则原样使用该 split 的 mswea 配置。
-  MSWEA_CFG="$(mswea_responses_config_file "$ROOT_DIR/benchmark/SWE-Atlas/run_config/${split}/mswea_${split}_config.yaml")"
   MSWEA_CFG_TMP=""
-  if [[ "$MSWEA_CFG" != "$ROOT_DIR/benchmark/SWE-Atlas/run_config/${split}/mswea_${split}_config.yaml" ]]; then
-    MSWEA_CFG_TMP="$MSWEA_CFG"
-  fi
   # evolve native tools 时 model_class+agent_class 已由 EVOLVE_NATIVE_ARGS 的 config_file
   # 设定（evolve_tools.model.* / evolve_tools.agent.EvolveToolsAgent），不再传 per-split
-  # mswea config；非 evolve 模式才传 per-split config。
+  # mswea config；非 evolve 模式在 split 配置上统一合并 temperature/thinking。
   SPLIT_CFG_ARGS=()
-  if [[ -z "${EVOLVE_TOOLS_CONFIG_HOST:-}" ]]; then
-    SPLIT_CFG_ARGS=(--ak "config_file=${MSWEA_CFG}")
+  if [[ ${#EVOLVE_NATIVE_ARGS[@]} -eq 0 ]]; then
+    MSWEA_CFG_BASE="$ROOT_DIR/benchmark/SWE-Atlas/run_config/${split}/mswea_${split}_config.yaml"
+    MSWEA_MODEL_CLASS=""
+    [[ "${LLM_API_TYPE:-chat}" == "responses" ]] && MSWEA_MODEL_CLASS="litellm_response"
+    MSWEA_CFG_TMP="$(mswea_llm_config_file "$MSWEA_CFG_BASE" "$MSWEA_MODEL_CLASS")"
+    SPLIT_CFG_ARGS=(--ak "config_file=${MSWEA_CFG_TMP}")
   fi
   # 使用 Harbor 在当前 split 上运行 mini-swe-agent，并加载该 split 专用的 mswea 配置。
   "$UV_BIN" run --directory "$ROOT_DIR/tmp/harbor" harbor run \
@@ -131,6 +133,7 @@ for split in ${SWE_ATLAS_SPLITS//,/ }; do
     "${AGENT_ENV[@]}" \
     "${PROXY_ENV[@]}" \
     "${VERIFIER_ENV[@]}"
-  # 清理本 split 生成的临时 responses mswea 配置。
-  [[ -n "${MSWEA_CFG_TMP}" && -f "${MSWEA_CFG_TMP}" ]] && rm -f "${MSWEA_CFG_TMP}"
+  # 清理本 split 生成的临时 mswea 配置。
+  if [[ -n "${MSWEA_CFG_TMP}" && -f "${MSWEA_CFG_TMP}" ]]; then rm -f "${MSWEA_CFG_TMP}"; fi
+  MSWEA_CFG_TMP=""
 done

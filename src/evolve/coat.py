@@ -1,14 +1,9 @@
-"""Evolve v6.1 — focused DAG slices drive complete harness evolution.
+"""COAT (v6.1) — focused DAG slices drive complete harness evolution.
 
-Differs from v5 in what the evolve agent produces:
-
-* v5: evolve agent edits ``<tool>/main.sh`` + ``<tool>/intro.json``; a converter
-  then builds a manifest + bash dispatch (``evolve_tools`` reads the manifest).
-* v6.1: evolve agent (bash-only mini-swe-agent) writes ``tools.json`` (the tool
-  registry), ``executor.py`` (the dispatcher), and ``instruction.md`` (generic
-  cost-saving behavior). There is no converter, manifest, or per-tool
-  ``main.sh``. The stable ``evolve_tools_v6`` registry runtime loads the first
-  two at agent start; rollout wiring injects the instruction file.
+The evolve agent writes ``tools.json`` (the tool registry), ``executor.py``
+(the dispatcher), and ``instruction.md`` (generic cost-saving behavior). The
+stable ``evolve_tools_v6`` registry runtime loads the first two at agent start;
+rollout wiring injects the instruction file.
 
 One cycle::
 
@@ -25,10 +20,10 @@ bind-mount (three artifacts + ``.runtime/`` + config yaml).
 
 Usage::
 
-    python -m src.evolve.evolve_v6_1_cycle run \\
+    python -m src.evolve.coat run \\
         --benchmark swebench --config _config/deepseekv4_flash.yaml \\
         --eval-cases-file <cases.txt> --baseline-dir <prep dir> \\
-        --scripts-dir .evolve_scripts_v6_1_swebench --work-dir results/v6_1_cycle/swebench
+        --scripts-dir .evolve_scripts_coat_swebench --work-dir results/coat/swebench
 """
 
 from __future__ import annotations
@@ -44,6 +39,7 @@ import re
 import shlex
 import shutil
 import subprocess
+import sys
 import threading
 import time
 from collections import defaultdict
@@ -54,13 +50,12 @@ from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Seque
 
 from src.tools.llm import LLM
 
-from .evolver import (
+from ._coat_runner import (
     MiniSweAgentRunner,
-    ScriptEvolver,
     TrajectorySerializer,
 )
-from .annotator import TrajectoryAnnotator
-from ._chunk_helpers import (
+from ._coat_annotator import TrajectoryAnnotator
+from ._coat_helpers import (
     bash_verb,
     classify_step_meta,
     extract_bash_command,
@@ -72,14 +67,28 @@ from .native_tools_v6 import (
     seed as seed_v6,
     validate as validate_v6,
 )
-from .run_evolve import DEFAULT_MINI_SWE_AGENT, _setup_logging
-
+from .rollout_validation import validate_rollout_artifacts
 logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_SCRIPTS_DIR = ROOT / ".evolve_scripts_v6_1"
-DEFAULT_WORK_DIR = ROOT / "results" / "v6_1_cycle"
+DEFAULT_MINI_SWE_AGENT = ROOT / "agent" / "mini-swe-agent"
+DEFAULT_SCRIPTS_DIR = ROOT / ".evolve_scripts_coat"
+DEFAULT_WORK_DIR = ROOT / "results" / "coat"
 DEFAULT_N_CYCLES = 4
+
+
+def _setup_logging(log_file=None) -> None:
+    """Configure COAT's console logger and optional persistent log file."""
+    handlers: List[logging.Handler] = [logging.StreamHandler()]
+    if log_file:
+        Path(log_file).parent.mkdir(parents=True, exist_ok=True)
+        handlers.append(logging.FileHandler(log_file, encoding="utf-8"))
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        handlers=handlers,
+        force=True,
+    )
 
 _FORBIDDEN_ORACLE_ACTION = re.compile(
     # Keep this path-specific. Generic repository tests/ and validate.py files
@@ -511,7 +520,7 @@ class TrajectoryAnnotatorV61(TrajectoryAnnotator):
             safe_config = {
                 key: cfg.get(key)
                 for key in (
-                    "llm_name", "model", "temperature", "api_type",
+                    "llm_name", "model", "temperature", "thinking", "api_type",
                     "max_output_tokens",
                 )
             }
@@ -677,7 +686,7 @@ class DAGContrastiveSampleBuilderV61:
     coverage. At most three samples are emitted per source trajectory.
     """
 
-    name = "contrastive_v6_1"
+    name = "coat_contrastive"
     MAX_SIGNALS_PER_TRAJECTORY = 3
     MAX_CONTEXT_BEFORE = 2
     MAX_CONTEXT_AFTER = 1
@@ -1342,7 +1351,7 @@ class EvolvePromptBuilderV61:
         "- After editing, VERIFY the registration files:",
         '    python -c "import json; json.load(open(\'tools.json\'))"',
         '    python -c "import ast; ast.parse(open(\'executor.py\').read())"',
-        "- Do NOT create main.sh, intro.json, or per-tool directories — v6.1 uses ONLY",
+        "- Keep registration exclusively in these three COAT artifacts:",
         "  tools.json + executor.py + instruction.md.",
         "",
         "### 3. `instruction.md` — HIGH-LEVEL BEHAVIORAL RULES (≤ 25 short lines)",
@@ -1551,7 +1560,7 @@ class EvolvePromptBuilderV61:
 
 
 # ============================================================================
-# Benchmark metadata (same as v5)
+# Benchmark metadata
 # ============================================================================
 
 
@@ -1592,7 +1601,7 @@ def _results_dir() -> Path:
 
 
 # ============================================================================
-# Rollout agent — sets EVOLVE_TOOLS_MODE=registry so the run script uses v6 wiring
+# Rollout agent — deploys COAT's native registry wiring
 # ============================================================================
 
 
@@ -1608,9 +1617,8 @@ class RolloutResultV61:
 class RolloutAgentV61:
     """Run the benchmark with the current v6 tools (tools.json + executor.py).
 
-    Sets ``EVOLVE_TOOLS_MODE=registry`` so ``scripts/_bench_common.sh:
-    evolve_scripts_deploy`` deploys the v6 runtime + config (not the v5 manifest)
-    and emits the v6 env vars (``EVOLVE_TOOLS_V6_REGISTRY`` / ``_EXECUTOR``).
+    ``scripts/_bench_common.sh:evolve_scripts_deploy`` deploys the registry
+    runtime/config and emits ``EVOLVE_TOOLS_V6_REGISTRY`` / ``_EXECUTOR``.
     """
 
     def __init__(self, benchmark: str, config_path, *, n_tasks: int = 1000,
@@ -1684,9 +1692,6 @@ class RolloutAgentV61:
             "RESULTS_DIR": str(self.results_root),
             "LLM_CONFIG": self.config_path,
             "EVOLVE_SCRIPTS_DIR": str(scripts_dir) if scripts_dir.exists() else "",
-            # v6: tell _bench_common.sh to deploy the v6 runtime+config (registry mode),
-            # not the v5 manifest.
-            "EVOLVE_TOOLS_MODE": "registry",
             "RUN_ID": run_id,
             "N_TASKS": str(self.n_tasks),
             "N_CONCURRENT": str(self.n_concurrent),
@@ -1768,13 +1773,36 @@ def _llm_api_type(config_path: str) -> str:
     return (cfg.get("api_type") or "chat").strip().lower()
 
 
+def _llm_runtime_kwargs(config_path: str) -> dict:
+    """Model kwargs that must follow LLM_CONFIG into rollout/eval runtimes."""
+    cfg = LLM._load_config(config_path)
+    raw_temperature = cfg.get("temperature")
+    temperature = (
+        float(raw_temperature) if raw_temperature not in (None, "") else None
+    )
+    raw_thinking = cfg.get("thinking")
+    thinking = (
+        str(raw_thinking).strip().lower()
+        if raw_thinking not in (None, "")
+        else None
+    )
+    return {"temperature": temperature, "thinking": thinking}
+
+
 def _max_completion_tokens() -> Optional[int]:
-    p = os.environ.get("MSWEA_MAXTOK_CONFIG")
-    if not p or not Path(p).is_file():
+    p = Path(
+        os.environ.get("MSWEA_MAXTOK_CONFIG")
+        or ROOT / "_config" / "mswea_maxtok.yaml"
+    )
+    if not p.is_file():
         return None
     try:
         cfg = LLM._load_config(p)
-        mk = cfg.get("max_completion_tokens")
+        mk = (
+            cfg.get("model", {})
+            .get("model_kwargs", {})
+            .get("max_completion_tokens")
+        )
         return int(mk) if mk else None
     except (TypeError, ValueError):
         return None
@@ -1786,14 +1814,13 @@ V61_HARNESS_FILES = ("tools.json", "executor.py", "instruction.md")
 class MiniSweAgentRunnerV61(MiniSweAgentRunner):
     """Pass the complete v6.1 evolve instruction as the actual user prompt.
 
-    The legacy runner asks the agent to ``cat`` a prompt file and mentions the
-    obsolete per-tool ``intro.json`` contract.  Besides wasting turns, a long
-    shell observation truncates that file.  v6.1 keeps the prompt file only as
-    an audit artifact and supplies the exact same text through ``mini -t``.
+    COAT keeps the prompt file as an audit artifact and supplies the exact same
+    text through ``mini -t`` so a long shell observation cannot truncate it.
     """
 
     def run(self, prompt: str, prompt_path: Path, output_path: Path, cwd: Path) -> None:
         env, model, temperature, model_class = self._load_llm_env()
+        thinking = self._load_thinking()
         output_path.parent.mkdir(parents=True, exist_ok=True)
         prompt_path.parent.mkdir(parents=True, exist_ok=True)
         prompt_path.write_text(prompt, encoding="utf-8")
@@ -1811,6 +1838,11 @@ class MiniSweAgentRunnerV61(MiniSweAgentRunner):
         ]
         if temperature is not None:
             cmd += ["-c", f"model.model_kwargs.temperature={temperature}"]
+        if thinking is not None:
+            extra_body = json.dumps(
+                {"thinking": {"type": thinking}}, separators=(",", ":")
+            )
+            cmd += ["-c", f"model.model_kwargs.extra_body={extra_body}"]
         # Do not dump a 50k prompt (or evidence inside it) into the process log.
         display_cmd = list(cmd)
         display_cmd[display_cmd.index("-t") + 1] = f"<direct-user-prompt:{len(prompt)} chars>"
@@ -2077,10 +2109,10 @@ Return this exact shape:
         return value
 
 
-class ScriptEvolverV61(ScriptEvolver):
+class ScriptEvolverV61:
     """Run lossless, diversity-ordered v6.1 batches behind a promotion gate."""
 
-    name = "evolve_v6_1"
+    name = "coat_evolve"
     SENTINEL_SCHEMA = "v6.1-evolve-batch.2"
     MANIFEST_SCHEMA = "v6.1-evolve-batch-manifest.2"
 
@@ -2094,14 +2126,12 @@ class ScriptEvolverV61(ScriptEvolver):
         output_dir: Optional[Path] = None,
         resume: bool = True,
     ):
-        super().__init__(
-            scripts_dir=scripts_dir,
-            runner=runner,
-            prompt_builder=prompt_builder,
-            batch_size=batch_size,
-            output_dir=output_dir,
-            resume=resume,
-        )
+        self.scripts_dir = Path(scripts_dir).resolve()
+        self.runner = runner
+        self.prompt_builder = prompt_builder
+        self.batch_size = int(batch_size)
+        self.output_dir = Path(output_dir).resolve() if output_dir else None
+        self.resume = bool(resume)
         if self.batch_size < 1:
             raise ValueError("v6.1 batch_size must be positive")
         self.gate = gate
@@ -2795,8 +2825,13 @@ class EvolveAgentV61:
             logger.info("[v6.1 evolve] DRY_RUN — skipping refresh/validate")
             return
         api_type = _llm_api_type(self.config_path)
-        paths = deploy_v6(self.scripts_dir, api_type=api_type,
-                          max_completion_tokens=_max_completion_tokens(), container=True)
+        paths = deploy_v6(
+            self.scripts_dir,
+            api_type=api_type,
+            max_completion_tokens=_max_completion_tokens(),
+            **_llm_runtime_kwargs(self.config_path),
+            container=True,
+        )
         ws = validate_v6(self.scripts_dir)
         for w in ws:
             logger.warning("v6 validate: %s", w)
@@ -2877,8 +2912,13 @@ class EvolveV61Cycle:
         # v6 runtime + config once so cycle-1 rollout (if any) has the wiring ready.
         if not self.dry_run:
             seed_v6(self.scripts_dir)
-            deploy_v6(self.scripts_dir, api_type=_llm_api_type(self.config_path),
-                      max_completion_tokens=_max_completion_tokens(), container=True)
+            deploy_v6(
+                self.scripts_dir,
+                api_type=_llm_api_type(self.config_path),
+                max_completion_tokens=_max_completion_tokens(),
+                **_llm_runtime_kwargs(self.config_path),
+                container=True,
+            )
 
         self.rollout_agent = RolloutAgentV61(
             benchmark, self.config_path, n_tasks=n_tasks, n_concurrent=n_concurrent,
@@ -3043,34 +3083,62 @@ class EvolveV61Cycle:
         state = self._load_cycle_state(cycle)
         saved_run_id = str(state.get("run_id") or "")
         if destination.exists():
-            count = self._trajectory_count(destination)
-            if count < 1 and not self.dry_run:
+            validation = validate_rollout_artifacts(destination, self.case_ids)
+            if validation["valid"] or self.dry_run:
+                run_id = saved_run_id or ("baseline-snapshot" if cycle == 1 else self._run_id(cycle))
+                provenance_path = cycle_dir / "rollout_provenance.json"
+                if not provenance_path.is_file():
+                    if cycle == 1 and self.baseline_dir and self.baseline_dir.exists():
+                        source = self.baseline_dir.resolve()
+                        self._write_rollout_provenance(
+                            cycle,
+                            run_id,
+                            destination,
+                            source_type="prep-baseline-snapshot-recovered",
+                            source_path=source,
+                            source_fingerprint=self._tree_fingerprint(source),
+                        )
+                    else:
+                        self._write_rollout_provenance(
+                            cycle,
+                            run_id,
+                            destination,
+                            source_type="benchmark-rollout-recovered",
+                            source_path=self.rollout_agent._expected_run_dir(run_id),
+                        )
+                logger.info("[v6.1] cycle %d reusing validated rollout: %s", cycle, destination)
+                return RolloutResultV61(destination, run_id, cycle, len(self.case_ids))
+            if cycle == 1:
                 raise RuntimeError(
-                    f"existing v6.1 rollout has no trajectories: {destination}"
+                    "existing v6.1 baseline rollout is incomplete: "
+                    f"{destination}; invalid={validation['invalid_case_ids']} "
+                    f"missing={validation['missing_case_ids']}"
                 )
-            run_id = saved_run_id or ("baseline-snapshot" if cycle == 1 else self._run_id(cycle))
-            provenance_path = cycle_dir / "rollout_provenance.json"
-            if not provenance_path.is_file():
-                if cycle == 1 and self.baseline_dir and self.baseline_dir.exists():
-                    source = self.baseline_dir.resolve()
-                    self._write_rollout_provenance(
-                        cycle,
-                        run_id,
-                        destination,
-                        source_type="prep-baseline-snapshot-recovered",
-                        source_path=source,
-                        source_fingerprint=self._tree_fingerprint(source),
-                    )
-                else:
-                    self._write_rollout_provenance(
-                        cycle,
-                        run_id,
-                        destination,
-                        source_type="benchmark-rollout-recovered",
-                        source_path=self.rollout_agent._expected_run_dir(run_id),
-                    )
-            logger.info("[v6.1] cycle %d reusing materialized rollout: %s", cycle, destination)
-            return RolloutResultV61(destination, run_id, cycle, len(self.case_ids))
+            quarantine = destination.with_name(
+                f"{destination.name}.invalid-{time.strftime('%m%d-%H%M%S')}-{time.time_ns()}"
+            )
+            logger.warning(
+                "[v6.1] quarantining invalid cycle %d rollout before retry: %s -> %s "
+                "(valid=%d/%d)",
+                cycle,
+                destination,
+                quarantine,
+                validation["valid_trial_count"],
+                validation["expected_case_count"],
+            )
+            os.replace(destination, quarantine)
+            # The completion marker describes the just-quarantined raw run.
+            # Keeping it would make an interrupted retry look complete merely
+            # because it uses the same stable run_id.
+            stale_marker = cycle_dir / "rollout_command_complete.json"
+            if stale_marker.exists():
+                os.replace(
+                    stale_marker,
+                    stale_marker.with_name(
+                        f"{stale_marker.name}.invalid-{time.strftime('%m%d-%H%M%S')}-"
+                        f"{time.time_ns()}"
+                    ),
+                )
 
         if cycle == 1 and self.baseline_dir and self.baseline_dir.exists():
             source = self.baseline_dir.resolve()
@@ -3101,6 +3169,27 @@ class EvolveV61Cycle:
             marker_matches = marker_data.get("run_id") == run_id
         except (OSError, json.JSONDecodeError):
             marker_data = {}
+        # Compatibility with workdirs quarantined by the earlier implementation,
+        # which moved rollout/ but accidentally left its completion marker.  A
+        # newly staged raw_dir under that stale marker must be treated as partial.
+        if (
+            raw_dir.exists()
+            and marker_matches
+            and any(cycle_dir.glob("rollout.invalid-*"))
+            and not destination.exists()
+        ):
+            logger.warning(
+                "[v6.1] quarantining stale rollout marker before interrupted retry: %s",
+                command_marker,
+            )
+            os.replace(
+                command_marker,
+                command_marker.with_name(
+                    f"{command_marker.name}.invalid-{time.strftime('%m%d-%H%M%S')}-"
+                    f"{time.time_ns()}"
+                ),
+            )
+            marker_matches = False
         if raw_dir.exists() and not marker_matches:
             # A raw run without our post-wait marker means the parent process
             # stopped mid-rollout.  It is owned private staging, so discard it
@@ -3145,8 +3234,16 @@ class EvolveV61Cycle:
             destination.parent.mkdir(parents=True, exist_ok=True)
             os.replace(raw.run_dir, destination)
             self._remove_empty_rollout_staging()
-        if self._trajectory_count(destination) < 1 and not self.dry_run:
-            raise RuntimeError(f"v6.1 rollout produced no trajectories: {destination}")
+        if not self.dry_run:
+            validation = validate_rollout_artifacts(destination, self.case_ids)
+            self._atomic_json(cycle_dir / "rollout_validation.json", validation)
+            if not validation["valid"]:
+                raise RuntimeError(
+                    f"v6.1 rollout incomplete ({validation['valid_trial_count']}/"
+                    f"{validation['expected_case_count']} valid): {destination}; "
+                    f"invalid={validation['invalid_case_ids']} "
+                    f"missing={validation['missing_case_ids']}"
+                )
         self._write_rollout_provenance(
             cycle,
             run_id,
@@ -3326,6 +3423,7 @@ class EvolveV61Cycle:
         created_at = previous.get("created_at") or time.strftime("%Y-%m-%dT%H:%M:%S%z")
         self._atomic_json(path, {
             "schema_version": "v6.1-run-manifest.1",
+            "framework": "coat",
             "version": "v6.1",
             "benchmark": self.benchmark,
             "created_at": created_at,
@@ -3476,7 +3574,7 @@ def _add_common(parser: argparse.ArgumentParser) -> None:
 
 def main(argv=None) -> None:
     parser = argparse.ArgumentParser(
-        description="Evolve v6.1: focused DAG slices evolve tools and instructions."
+        description="COAT v6.1: focused DAG slices evolve tools and instructions."
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
     p_run = sub.add_parser("run", help="run the full N-cycle loop")

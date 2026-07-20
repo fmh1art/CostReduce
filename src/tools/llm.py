@@ -1,6 +1,9 @@
 import logging
+import os
 import time
+import uuid
 from pathlib import Path
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -8,24 +11,87 @@ logger = logging.getLogger(__name__)
 class LLM:
     def __init__(self, config_path):
         cfg = self._load_config(config_path)
-        # api_type=responses: bytedance aidp 网关对这批 GPT 模型只暴露 Responses API
-        # (chat-completions 路径全部 404)，走 AzureOpenAI + responses.create。
         self.api_type = (cfg.get("api_type") or "chat").strip().lower()
+        if self.api_type not in {"chat", "azure_chat", "responses"}:
+            raise ValueError(
+                f"unsupported api_type={self.api_type!r}; expected chat, azure_chat, or responses"
+            )
         self.model = cfg.get("llm_name") or cfg.get("model")
-        self.temperature = float(cfg.get("temperature", 0))
-        if self.api_type == "responses":
+        raw_retry_pause = cfg.get(
+            "api_retry_pause_seconds",
+            os.getenv("API_RETRY_PAUSE_SECONDS", "60"),
+        )
+        try:
+            self.retry_pause_seconds = max(0.0, float(raw_retry_pause))
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                "api_retry_pause_seconds must be a non-negative number"
+            ) from exc
+        raw_temperature = cfg.get("temperature")
+        self.temperature = (
+            float(raw_temperature) if raw_temperature not in (None, "") else None
+        )
+        raw_thinking = cfg.get("thinking")
+        self.thinking = (
+            str(raw_thinking).strip().lower()
+            if raw_thinking not in (None, "")
+            else None
+        )
+        if self.thinking not in {None, "enabled", "disabled", "auto"}:
+            raise ValueError(
+                "thinking must be enabled, disabled, or auto "
+                f"(got {self.thinking!r})"
+            )
+        if self.api_type in {"azure_chat", "responses"}:
             from openai import AzureOpenAI
 
-            self.client = AzureOpenAI(
+            azure_endpoint = cfg.get("azure_endpoint") or cfg.get("openai_base_url")
+            if not azure_endpoint:
+                raise ValueError(f"api_type={self.api_type} requires azure_endpoint")
+            default_headers = None
+            if self.api_type == "azure_chat":
+                # AIDP accepts requests without this header, but attaching a unique
+                # log id makes failed calls traceable on the gateway side.
+                default_headers = {
+                    "X-TT-LOGID": f"optiharness-{uuid.uuid4().hex}"
+                }
+            client_kwargs = dict(
                 api_key=cfg.get("key"),
-                azure_endpoint=cfg.get("azure_endpoint"),
+                azure_endpoint=azure_endpoint,
                 api_version=cfg.get("api_version") or "2024-03-01-preview",
+                default_headers=default_headers,
             )
-            self.max_output_tokens = int(cfg.get("max_output_tokens", 4096))
+            http_client = self._internal_http_client(azure_endpoint)
+            if http_client is not None:
+                client_kwargs["http_client"] = http_client
+            self.client = AzureOpenAI(**client_kwargs)
+            if self.api_type == "responses":
+                self.max_output_tokens = int(cfg.get("max_output_tokens", 4096))
         else:
             from openai import OpenAI
 
-            self.client = OpenAI(api_key=cfg.get("key"), base_url=cfg.get("openai_base_url"))
+            base_url = cfg.get("openai_base_url")
+            client_kwargs = {"api_key": cfg.get("key"), "base_url": base_url}
+            http_client = self._internal_http_client(base_url)
+            if http_client is not None:
+                client_kwargs["http_client"] = http_client
+            self.client = OpenAI(**client_kwargs)
+
+    @staticmethod
+    def _internal_http_client(endpoint):
+        """Bypass ambient proxies for ByteDance-internal model gateways.
+
+        Experiment shells intentionally use a proxy for public endpoints such
+        as Kimi.  ByteDance gateways are reachable only on the internal route;
+        relying on process-global ``NO_PROXY`` made direct COAT annotation fail
+        even when the same config worked inside the benchmark container.
+        """
+        host = (urlparse(str(endpoint or "")).hostname or "").lower()
+        if host == "bytedance.net" or host.endswith(".bytedance.net"):
+            import httpx
+
+            return httpx.Client(trust_env=False)
+        return None
 
     def query(self, system_prompt, history, user_prompt):
         if self.api_type == "responses":
@@ -43,18 +109,26 @@ class LLM:
         last_exc = None
         for attempt in range(self._max_retries):
             try:
-                rsp = self.client.chat.completions.create(
+                kwargs = dict(
                     model=self.model,
-                    temperature=self.temperature,
                     messages=messages,
                     timeout=self._timeout,
                 )
+                if self.temperature is not None:
+                    kwargs["temperature"] = self.temperature
+                if self.thinking is not None:
+                    kwargs["extra_body"] = {
+                        "thinking": {"type": self.thinking}
+                    }
+                rsp = self.client.chat.completions.create(**kwargs)
                 return rsp.choices[0].message.content
             except Exception as exc:
                 last_exc = exc
                 if not self._is_retryable(exc):
                     raise
-                wait = self._backoff_seconds * (2 ** attempt)
+                if attempt + 1 >= self._max_retries:
+                    break
+                wait = self._backoff_seconds
                 logger.warning(
                     "LLM call failed (attempt %d/%d): %s; retrying in %.1fs",
                     attempt + 1,
@@ -71,20 +145,28 @@ class LLM:
         last_exc = None
         for attempt in range(self._max_retries):
             try:
-                rsp = self.client.responses.create(
+                kwargs = dict(
                     model=self.model,
                     input=inp,
                     instructions=system_prompt or None,
-                    temperature=self.temperature,
                     max_output_tokens=self.max_output_tokens,
                     timeout=self._timeout,
                 )
+                if self.temperature is not None:
+                    kwargs["temperature"] = self.temperature
+                if self.thinking is not None:
+                    kwargs["extra_body"] = {
+                        "thinking": {"type": self.thinking}
+                    }
+                rsp = self.client.responses.create(**kwargs)
                 return self._extract_responses_text(rsp)
             except Exception as exc:
                 last_exc = exc
                 if not self._is_retryable(exc):
                     raise
-                wait = self._backoff_seconds * (2 ** attempt)
+                if attempt + 1 >= self._max_retries:
+                    break
+                wait = self._backoff_seconds
                 logger.warning(
                     "LLM responses call failed (attempt %d/%d): %s; retrying in %.1fs",
                     attempt + 1,
@@ -116,7 +198,7 @@ class LLM:
 
     @property
     def _backoff_seconds(self) -> float:
-        return 1.0
+        return self.retry_pause_seconds
 
     @property
     def _timeout(self) -> float:

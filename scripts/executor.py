@@ -13,6 +13,19 @@ import re
 
 _MAX_OBSERVATION_CHARS = 3000
 
+_SKIP_DIRS = {'.git', 'node_modules', '__pycache__', 'venv', '.venv',
+              'dist', 'build', '.tox', '.eggs', '*.egg-info'}
+
+
+def _should_skip_dir(dirname):
+    """Check if a directory should be excluded from traversal."""
+    if dirname in _SKIP_DIRS:
+        return True
+    for pat in _SKIP_DIRS:
+        if '*' in pat and fnmatch.fnmatch(dirname, pat):
+            return True
+    return False
+
 
 def _truncate_output(output, max_chars=_MAX_OBSERVATION_CHARS):
     """Truncate output to max_chars, appending a truncation notice."""
@@ -127,6 +140,48 @@ def _read_single_file(filepath, head, tail, lines, start_line, end_line, number)
     return content, None
 
 
+def _resolve_single_file_spec(entry, top_level_params):
+    """Resolve a single entry from the 'files' array into (filepath, params_dict).
+
+    ``entry`` can be a string (file path only) or a dict with 'file' key
+    and optional per-file overrides.  ``top_level_params`` is a dict of the
+    shared top-level parameters (head, tail, lines, start, end, number).
+    Returns (filepath, merged_params) where merged_params starts from
+    top_level_params and is overridden by any keys in the entry dict.
+
+    When a per-file override sets a range parameter, conflicting top-level
+    range params are cleared so the override takes full effect.
+    """
+    if isinstance(entry, str):
+        return entry, dict(top_level_params)
+    if isinstance(entry, dict):
+        filepath = entry.get("file", "")
+        merged = dict(top_level_params)
+        for key in ("head", "tail", "lines", "start", "end", "number"):
+            if key in entry:
+                merged[key] = entry[key]
+        # Mutually-exclusive range params: if override sets any range param,
+        # clear conflicting top-level ones so the override takes effect.
+        # Priority order in _read_single_file: lines > head > tail > start/end.
+        has_override = set(entry.keys()) & {"lines", "head", "tail", "start", "end"}
+        if has_override:
+            if "lines" in entry:
+                for k in ("head", "tail", "start", "end"):
+                    merged.pop(k, None)
+            elif "head" in entry:
+                for k in ("tail", "lines", "start", "end"):
+                    merged.pop(k, None)
+            elif "tail" in entry:
+                for k in ("head", "lines", "start", "end"):
+                    merged.pop(k, None)
+            elif "start" in entry or "end" in entry:
+                for k in ("head", "tail", "lines"):
+                    merged.pop(k, None)
+        return filepath, merged
+    # Fallback: treat as string
+    return str(entry), dict(top_level_params)
+
+
 def run_tool(action, cwd=None, timeout=120):
     """Dispatch one evolved-tool call. Override / extend the branches below."""
     name = action.get("tool")
@@ -200,32 +255,40 @@ def run_tool(action, cwd=None, timeout=120):
             files_param = action.get("files")
             file_param = action.get("file")
             if files_param and isinstance(files_param, list):
-                filepaths = files_param
+                entries = files_param
             elif file_param:
-                filepaths = [file_param]
+                entries = [file_param]
             else:
-                return {"output": "read-lines: provide 'file' (string) or 'files' (array of strings)",
+                return {"output": "read-lines: provide 'file' (string) or 'files' (array of strings/objects)",
                         "returncode": 1, "exception_info": "missing file/files"}
 
-            head = action.get("head")
-            tail = action.get("tail")
-            lines = action.get("lines")
-            start_line = action.get("start")
-            end_line = action.get("end")
-            number = action.get("number", False)
+            # Top-level shared parameters
+            top_params = {}
+            for key in ("head", "tail", "lines", "start", "end", "number"):
+                val = action.get(key)
+                if val is not None:
+                    top_params[key] = val
 
             results = []
             had_errors = False
-            multi = len(filepaths) > 1
-            for fpath in filepaths:
+            multi = len(entries) > 1
+            for entry in entries:
+                fpath, params = _resolve_single_file_spec(entry, top_params)
                 if not fpath or not isinstance(fpath, str):
                     results.append(f"=== {fpath} ===\n<skipped: invalid path>")
                     had_errors = True
                     continue
                 # Resolve relative paths against cwd
                 resolved = os.path.join(cwd or ".", fpath) if not os.path.isabs(fpath) else fpath
-                content, err = _read_single_file(resolved, head, tail, lines,
-                                                  start_line, end_line, number)
+                content, err = _read_single_file(
+                    resolved,
+                    params.get("head"),
+                    params.get("tail"),
+                    params.get("lines"),
+                    params.get("start"),
+                    params.get("end"),
+                    params.get("number", False),
+                )
                 if err:
                     results.append(f"=== {fpath} ===\n{err}")
                     had_errors = True
@@ -245,6 +308,33 @@ def run_tool(action, cwd=None, timeout=120):
                     "returncode": 1, "exception_info": repr(exc)}
 
     # ------------------------------------------------------------------ #
+    # write-file
+    # ------------------------------------------------------------------ #
+    elif name == "write-file":
+        try:
+            filepath = action.get("file")
+            file_content = action.get("content")
+            if not filepath:
+                return {"output": "missing required parameter: file",
+                        "returncode": 1, "exception_info": "missing file"}
+            if file_content is None:
+                return {"output": "missing required parameter: content",
+                        "returncode": 1, "exception_info": "missing content"}
+            if cwd and not os.path.isabs(filepath):
+                filepath = os.path.join(cwd, filepath)
+            # Create parent directories if needed
+            parent = os.path.dirname(filepath)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
+            with open(filepath, 'w') as f:
+                f.write(file_content)
+            return {"output": f"Wrote {len(file_content)} bytes to {filepath}",
+                    "returncode": 0, "exception_info": ""}
+        except Exception as exc:
+            return {"output": f"write-file failed: {exc}",
+                    "returncode": 1, "exception_info": repr(exc)}
+
+    # ------------------------------------------------------------------ #
     # search-code
     # ------------------------------------------------------------------ #
     elif name == "search-code":
@@ -254,17 +344,26 @@ def run_tool(action, cwd=None, timeout=120):
                 return {"output": "missing required parameter: pattern",
                         "returncode": 1, "exception_info": "missing pattern"}
             root = action.get("path") or cwd or "."
+            if cwd and not os.path.isabs(root):
+                root = os.path.join(cwd, root)
+            if not os.path.isdir(root):
+                return {"output": f"directory not found: {root}",
+                        "returncode": 1, "exception_info": f"no such directory: {root}"}
             include = action.get("include", "")
             max_results = action.get("max_results", 50)
+            files_with_matches = action.get("files_with_matches", False)
 
-            matches = []
             try:
                 regex = re.compile(pattern)
             except re.error as e:
                 return {"output": f"invalid regex pattern: {e}",
                         "returncode": 1, "exception_info": str(e)}
 
+            matches = []
+            matched_files = set()
+
             for dirpath, dirnames, filenames in os.walk(root):
+                dirnames[:] = [d for d in dirnames if not _should_skip_dir(d)]
                 for f in filenames:
                     filepath = os.path.join(dirpath, f)
                     if include:
@@ -276,17 +375,23 @@ def run_tool(action, cwd=None, timeout=120):
                             for line_no, line in enumerate(fh, 1):
                                 if regex.search(line):
                                     relpath = os.path.relpath(filepath, root)
-                                    matches.append(f"{relpath}:{line_no}:{line.rstrip()}")
-                                    if max_results > 0 and len(matches) >= max_results:
-                                        break
+                                    if files_with_matches:
+                                        matched_files.add(relpath)
+                                    else:
+                                        matches.append(f"{relpath}:{line_no}:{line.rstrip()}")
+                                        if max_results > 0 and len(matches) >= max_results:
+                                            break
                     except (IOError, OSError):
                         pass
-                    if max_results > 0 and len(matches) >= max_results:
+                    if not files_with_matches and max_results > 0 and len(matches) >= max_results:
                         break
-                if max_results > 0 and len(matches) >= max_results:
+                if not files_with_matches and max_results > 0 and len(matches) >= max_results:
                     break
 
-            output = "\n".join(matches) if matches else "(no matches)"
+            if files_with_matches:
+                output = "\n".join(sorted(matched_files)) if matched_files else "(no matches)"
+            else:
+                output = "\n".join(matches) if matches else "(no matches)"
             return {"output": _truncate_output(output), "returncode": 0, "exception_info": ""}
         except Exception as exc:
             return {"output": f"search-code failed: {exc}",
@@ -301,6 +406,11 @@ def run_tool(action, cwd=None, timeout=120):
             if not pattern:
                 pattern = "*"
             root = action.get("path") or cwd or "."
+            if cwd and not os.path.isabs(root):
+                root = os.path.join(cwd, root)
+            if not os.path.isdir(root):
+                return {"output": f"directory not found: {root}",
+                        "returncode": 1, "exception_info": f"no such directory: {root}"}
             search_type = action.get("type", "files")
             max_results = action.get("max_results", 50)
             max_depth = action.get("max_depth")
@@ -313,6 +423,7 @@ def run_tool(action, cwd=None, timeout=120):
             root_abs = os.path.abspath(root)
             # os.walk with depth control: track depth by counting os.sep in relpath
             for dirpath, dirnames, filenames in os.walk(root_abs):
+                dirnames[:] = [d for d in dirnames if not _should_skip_dir(d)]
                 rel_dir = os.path.relpath(dirpath, root_abs)
                 depth = 0 if rel_dir == "." else rel_dir.count(os.sep) + 1
                 # Save dirnames before potentially clearing for depth control
@@ -359,8 +470,13 @@ def run_tool(action, cwd=None, timeout=120):
             new_string = action.get("new_string")
 
             if not filepath or old_string is None or new_string is None:
-                missing = [p for p in ["file", "old_string", "new_string"]
-                           if not action.get(p) and action.get(p) is not None is False]
+                missing = []
+                if not filepath:
+                    missing.append("file")
+                if old_string is None:
+                    missing.append("old_string")
+                if new_string is None:
+                    missing.append("new_string")
                 return {"output": f"missing required parameter(s): {', '.join(missing)}",
                         "returncode": 1, "exception_info": "missing parameters"}
 
@@ -412,7 +528,8 @@ def run_tool(action, cwd=None, timeout=120):
                 if args:
                     cmd += args.split()
 
-                r = subprocess.run(cmd, cwd=cwd, capture_output=True,
+                run_cwd = action.get("cwd") or cwd
+                r = subprocess.run(cmd, cwd=run_cwd, capture_output=True,
                                    text=True, timeout=timeout)
                 return {"output": _truncate_output((r.stdout or "") + (r.stderr or "")),
                         "returncode": r.returncode, "exception_info": ""}
@@ -426,7 +543,7 @@ def run_tool(action, cwd=None, timeout=120):
                     "returncode": 1, "exception_info": repr(exc)}
 
     return {
-        "output": f"executor has no branch for tool {name!r} yet \u2014 add it.",
+        "output": f"executor has no branch for tool {name!r} yet — add it.",
         "returncode": 1,
         "exception_info": f"unhandled tool {name!r}",
     }

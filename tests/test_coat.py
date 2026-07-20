@@ -1,12 +1,14 @@
 from collections import Counter
 import json
+import os
 import re
+import subprocess
 import threading
 from pathlib import Path
 
 import pytest
 
-from src.evolve.evolve_v6_1_cycle import (
+from src.evolve.coat import (
     DAGContrastiveSampleBuilderV61,
     EvolveV61Cycle,
     EvolvePromptBuilderV61,
@@ -16,6 +18,7 @@ from src.evolve.evolve_v6_1_cycle import (
     RolloutAgentV61,
     ScriptEvolverV61,
     TrajectoryAnnotatorV61,
+    _max_completion_tokens,
     _run_has_forbidden_oracle_action,
 )
 
@@ -43,6 +46,11 @@ def _step(
         "step_meta": {"op_type": op_type, "op_state": op_state},
         "_test_dependencies": dependencies,
     }
+
+
+def test_coat_reads_nested_default_max_completion_tokens(monkeypatch):
+    monkeypatch.delenv("MSWEA_MAXTOK_CONFIG", raising=False)
+    assert _max_completion_tokens() == 16384
 
 
 def _trajectory(steps):
@@ -321,6 +329,7 @@ def test_v61_direct_runner_passes_exact_prompt_as_user_task(tmp_path, monkeypatc
         "_load_llm_env",
         lambda: ({}, "test-model", 0.0, "test-model-class"),
     )
+    monkeypatch.setattr(runner, "_load_thinking", lambda: None)
     captured = {}
     monkeypatch.setattr(
         runner,
@@ -616,7 +625,7 @@ def test_v61_cycle_materializes_results_layout_without_mutating_prep(
     source_before = source_path.read_bytes()
     cases_file = tmp_path / "cases.txt"
     cases_file.write_text("case__one\n", encoding="utf-8")
-    work_dir = tmp_path / "results" / "evolve" / "v61cycle" / "swebench" / "run"
+    work_dir = tmp_path / "results" / "evolve" / "coat" / "swebench" / "run"
     scripts_dir = work_dir / "scripts"
     scripts_dir.mkdir(parents=True)
     (scripts_dir / "tools.json").write_text("[]\n", encoding="utf-8")
@@ -671,10 +680,196 @@ def test_v61_cycle_materializes_results_layout_without_mutating_prep(
     assert json.loads((work_dir / "output_layout.json").read_text())["valid"] is True
 
 
-def test_shell_entry_maps_v61_to_standalone_module():
+def test_shell_entry_maps_to_coat_module():
     root = Path(__file__).resolve().parents[1]
     script = (root / "scripts" / "run_evolve_experiment.sh").read_text(encoding="utf-8")
-    assert 'v6.1) EVOLVE_MOD="evolve_v6_1_cycle"; VERSION_TAG="v61cycle"' in script
-    assert 'python -m src.evolve.evolve_v6_1_cycle run' in script
-    assert 'EVOLVE_VERSION" == "v6.1"' in script
-    assert '--judge-config "$V61_JUDGE_CONFIG"' in script
+    assert 'EVOLVE_MOD="coat"' in script
+    assert 'VERSION_TAG="coat"' in script
+    assert 'python -m "src.evolve.${EVOLVE_MOD}" run' in script
+    assert 'EVOLVE_FRAMEWORK" == "coat"' in script
+    assert '--judge-config "$LLM_CONFIG"' in script
+    assert 'EVAL_CASE_TAG="all"' in script
+    assert "evolve${EVOLVE_CASE_COUNT}_eval${EVAL_CASE_TAG}" in script
+    assert '-name "evolve-*-${BENCHMARK}-*"' not in script
+    assert 'root.glob(f"evolve-coat-{benchmark}-*")' in script
+    assert '"final_eval_exit_code": int(final_eval_rc)' in script
+    assert '"complete": (' in script
+    assert 'final eval 失败（rc=$FINAL_EVAL_RC；manifest 已写入）' in script
+    assert 'evolve final eval 不完整' in script
+
+
+def test_run_exp_supports_paired_no_evolve_after_main_run():
+    root = Path(__file__).resolve().parents[1]
+    entry = (root / "scripts" / "run_exp.sh").read_text(encoding="utf-8")
+    waiter = (root / "scripts" / "wait_then_run_no_evolve.sh").read_text(
+        encoding="utf-8"
+    )
+    assert 'RUN_NO_EVOLVE_AFTER="${RUN_NO_EVOLVE_AFTER:-0}"' in entry
+    assert 'PHASE=no_evolve RUN_NO_EVOLVE_AFTER=0' in entry
+    assert 'exec env PHASE=no_evolve RUN_NO_EVOLVE_AFTER=0' in waiter
+
+
+def test_run_exp_layout_uses_config_filename_and_both_case_counts(tmp_path):
+    root = Path(__file__).resolve().parents[1]
+    config = root / "_config" / "deepseekv4_flash.yaml"
+    env = os.environ.copy()
+    env.update({
+        "BENCHMARKS": " ",  # verify entrypoint setup without launching a benchmark
+        "LLM_CONFIG": str(config),
+        "EVOLVE_CASE_COUNT": "3",
+        "EVAL_N_TASKS": "5",
+        "RESULTS_ROOT": str(tmp_path),
+    })
+    completed = subprocess.run(
+        ["bash", str(root / "scripts" / "run_exp.sh")],
+        cwd=root,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    expected = tmp_path / "deepseekv4_flash" / "evolve3_eval5"
+    assert f"EXPERIMENT_RESULTS_ROOT={expected}" in completed.stdout
+    assert f"{expected}/evolve/coat/<bench>/<TS>/" in completed.stdout
+
+
+def test_run_exp_eval_all_includes_evolve_cases(tmp_path):
+    root = Path(__file__).resolve().parents[1]
+    work_dir = tmp_path / "work"
+    results_root = tmp_path / "results"
+    env = os.environ.copy()
+    env.update({
+        "BENCHMARKS": "deep-swe",
+        "LLM_CONFIG": str(root / "_config" / "deepseekv4_flash.yaml"),
+        "EVOLVE_CASE_COUNT": "2",
+        # EVAL_N_TASKS is deliberately non-numeric: eval-all must derive it
+        # from the benchmark pool rather than use the fixed-count setting.
+        "EVAL_N_TASKS": "ignored-in-eval-all-mode",
+        "EVAL_ALL_CASES": "1",
+        "COAT_N_CYCLES": "1",
+        "N_CONCURRENT": "1",
+        "EVOLVE_WORKERS": "1",
+        "DRY_RUN": "1",
+        "CONDA_ENV": "",
+        "WORK_DIR": str(work_dir),
+        "RESULTS_ROOT": str(results_root),
+    })
+    completed = subprocess.run(
+        ["bash", str(root / "scripts" / "run_exp.sh")],
+        cwd=root,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    namespace = results_root / "deepseekv4_flash" / "evolve2_evalall"
+    assert f"EXPERIMENT_RESULTS_ROOT={namespace}" in completed.stdout
+
+    evolve_ids = set((work_dir / "eval_cases.txt").read_text().splitlines())
+    final_ids = set((work_dir / "final_eval_cases.txt").read_text().splitlines())
+    assert len(evolve_ids) == 2
+    assert len(final_ids) == 113
+    assert evolve_ids <= final_ids
+    split = json.loads((work_dir / "experiment_split_manifest.json").read_text())
+    assert split["evaluation_scope"] == "all_including_evolve"
+    assert split["evolve_is_subset_of_evaluation"] is True
+    assert split["overlap_count"] == 2
+
+
+def test_run_exp_canonicalizes_relative_swebench_task_path(tmp_path):
+    root = Path(__file__).resolve().parents[1]
+    work_dir = tmp_path / "work"
+    env = os.environ.copy()
+    env.update({
+        "BENCHMARKS": "swebench",
+        "LLM_CONFIG": str(root / "_config" / "deepseekv4_flash.yaml"),
+        "SWEBENCH_TASK_PATH": "tmp/harbor/datasets/swebench-verified",
+        "EVOLVE_CASE_COUNT": "1",
+        "EVAL_N_TASKS": "1",
+        "COAT_N_CYCLES": "1",
+        "N_CONCURRENT": "1",
+        "EVOLVE_WORKERS": "1",
+        "DRY_RUN": "1",
+        "CONDA_ENV": "",
+        "WORK_DIR": str(work_dir),
+        "RESULTS_ROOT": str(tmp_path / "results"),
+    })
+    completed = subprocess.run(
+        ["bash", str(root / "scripts" / "run_exp.sh")],
+        cwd=root,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    links = list((work_dir / "prep_taskdir").iterdir())
+    assert len(links) == 1
+    assert links[0].is_symlink()
+    assert links[0].resolve().is_dir()
+    assert (links[0].resolve() / "task.toml").is_file()
+
+
+def test_run_exp_honors_custom_datamind_task_path(tmp_path):
+    root = Path(__file__).resolve().parents[1]
+    flat = tmp_path / "custom-longds-flat"
+    for case_id in ("case-one", "case-two"):
+        case = flat / case_id
+        case.mkdir(parents=True)
+        (case / "task.toml").write_text("[task]\n", encoding="utf-8")
+    work_dir = tmp_path / "work"
+    env = os.environ.copy()
+    env.update({
+        "BENCHMARKS": "datamind",
+        "LLM_CONFIG": str(root / "_config" / "deepseekv4_flash.yaml"),
+        "DATAMIND_TASK_PATH": str(flat),
+        # Existing flat tasks must not require the original LongDS source tree.
+        "DATAMIND_TASK_ROOT": str(tmp_path / "intentionally-missing-source"),
+        "EVOLVE_CASE_COUNT": "1",
+        "EVAL_N_TASKS": "1",
+        "COAT_N_CYCLES": "1",
+        "N_CONCURRENT": "1",
+        "EVOLVE_WORKERS": "1",
+        "DRY_RUN": "1",
+        "CONDA_ENV": "",
+        "WORK_DIR": str(work_dir),
+        "RESULTS_ROOT": str(tmp_path / "results"),
+    })
+    completed = subprocess.run(
+        ["bash", str(root / "scripts" / "run_exp.sh")],
+        cwd=root,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    links = list((work_dir / "prep_taskdir").iterdir())
+    assert len(links) == 1
+    assert links[0].resolve().parent == flat.resolve()
+    final_links = list((work_dir / "final_eval_taskdir").iterdir())
+    assert len(final_links) == 1
+    assert final_links[0].resolve().parent == flat.resolve()
+    entry = (root / "scripts" / "run_evolve_experiment.sh").read_text(
+        encoding="utf-8"
+    )
+    assert 'export DATAMIND_TASK_PATH="$SOURCE_TASK_DIR"' in entry
+
+
+def test_single_llm_config_controls_all_llm_stages_except_atlas_evaluate():
+    root = Path(__file__).resolve().parents[1]
+    entry = (root / "scripts" / "run_evolve_experiment.sh").read_text(encoding="utf-8")
+    common = (root / "scripts" / "_bench_common.sh").read_text(encoding="utf-8")
+    datamind = (root / "scripts" / "run_datamind_harbor.sh").read_text(encoding="utf-8")
+    atlas = (root / "scripts" / "run_swe_atlas.sh").read_text(encoding="utf-8")
+
+    assert 'V61_JUDGE_CONFIG' not in entry
+    assert '--config "$LLM_CONFIG"' in entry
+    assert '--judge-config "$LLM_CONFIG"' in entry
+    assert 'LLM_CONFIG="$LLM_CONFIG"' in entry
+    assert "'JUDGE_MODEL': data['llm_name']" in common
+    assert 'JUDGE_MODEL=${JUDGE_MODEL}' in datamind
+    assert 'VERIFIER_MODEL' not in datamind
+    assert 'python - "$ATLAS_EVAL_CONFIG"' in atlas

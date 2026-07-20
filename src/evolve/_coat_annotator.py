@@ -1,4 +1,4 @@
-"""Stage 1: annotate trajectory step dependencies with an LLM."""
+"""Shared annotation mechanics used only by the COAT v6.1 annotator."""
 
 from __future__ import annotations
 
@@ -26,10 +26,11 @@ class TrajectoryAnnotator:
     index `j` that step `i` depends on. The result is written back into the
     trajectory file in-place. Here, "depends on" means that if the agent see all previous step j, it can generate the step i.
 
-    V3 merges a step-type (``op_type``) question into the *same* LLM call, so
+    The base implementation merges a step-type (``op_type``) question into the
+    same LLM call, so
     both ``dependencies[i]`` and ``step_meta.op_type`` come from one query per
-    step — no extra round-trip. op_type is best-effort (falls back to the v2
-    rule classifier on parse failure); dependencies stay correctness-critical.
+    step — no extra round-trip. ``op_type`` is best-effort; the COAT subclass
+    applies a deterministic fallback. Dependencies stay correctness-critical.
     """
 
     name = "annotate"
@@ -236,8 +237,8 @@ class TrajectoryAnnotator:
 
         Returns ``(i, deps, op_type)``. deps is correctness-critical and raises
         ``DependencyParseError`` on parse failure (as before). op_type is
-        best-effort: ``None`` on parse failure, left for the v2 rule classifier
-        to fill (marked ``op_type_source="rule_fallback"`` there).
+        best-effort: ``None`` on parse failure, left for the COAT subclass to
+        fill (marked ``op_type_source="rule_fallback"`` there).
         """
         logger.info("annotating %s step %d/%d", path, i, total)
         user_prompt = (
@@ -307,8 +308,8 @@ class TrajectoryAnnotator:
         """Stamp LLM op_type into each action step's ``step_meta``.
 
         Only writes when the LLM produced a label for that step (op_type is
-        non-None); steps without one are left for the v2 rule classifier, which
-        fills ``step_meta`` and marks ``op_type_source="rule_fallback"``.
+        non-None); the COAT subclass fills missing labels deterministically and
+        marks them ``op_type_source="rule_fallback"``.
         Leaves any pre-existing ``step_meta`` fields untouched.
         """
         for i, step in enumerate(action_steps, start=1):

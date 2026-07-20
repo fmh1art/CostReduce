@@ -1,9 +1,6 @@
-"""v6: the evolve agent writes the registration files directly (no converter).
+"""COAT v6.1 writes the registration files consumed by mini-swe-agent.
 
-In v5 the evolve agent edits ``main.sh``/``intro.json`` and a converter
-(:mod:`src.evolve.native_tools`) builds a manifest + bash dispatch. In v6 the
-evolve agent writes the **actual tool-registration files** that mini-swe-agent
-loads:
+The evolve agent writes the **actual tool-registration files**:
 
 * ``tools.json``  — the registry (function-tool schemas).
 * ``executor.py`` — the ``run_tool(action, ...)`` Python executor.
@@ -25,7 +22,7 @@ module only:
 CLI::
 
     python -m src.evolve.native_tools_v6 seed        --scripts-dir <dir>
-    python -m src.evolve.native_tools_v6 deploy       --scripts-dir <dir> --api-type chat|responses
+    python -m src.evolve.native_tools_v6 deploy       --scripts-dir <dir> --api-type chat|azure_chat|responses
     python -m src.evolve.native_tools_v6 validate     --scripts-dir <dir>
     python -m src.evolve.native_tools_v6 deploy-runtime --scripts-dir <dir>
 """
@@ -221,6 +218,8 @@ def config_yaml_text(
     api_type: str = "chat",
     *,
     max_completion_tokens: int | None = None,
+    temperature: float | None = None,
+    thinking: str | None = None,
     container: bool = True,
 ) -> str:
     api = (api_type or "chat").strip().lower()
@@ -235,8 +234,22 @@ def config_yaml_text(
         "# (tools.json + executor.py) as native function tools via evolve_tools_v6.",
         "model:", f"  model_class: {mc}",
     ]
+    thinking = str(thinking).strip().lower() if thinking not in (None, "") else None
+    if thinking not in {None, "enabled", "disabled", "auto"}:
+        raise ValueError(f"unsupported thinking mode: {thinking!r}")
+    model_kwargs = []
     if max_completion_tokens:
-        lines += ["  model_kwargs:", f"    max_completion_tokens: {max_completion_tokens}"]
+        model_kwargs.append(f"    max_completion_tokens: {max_completion_tokens}")
+    if temperature is not None:
+        model_kwargs.append(f"    temperature: {float(temperature)}")
+    if thinking is not None:
+        model_kwargs += [
+            "    extra_body:",
+            "      thinking:",
+            f"        type: {thinking}",
+        ]
+    if model_kwargs:
+        lines += ["  model_kwargs:", *model_kwargs]
     lines += ["agent:", f"  agent_class: {ac}"]
     # DAB's original ExecTool budget is 600s.  Benchmark runners pass that via
     # EVOLVE_TOOLS_V6_TIMEOUT_SECONDS; adding it to the mini-swe environment
@@ -257,6 +270,8 @@ def write_config(
     api_type: str = "chat",
     *,
     max_completion_tokens: int | None = None,
+    temperature: float | None = None,
+    thinking: str | None = None,
     container: bool = True,
     out_path: Path | str | None = None,
 ) -> Path:
@@ -264,7 +279,13 @@ def write_config(
     scripts_dir.mkdir(parents=True, exist_ok=True)
     out = Path(out_path) if out_path else scripts_dir / CONFIG_NAME
     out.write_text(
-        config_yaml_text(api_type, max_completion_tokens=max_completion_tokens, container=container),
+        config_yaml_text(
+            api_type,
+            max_completion_tokens=max_completion_tokens,
+            temperature=temperature,
+            thinking=thinking,
+            container=container,
+        ),
         encoding="utf-8",
     )
     logger.info("wrote v6 config -> %s (api_type=%s)", out, api_type)
@@ -325,6 +346,8 @@ def deploy(
     api_type: str = "chat",
     *,
     max_completion_tokens: int | None = None,
+    temperature: float | None = None,
+    thinking: str | None = None,
     container: bool = True,
 ) -> dict[str, Path]:
     """deploy_runtime + write_config. (Does NOT seed — the evolve agent owns
@@ -333,7 +356,10 @@ def deploy(
     runtime = deploy_runtime(scripts_dir)
     config = write_config(
         scripts_dir, api_type,
-        max_completion_tokens=max_completion_tokens, container=container,
+        max_completion_tokens=max_completion_tokens,
+        temperature=temperature,
+        thinking=thinking,
+        container=container,
     )
     return {"runtime": runtime, "config": config}
 
@@ -354,8 +380,14 @@ def _main() -> None:
 
     p_deploy = sub.add_parser("deploy", help="deploy_runtime + write_config")
     add_scripts(p_deploy)
-    p_deploy.add_argument("--api-type", default="chat", choices=["chat", "responses"])
+    p_deploy.add_argument(
+        "--api-type", default="chat", choices=["chat", "azure_chat", "responses"]
+    )
     p_deploy.add_argument("--max-completion-tokens", type=int, default=None)
+    p_deploy.add_argument("--temperature", type=float, default=None)
+    p_deploy.add_argument(
+        "--thinking", choices=["enabled", "disabled", "auto"], default=None
+    )
     p_deploy.add_argument("--host", action="store_true")
 
     p_rt = sub.add_parser("deploy-runtime", help="copy evolve_tools_v6 pkg to .runtime/ only")
@@ -363,8 +395,14 @@ def _main() -> None:
 
     p_cfg = sub.add_parser("write-config", help="write .evolve_tools_v6_config.yaml only")
     add_scripts(p_cfg)
-    p_cfg.add_argument("--api-type", default="chat", choices=["chat", "responses"])
+    p_cfg.add_argument(
+        "--api-type", default="chat", choices=["chat", "azure_chat", "responses"]
+    )
     p_cfg.add_argument("--max-completion-tokens", type=int, default=None)
+    p_cfg.add_argument("--temperature", type=float, default=None)
+    p_cfg.add_argument(
+        "--thinking", choices=["enabled", "disabled", "auto"], default=None
+    )
     p_cfg.add_argument("--host", action="store_true")
     p_cfg.add_argument("--out", default=None)
 
@@ -377,13 +415,16 @@ def _main() -> None:
             print(f"seeded {name}: {p}")
     elif args.cmd == "deploy":
         paths = deploy(args.scripts_dir, api_type=args.api_type,
-                       max_completion_tokens=args.max_completion_tokens, container=not args.host)
+                       max_completion_tokens=args.max_completion_tokens,
+                       temperature=args.temperature, thinking=args.thinking,
+                       container=not args.host)
         print(json.dumps({k: str(v) for k, v in paths.items()}, indent=2))
     elif args.cmd == "deploy-runtime":
         print(str(deploy_runtime(args.scripts_dir)))
     elif args.cmd == "write-config":
         print(str(write_config(args.scripts_dir, api_type=args.api_type,
                                max_completion_tokens=args.max_completion_tokens,
+                               temperature=args.temperature, thinking=args.thinking,
                                container=not args.host, out_path=args.out)))
     elif args.cmd == "validate":
         ws = validate(args.scripts_dir)

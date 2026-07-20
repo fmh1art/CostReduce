@@ -1,3 +1,9 @@
 llm_name: ep-20250612104210-ss27q
+thinking: disabled
 key: 02002c34-ca56-4797-a742-87fd6ec3981c
 openai_base_url: https://ark-cn-beijing.bytedance.net/api/v3
+
+price_yuan_per_million_token:
+  input_token: 0.6
+  output_token: 3.6
+  cached_token: 0.12

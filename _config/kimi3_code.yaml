@@ -1,0 +1,10 @@
+llm_name: k3
+key: sk-kimi-BDpTZHiiT1Cegjc4uxce3JWBzOdbJTY3aCgyEJGZC9kddTJlUyQN9KzRbXkUREAi
+openai_base_url: https://api.kimi.com/coding/v1
+
+temperature: 1
+
+price_yuan_per_million_token:
+  input_token: 20
+  output_token: 100
+  cached_token: 2

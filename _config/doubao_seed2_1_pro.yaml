@@ -1,0 +1,9 @@
+llm_name: ep-20260719092706-jd456
+thinking: disabled
+key: 02002c34-ca56-4797-a742-87fd6ec3981c
+openai_base_url: https://ark-cn-beijing.bytedance.net/api/v3
+
+price_yuan_per_million_token:
+  input_token: 6.00
+  output_token: 30.00
+  cached_token: 1.20

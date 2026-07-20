@@ -18,9 +18,9 @@ set -euo pipefail
 # LLM 配置：复用 _config/*.yaml（默认 deepseekv4_flash.yaml）。同 run_swe_bench.sh，
 # responses 配置时自动合成 litellm_response 临时 mswea 配置。
 #
-# Verifier：LongDS 用 LLM judge（搬 DSGym 的 JUDGE_PROMPT，解析 <score>0|1</score>），
-# 默认走 deepseek-v4-flash（由 _bench_common.sh 的 VERIFIER_* 派生，可用 VERIFIER_CONFIG
-# 覆盖）。judge 凭据 JUDGE_API_KEY/BASE_URL/MODEL + 代理通过 --ve 注入 verifier 容器。
+# Verifier：LongDS 用 LLM judge（搬 DSGym 的 JUDGE_PROMPT，解析 <score>0|1</score>）。
+# judge 与 code agent 一样由 LLM_CONFIG 派生，凭据、模型、API 类型和代理通过 --ve
+# 注入 verifier 容器。
 #
 # evolved scripts 注入：与 run_swe_bench.sh 完全一致（bind mount + Jinja2 prompt 模板），
 # 复用 _bench_common.sh 的 evolve_scripts_mounts_json / evolve_scripts_prompt_template。
@@ -40,29 +40,35 @@ DATAMIND_RESULTS_SUBDIR="${DATAMIND_RESULTS_SUBDIR:-datamind-longds}"
 EXPORT_HOST_PROXY="${EXPORT_HOST_PROXY:-1}"
 
 datamind_verifier_args() {
-  # LongDS verifier 是 LLM judge：注入 judge 凭据 + 代理。
-  # JUDGE_API_KEY/BASE_URL/MODEL 由 _bench_common.sh 从 VERIFIER_CONFIG（默认 flash）派生，
-  # 复用 VERIFIER_API_KEY/BASE_URL/MODEL（语义一致：judge = verifier LLM）。
-  printf '%s\n' \
-    --ve "JUDGE_API_KEY=${VERIFIER_API_KEY}" \
-    --ve "JUDGE_BASE_URL=${VERIFIER_BASE_URL}" \
-    --ve "JUDGE_MODEL=${VERIFIER_MODEL}" \
-    --ve "HTTP_PROXY=${PROXY_URL}" \
-    --ve "HTTPS_PROXY=${PROXY_URL}" \
-    --ve "http_proxy=${PROXY_URL}" \
-    --ve "https_proxy=${PROXY_URL}" \
-    --ve "NO_PROXY=localhost,127.0.0.1,::1" \
-    --ve "no_proxy=localhost,127.0.0.1,::1"
-}
-
-datamind_responses_config_file() {
-  # responses（bytedance aidp 网关）配置时，合成 litellm_response 临时 mswea 配置。
-  # 与 run_swe_bench.sh 同逻辑。非 responses 配置时不生成，返回空串。
-  if [[ -z "${AZURE_API_KEY:-}" ]]; then return 0; fi
-  local tmp
-  tmp="$(mktemp -t datamind_resp_cfg.XXXXXX.yaml)"
-  printf 'model:\n  model_class: litellm_response\n' > "$tmp"
-  printf '%s\n' "$tmp"
+  # load_llm_config 从同一个 LLM_CONFIG 导出 JUDGE_*，保证 LongDS evaluate
+  # 不会悄悄回退到另一份模型配置。
+  local judge_no_proxy="localhost,127.0.0.1,::1"
+  if [[ "${JUDGE_BASE_URL:-}" == *"bytedance.net"* ]]; then
+    judge_no_proxy=".bytedance.net,bytedance.net,${judge_no_proxy}"
+  fi
+  local args=(
+    --ve "JUDGE_API_KEY=${JUDGE_API_KEY}"
+    --ve "JUDGE_BASE_URL=${JUDGE_BASE_URL}"
+    --ve "JUDGE_MODEL=${JUDGE_MODEL}"
+    --ve "JUDGE_API_TYPE=${JUDGE_API_TYPE}"
+    --ve "JUDGE_API_VERSION=${JUDGE_API_VERSION:-}"
+    --ve "JUDGE_TEMPERATURE=${JUDGE_TEMPERATURE:-}"
+    --ve "JUDGE_THINKING=${LLM_THINKING:-}"
+    --ve "HTTP_PROXY=${PROXY_URL}"
+    --ve "HTTPS_PROXY=${PROXY_URL}"
+    --ve "http_proxy=${PROXY_URL}"
+    --ve "https_proxy=${PROXY_URL}"
+    --ve "NO_PROXY=${judge_no_proxy}"
+    --ve "no_proxy=${judge_no_proxy}"
+  )
+  if [[ "${JUDGE_API_TYPE}" == "responses" || "${JUDGE_API_TYPE}" == "azure_chat" ]]; then
+    args+=(
+      --ve "AZURE_API_KEY=${AZURE_API_KEY}"
+      --ve "AZURE_API_BASE=${AZURE_API_BASE}"
+      --ve "AZURE_API_VERSION=${AZURE_API_VERSION}"
+    )
+  fi
+  printf '%s\n' "${args[@]}"
 }
 
 # 退出时清理临时文件。
@@ -86,6 +92,25 @@ if [[ -z "${DATAMIND_TASK_PATH}" || ! -d "${DATAMIND_TASK_PATH}" ]]; then
   echo "  请先用 adapter 生成 harbor flat task 目录：" >&2
   echo "    cd '$ROOT_DIR/tmp/harbor/adapters/longds' && uv run longds --task-dir '$ROOT_DIR/tmp/harbor/datasets/longds' --all --overwrite" >&2
   exit 1
+fi
+
+# LongDS task 是 adapter 生成的派生目录，可能缓存着旧版 judge.py。每次运行前将
+# canonical template 同步到本次实际选择的 task，确保新增的 azure_chat 路由生效；
+# task 可随时由 adapter 重新生成，因此这里不会改动原始 benchmark 数据。
+DATAMIND_JUDGE_TEMPLATE="${ROOT_DIR}/tmp/harbor/adapters/longds/src/longds_adapter/task-template/tests/judge.py"
+if [[ ! -f "${DATAMIND_JUDGE_TEMPLATE}" ]]; then
+  echo "[run_datamind_harbor] judge template 不存在：${DATAMIND_JUDGE_TEMPLATE}" >&2
+  exit 1
+fi
+JUDGE_SYNC_COUNT=0
+while IFS= read -r -d '' judge_file; do
+  if ! cmp -s "${DATAMIND_JUDGE_TEMPLATE}" "${judge_file}"; then
+    cp "${DATAMIND_JUDGE_TEMPLATE}" "${judge_file}"
+    JUDGE_SYNC_COUNT=$((JUDGE_SYNC_COUNT + 1))
+  fi
+done < <(find -L "${DATAMIND_TASK_PATH}" -path '*/tests/judge.py' -type f -print0)
+if [[ "${JUDGE_SYNC_COUNT}" -gt 0 ]]; then
+  echo "[run_datamind_harbor] synchronized ${JUDGE_SYNC_COUNT} generated judge.py file(s)"
 fi
 
 # agent 容器/进程的 OpenAI-compatible 环境变量（LLM 凭据 + base_url + AZURE_*）。
@@ -137,20 +162,16 @@ if [[ -n "${EVOLVE_SCRIPTS_DIR:-}" ]]; then
 fi
 
 # 选择 mini-swe-agent 的 config_file（仅在没有 evolved native tools 时生效）：
-#   - DATAMIND_MSWEA_CONFIG 显式指定 → 直接用。
-#   - responses 配置 → 合成 litellm_response 临时配置。
-#   - chat 配置 → 不传 config_file，沿用 mini.yaml 默认。
+#   - DATAMIND_MSWEA_CONFIG（若有）作为 base；
+#   - responses 配置覆盖为 litellm_response；
+#   - 所有协议都从 LLM_CONFIG 合并 temperature/thinking。
 # evolve 模式下 model_class+agent_class 由 EVOLVE_NATIVE_ARGS 的 config_file 设定。
 MSWEA_CFG_ARGS=()
-if [[ -z "${EVOLVE_TOOLS_CONFIG_HOST:-}" ]]; then
-  if [[ -n "${DATAMIND_MSWEA_CONFIG}" ]]; then
-    MSWEA_CFG_ARGS=(--ak "config_file=${DATAMIND_MSWEA_CONFIG}")
-  else
-    MSWEA_CFG_TMP="$(datamind_responses_config_file)"
-    if [[ -n "${MSWEA_CFG_TMP}" ]]; then
-      MSWEA_CFG_ARGS=(--ak "config_file=${MSWEA_CFG_TMP}")
-    fi
-  fi
+if [[ ${#EVOLVE_NATIVE_ARGS[@]} -eq 0 ]]; then
+  MSWEA_MODEL_CLASS=""
+  [[ "${LLM_API_TYPE:-chat}" == "responses" ]] && MSWEA_MODEL_CLASS="litellm_response"
+  MSWEA_CFG_TMP="$(mswea_llm_config_file "$DATAMIND_MSWEA_CONFIG" "$MSWEA_MODEL_CLASS")"
+  MSWEA_CFG_ARGS=(--ak "config_file=${MSWEA_CFG_TMP}")
 fi
 
 # 把代理导出到 harbor 进程环境（覆盖 host 侧联网；docker 镜像拉取由 daemon 代理控制）。

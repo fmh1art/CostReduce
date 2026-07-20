@@ -1,0 +1,10 @@
+llm_name: kimi-k3
+key: sk-t7iwfuuGv42FbRhkOaSLjczH8VN9BpnhD62qHpcstzdDNS5r
+openai_base_url: https://api.moonshot.cn/v1
+
+temperature: 1
+
+price_yuan_per_million_token:
+  input_token: 20
+  output_token: 100
+  cached_token: 2

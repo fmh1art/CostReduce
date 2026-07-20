@@ -3,6 +3,8 @@ import sys
 import time
 from pathlib import Path
 
+import yaml
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "agent" / "mini-swe-agent" / "src"))
 
@@ -92,3 +94,15 @@ def test_native_config_clamps_timeout_to_dab_limit(monkeypatch):
     monkeypatch.setenv("EVOLVE_TOOLS_V6_TIMEOUT_SECONDS", "9999")
     config = config_yaml_text("chat", container=True)
     assert "environment:\n  timeout: 600\n" in config
+
+
+def test_native_config_forwards_llm_runtime_controls():
+    config = yaml.safe_load(
+        config_yaml_text(
+            "chat", temperature=1, thinking="disabled", container=True
+        )
+    )
+    assert config["model"]["model_kwargs"] == {
+        "temperature": 1.0,
+        "extra_body": {"thinking": {"type": "disabled"}},
+    }
