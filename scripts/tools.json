@@ -1,7 +1,7 @@
 [
   {
     "name": "run-tests",
-    "description": "Run a repo's tests, auto-detecting Go (go.mod), Django (runtests.py), or pytest. Use instead of raw pytest/python -m pytest commands.",
+    "description": "Run a repo's tests, auto-detecting Go (go.mod), Django (runtests.py), Node.js (package.json -> jest/vitest/mocha), or pytest. Use instead of raw npx/pytest/go-test commands.",
     "parameters": {
       "type": "object",
       "properties": {
@@ -23,35 +23,61 @@
   },
   {
     "name": "read-lines",
-    "description": "Read lines from one or more files with optional head/tail/line-range and line numbering. Use instead of sed/head/tail/cat for file reading. Accepts a single 'file' (string) or a 'files' array to batch-read multiple files in one step. Each 'files' entry can be a string (file path) or an object with 'file' key plus optional per-file overrides for head/tail/lines/start/end/number. Top-level parameters serve as defaults for all files. Defaults to first 50 lines per file.",
+    "description": "Read lines from files with optional head/tail/line-range and line numbering. Use 'file' for a single file, 'files' array to batch-read multiple files, and 'sections' with 'file' to read multiple line ranges from one file in one call. Each 'files' entry can be a string or an object with 'file' key plus per-file overrides. File paths support shell-style globs (*, ?, [...]) which expand to all matching files. Defaults to first 50 lines per file.",
     "parameters": {
       "type": "object",
       "properties": {
         "file": {
           "type": "string",
-          "description": "Single file path to read (alternative to 'files')."
+          "description": "Single file path to read (alternative to 'files'). Supports glob patterns (*, ?, [...])."
         },
         "files": {
           "type": "array",
           "items": {
             "oneOf": [
-              {"type": "string", "description": "File path string."},
+              {
+                "type": "string",
+                "description": "File path string. Supports glob patterns (*, ?, [...])."
+              },
               {
                 "type": "object",
                 "properties": {
-                  "file": {"type": "string", "description": "File path."},
-                  "head": {"type": "integer", "description": "Per-file override for first N lines."},
-                  "tail": {"type": "integer", "description": "Per-file override for last N lines."},
-                  "lines": {"type": "string", "description": "Per-file override for line range (e.g. '100-130')."},
-                  "start": {"type": "integer", "description": "Per-file override for starting line number."},
-                  "end": {"type": "integer", "description": "Per-file override for ending line number."},
-                  "number": {"type": "boolean", "description": "Per-file override for line numbering."}
+                  "file": {
+                    "type": "string",
+                    "description": "File path. Supports glob patterns (*, ?, [...])."
+                  },
+                  "head": {
+                    "type": "integer",
+                    "description": "Per-file override for first N lines."
+                  },
+                  "tail": {
+                    "type": "integer",
+                    "description": "Per-file override for last N lines."
+                  },
+                  "lines": {
+                    "type": "string",
+                    "description": "Per-file override for line range (e.g. '100-130')."
+                  },
+                  "start": {
+                    "type": "integer",
+                    "description": "Per-file override for starting line number."
+                  },
+                  "end": {
+                    "type": "integer",
+                    "description": "Per-file override for ending line number."
+                  },
+                  "number": {
+                    "type": "boolean",
+                    "description": "Per-file override for line numbering."
+                  }
                 },
-                "required": ["file"]
+                "required": [
+                  "file"
+                ]
               }
             ]
           },
-          "description": "Array of file paths (strings) or per-file spec objects to read in a single batch (alternative to 'file')."
+          "description": "Array of file paths (strings) or per-file spec objects to read in a single batch (alternative to 'file'). Each path supports glob patterns (*, ?, [...])."
         },
         "head": {
           "type": "integer",
@@ -76,6 +102,13 @@
         "number": {
           "type": "boolean",
           "description": "Prefix each line with its line number (like nl -ba or cat -n). Helps reference lines in subsequent edit calls."
+        },
+        "sections": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Multiple line ranges to read from a SINGLE file, e.g. [\"1-50\", \"295-325\"]. Use with 'file' (not 'files'). Each range is 'start-end' (1-indexed, inclusive)."
         }
       },
       "required": []
@@ -96,7 +129,10 @@
           "description": "The full content to write to the file."
         }
       },
-      "required": ["file", "content"]
+      "required": [
+        "file",
+        "content"
+      ]
     }
   },
   {
@@ -126,7 +162,9 @@
           "description": "If true, list only file paths containing at least one match instead of individual matching lines (like grep -l)."
         }
       },
-      "required": ["pattern"]
+      "required": [
+        "pattern"
+      ]
     }
   },
   {
@@ -178,7 +216,11 @@
           "description": "The replacement string."
         }
       },
-      "required": ["file", "old_string", "new_string"]
+      "required": [
+        "file",
+        "old_string",
+        "new_string"
+      ]
     }
   },
   {
@@ -189,7 +231,7 @@
       "properties": {
         "code": {
           "type": "string",
-          "description": "Python source code to execute. Can include imports, file I/O, print statements — everything a standalone .py file would contain."
+          "description": "Python source code to execute. Can include imports, file I/O, print statements \u2014 everything a standalone .py file would contain."
         },
         "cwd": {
           "type": "string",
@@ -200,7 +242,9 @@
           "description": "Optional command-line arguments passed to the Python script (sys.argv)."
         }
       },
-      "required": ["code"]
+      "required": [
+        "code"
+      ]
     }
   }
 ]

@@ -6,9 +6,11 @@ and returns ``{"output", "returncode", "exception_info"}`` (same shape as
 
 Use stdlib only (subprocess / os / json / re / ...). Keep tools minimal & robust.
 """
+import json
 import os
 import subprocess
 import fnmatch
+import glob
 import re
 
 _MAX_OBSERVATION_CHARS = 3000
@@ -63,6 +65,66 @@ def _check_pytest_available():
     except Exception:
         return False
 
+
+
+def _find_node_project(start):
+    """Walk up from *start* looking for ``package.json``. Returns the directory or None."""
+    path = os.path.abspath(start or ".")
+    for _ in range(20):
+        if os.path.isfile(os.path.join(path, "package.json")):
+            return path
+        parent = os.path.dirname(path)
+        if parent == path:
+            break
+        path = parent
+    return None
+
+
+def _detect_node_runner(project_dir):
+    """Return (cmd_prefix, runner_args) for a Node.js test runner, or None.
+
+    Checks package.json scripts.test and devDependencies/dependencies for
+    jest, vitest, or mocha, then falls back to config files on disk.
+    """
+    pkg_path = os.path.join(project_dir, "package.json")
+    try:
+        with open(pkg_path, "r") as f:
+            pkg = json.load(f)
+    except Exception:
+        return None
+
+    scripts = pkg.get("scripts", {}) or {}
+    test_script = (scripts.get("test") or "").lower()
+
+    deps = {}
+    deps.update(pkg.get("devDependencies", {}) or {})
+    deps.update(pkg.get("dependencies", {}) or {})
+
+    # Jest
+    if "jest" in test_script or "jest" in deps:
+        return (["npx", "jest"], "jest")
+    # Vitest
+    if "vitest" in test_script or "vitest" in deps:
+        return (["npx", "vitest", "run"], "vitest")
+    # Mocha
+    if "mocha" in test_script or "mocha" in deps:
+        return (["npx", "mocha"], "mocha")
+
+    # Config files on disk
+    try:
+        for fn in os.listdir(project_dir):
+            if fn.startswith("jest.config"):
+                return (["npx", "jest"], "jest")
+            if fn.startswith("vitest.config"):
+                return (["npx", "vitest", "run"], "vitest")
+    except OSError:
+        pass
+
+    # Fallback: if package.json has any test script, use npm test
+    if scripts.get("test"):
+        return (["npm", "test", "--"], "npm-test")
+
+    return None
 
 def _read_single_file(filepath, head, tail, lines, start_line, end_line, number):
     """Read a single file and return (output, error_message).
@@ -224,6 +286,22 @@ def run_tool(action, cwd=None, timeout=120):
                 return {"output": (r.stdout or "") + (r.stderr or ""),
                         "returncode": r.returncode, "exception_info": ""}
 
+            # Check for Node.js project (package.json)
+            node_root = _find_node_project(run_cwd)
+            if node_root is not None:
+                runner_info = _detect_node_runner(node_root)
+                if runner_info is not None:
+                    cmd_prefix, _kind = runner_info
+                    cmd = list(cmd_prefix)
+                    if tests:
+                        cmd += tests.split()
+                    if extra:
+                        cmd += extra.split()
+                    r = subprocess.run(cmd, cwd=node_root, capture_output=True,
+                                       text=True, timeout=timeout)
+                    return {"output": (r.stdout or "") + (r.stderr or ""),
+                            "returncode": r.returncode, "exception_info": ""}
+
             # Check pytest availability before running
             if not _check_pytest_available():
                 return {
@@ -254,6 +332,8 @@ def run_tool(action, cwd=None, timeout=120):
             # Collect file paths: 'files' array or single 'file' string
             files_param = action.get("files")
             file_param = action.get("file")
+            sections_param = action.get("sections")
+
             if files_param and isinstance(files_param, list):
                 entries = files_param
             elif file_param:
@@ -262,6 +342,17 @@ def run_tool(action, cwd=None, timeout=120):
                 return {"output": "read-lines: provide 'file' (string) or 'files' (array of strings/objects)",
                         "returncode": 1, "exception_info": "missing file/files"}
 
+            # Expand sections: if 'sections' is provided with a single 'file',
+            # convert each section to a (file, {"lines": section}) entry.
+            # sections overrides top-level range params for that file.
+            if (sections_param and isinstance(sections_param, list)
+                    and len(sections_param) > 0 and file_param
+                    and not files_param):
+                entries = []
+                for sec in sections_param:
+                    if isinstance(sec, str) and sec.strip():
+                        entries.append({"file": file_param, "lines": sec.strip()})
+
             # Top-level shared parameters
             top_params = {}
             for key in ("head", "tail", "lines", "start", "end", "number"):
@@ -269,18 +360,37 @@ def run_tool(action, cwd=None, timeout=120):
                 if val is not None:
                     top_params[key] = val
 
-            results = []
-            had_errors = False
-            multi = len(entries) > 1
+            # Expand glob patterns first, then build the final entry list
+            import glob as _glob
+            expanded_entries = []
             for entry in entries:
                 fpath, params = _resolve_single_file_spec(entry, top_params)
                 if not fpath or not isinstance(fpath, str):
-                    results.append(f"=== {fpath} ===\n<skipped: invalid path>")
+                    expanded_entries.append((fpath, params, True))  # error entry
+                    continue
+                # Check for glob characters
+                if any(c in fpath for c in '*?['):
+                    resolved_glob = os.path.join(cwd or ".", fpath) if not os.path.isabs(fpath) else fpath
+                    matches = sorted(_glob.glob(resolved_glob))
+                    if not matches:
+                        expanded_entries.append((fpath, params, True))  # will report error
+                    else:
+                        for m in matches:
+                            expanded_entries.append((m, dict(params), False))
+                else:
+                    expanded_entries.append((fpath, params, False))
+
+            results = []
+            had_errors = False
+            multi = len(expanded_entries) > 1
+            for fpath, params, is_error in expanded_entries:
+                if is_error:
+                    results.append(f"=== {fpath} ===\n<skipped: invalid path or no glob matches>")
                     had_errors = True
                     continue
                 # Resolve relative paths against cwd
                 resolved = os.path.join(cwd or ".", fpath) if not os.path.isabs(fpath) else fpath
-                content, err = _read_single_file(
+                file_content, err = _read_single_file(
                     resolved,
                     params.get("head"),
                     params.get("tail"),
@@ -293,9 +403,9 @@ def run_tool(action, cwd=None, timeout=120):
                     results.append(f"=== {fpath} ===\n{err}")
                     had_errors = True
                 elif multi:
-                    results.append(f"=== {resolved} ===\n{content}")
+                    results.append(f"=== {resolved} ===\n{file_content}")
                 else:
-                    results.append(content)
+                    results.append(file_content)
 
             output = "\n\n".join(results)
             rc = 1 if had_errors else 0
