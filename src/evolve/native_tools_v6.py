@@ -13,8 +13,8 @@ module only:
 * :func:`deploy_runtime` — copy the generic ``evolve_tools_v6`` package into
   ``<scripts_dir>/.runtime/`` (bind-mounted + ``PYTHONPATH`` in the rollout
   container; mini-swe-agent there is from PyPI, no ``extra/evolve_tools_v6``).
-* :func:`write_config`  — the mini-swe-agent config yaml setting
-  ``model_class``/``agent_class`` to the v6 classes (+ ``max_completion_tokens``).
+* :func:`write_config`  — the mini-swe-agent config yaml setting the v6
+  model/agent classes and separating evolved policy from the benchmark task.
 * :func:`validate`      — soft check: tools.json valid JSON, executor.py valid
   Python (``ast.parse``) with a ``run_tool`` callable. Warns, doesn't raise.
 * :func:`deploy`        — deploy_runtime + write_config in one shot.
@@ -35,6 +35,7 @@ import json
 import logging
 import os
 import shutil
+import textwrap
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +49,62 @@ CONFIG_NAME = ".evolve_tools_v6_config.yaml"
 TOOLS_JSON_NAME = "tools.json"
 EXECUTOR_NAME = "executor.py"
 INSTRUCTION_NAME = "instruction.md"
+
+SYSTEM_TEMPLATE = """You are an agent that completes repository and data-analysis tasks by interacting with the provided environment.
+
+## Priority
+
+1. Satisfy the explicit task requirements and preserve correctness.
+2. Follow the environment and submission protocol.
+3. Apply the optimization guidance only when it does not conflict with the task or protocol.
+
+## Tool policy
+
+- Use any available tool that is appropriate for the current action.
+- Prefer an evolved structured tool when it can replace several exploratory shell commands or return smaller, bounded output.
+- Bash is available as a general fallback; it is not required on every response.
+- Every response must contain at least one valid tool call.
+- If an evolved tool times out, runs out of memory, or returns a non-zero result, do not repeat the same call unchanged. Narrow its scope or fall back to an equivalent bash command.
+
+## Recommended workflow
+
+1. Understand the requested output and inspect only the necessary context.
+2. Perform the smallest sufficient change, query, or analysis.
+3. Run the smallest relevant validation when applicable.
+4. Inspect the final result and submit.
+
+## Optimization guidance
+
+The following guidance is advisory. Never sacrifice explicit task requirements or correctness merely to reduce cost.
+
+__EVOLVE_INSTRUCTION__
+
+## Submission
+
+Finish by issuing `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT` as a standalone bash command. After that command, you cannot continue working on the task.
+
+<system_information>
+{{ system }} {{ release }} {{ version }} {{ machine }}
+</system_information>
+"""
+
+INSTANCE_TEMPLATE = """## Task
+
+{{ task }}
+"""
+
+FORMAT_ERROR_TEMPLATE = """{% if finish_reason is defined and finish_reason in ["length", "tool_calls"] -%}
+Your previous response reached the output token limit (finish_reason={{ finish_reason }}) before producing a valid tool call. Respond more concisely and finish with exactly one valid call to any available tool.
+{%- else -%}
+Tool call error:
+
+<error>
+{{ error }}
+</error>
+
+Respond with at least one valid call to an available tool. Bash is only one option; use an evolved structured tool when it is the better fit. The final submission command itself must use bash.
+{%- endif %}
+"""
 
 # Container import paths (evolve_tools_v6 copied to <scripts>/.runtime/ + PYTHONPATH).
 CONTAINER_MODEL_CLASS_CHAT = "evolve_tools_v6.model.LitellmModelWithEvolveToolsV6"
@@ -214,9 +271,31 @@ def deploy_runtime(scripts_dir: Path | str) -> Path:
 # === config yaml ============================================================
 
 
+def _yaml_block(key: str, value: str, *, indent: int = 2) -> list[str]:
+    """Render a YAML literal block without interpreting embedded Jinja syntax."""
+    prefix = " " * indent
+    body = textwrap.indent(value.rstrip("\n"), prefix + "  ").splitlines()
+    return [f"{prefix}{key}: |", *body]
+
+
+def _system_template(evolve_instruction: str | None) -> str:
+    """Insert evolved guidance as a Jinja string value, not template source.
+
+    ``instruction.md`` may itself contain ``{{ }}`` or ``{% %}``. Encoding it
+    as a JSON/Jinja string expression keeps those characters literal when the
+    generated system template is rendered by mini-swe-agent.
+    """
+    guidance = (evolve_instruction or "").strip()
+    if not guidance:
+        guidance = "No additional evolved optimization guidance is available."
+    expression = "{{ " + json.dumps(guidance, ensure_ascii=False) + " }}"
+    return SYSTEM_TEMPLATE.replace("__EVOLVE_INSTRUCTION__", expression)
+
+
 def config_yaml_text(
     api_type: str = "chat",
     *,
+    evolve_instruction: str | None = None,
     max_completion_tokens: int | None = None,
     temperature: float | None = None,
     thinking: str | None = None,
@@ -233,6 +312,7 @@ def config_yaml_text(
         "# Auto-generated by src/evolve/native_tools_v6.py — wires evolved tools",
         "# (tools.json + executor.py) as native function tools via evolve_tools_v6.",
         "model:", f"  model_class: {mc}",
+        *_yaml_block("format_error_template", FORMAT_ERROR_TEMPLATE),
     ]
     thinking = str(thinking).strip().lower() if thinking not in (None, "") else None
     if thinking not in {None, "enabled", "disabled", "auto"}:
@@ -250,7 +330,12 @@ def config_yaml_text(
         ]
     if model_kwargs:
         lines += ["  model_kwargs:", *model_kwargs]
-    lines += ["agent:", f"  agent_class: {ac}"]
+    lines += [
+        "agent:",
+        f"  agent_class: {ac}",
+        *_yaml_block("system_template", _system_template(evolve_instruction)),
+        *_yaml_block("instance_template", INSTANCE_TEMPLATE),
+    ]
     # DAB's original ExecTool budget is 600s.  Benchmark runners pass that via
     # EVOLVE_TOOLS_V6_TIMEOUT_SECONDS; adding it to the mini-swe environment
     # config keeps the ordinary bash path and native-tool path aligned.
@@ -278,9 +363,16 @@ def write_config(
     scripts_dir = Path(scripts_dir)
     scripts_dir.mkdir(parents=True, exist_ok=True)
     out = Path(out_path) if out_path else scripts_dir / CONFIG_NAME
+    instruction_path = scripts_dir / INSTRUCTION_NAME
+    try:
+        evolve_instruction = instruction_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        logger.warning("could not load evolve instruction %s: %s", instruction_path, exc)
+        evolve_instruction = None
     out.write_text(
         config_yaml_text(
             api_type,
+            evolve_instruction=evolve_instruction,
             max_completion_tokens=max_completion_tokens,
             temperature=temperature,
             thinking=thinking,

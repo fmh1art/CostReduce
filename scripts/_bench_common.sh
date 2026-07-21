@@ -372,10 +372,11 @@ evolve_scripts_native_tools_args() {
 }
 
 evolve_scripts_prompt_template() {
-  # Build a Jinja2 prompt template from EVOLVE_SCRIPTS_DIR/instruction.md only.
+  # Build an identity Jinja2 prompt template for evolved runs.
   #
-  # Tool schemas come from tools.json, so the prompt carries only the
-  # high-level guidance from instruction.md followed by {{ instruction }}.
+  # instruction.md is embedded in the generated evolve config's system message.
+  # Harbor should pass only the benchmark task into {{ task }} so the user
+  # message is not polluted with agent policy or generic workflow text.
   #
   # Pier/harbor's render_prompt_template requires the template to contain
   # {{ instruction }}; it is rendered then passed to mini-swe-agent --task=...
@@ -395,17 +396,7 @@ evolve_scripts_prompt_template() {
   fi
   local tmp
   tmp="$(mktemp -t evolve_prompt.XXXXXX)"
-  # instruction.md 可能含 {{ }} 字面量（Go template、shell $(( ))、JSON 等），
-  # 直接交给 Jinja2 会被当表达式解析而报 TemplateSyntaxError。用 {% raw %}
-  # 整体包起来按字面输出，只保留末尾真正的 {{ instruction }} 占位符。
-  {
-    printf '{%% raw %%}\n'
-    cat "${instr}"
-    printf '\n\n## Native-tool failure fallback\n'
-    printf -- '- Evolved tools have a hard execution deadline. If one times out, runs out of memory, or returns a non-zero result, avoid repeating the same call unchanged.\n'
-    printf -- '- Recommended response: narrow the evolved-tool path/query or otherwise reduce its scope; alternatively, fall back to an equivalent bash command.\n'
-    printf '\n{%% endraw %%}\n\n---\n\n{{ instruction }}\n'
-  } > "${tmp}"
+  printf '{{ instruction }}\n' > "${tmp}"
   printf '%s\n' "${tmp}"
 }
 

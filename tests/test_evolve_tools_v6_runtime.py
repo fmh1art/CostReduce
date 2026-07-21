@@ -4,12 +4,13 @@ import time
 from pathlib import Path
 
 import yaml
+from jinja2 import StrictUndefined, Template
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "agent" / "mini-swe-agent" / "src"))
 
 from minisweagent.extra.evolve_tools_v6 import registry  # noqa: E402
-from src.evolve.native_tools_v6 import config_yaml_text  # noqa: E402
+from src.evolve.native_tools_v6 import config_yaml_text, write_config  # noqa: E402
 
 
 def _install_executor(tmp_path: Path, source: str, monkeypatch) -> None:
@@ -106,3 +107,36 @@ def test_native_config_forwards_llm_runtime_controls():
         "temperature": 1.0,
         "extra_body": {"thinking": {"type": "disabled"}},
     }
+
+
+def test_native_config_separates_policy_from_task():
+    instruction = "Use {{ literal_braces }} and {% raw-looking syntax %} literally."
+    config = yaml.safe_load(
+        config_yaml_text("chat", evolve_instruction=instruction, container=True)
+    )
+    system_prompt = config["agent"]["system_template"]
+    user_prompt = config["agent"]["instance_template"]
+    format_error = config["model"]["format_error_template"]
+
+    assert "## Recommended workflow" in system_prompt
+    assert "Bash is available as a general fallback" in system_prompt
+    assert user_prompt.strip() == "## Task\n\n{{ task }}"
+    assert "must include AT LEAST ONE bash" not in system_prompt
+    assert "any available tool" in format_error
+    rendered = Template(system_prompt, undefined=StrictUndefined).render(
+        system="Linux", release="test", version="1", machine="x86_64"
+    )
+    assert instruction in rendered
+
+
+def test_write_config_embeds_instruction_in_system_prompt(tmp_path: Path):
+    instruction = "First line.\nSecond line with {{ braces }}."
+    (tmp_path / "instruction.md").write_text(instruction, encoding="utf-8")
+
+    config = yaml.safe_load(write_config(tmp_path).read_text(encoding="utf-8"))
+    system_prompt = Template(
+        config["agent"]["system_template"], undefined=StrictUndefined
+    ).render(system="Linux", release="test", version="1", machine="x86_64")
+
+    assert instruction in system_prompt
+    assert config["agent"]["instance_template"].strip() == "## Task\n\n{{ task }}"
