@@ -19,6 +19,14 @@ API_RETRY_PAUSE_SECONDS="${API_RETRY_PAUSE_SECONDS:-60}"
 MSWEA_MODEL_RETRY_WAIT_SECONDS="${MSWEA_MODEL_RETRY_WAIT_SECONDS:-${API_RETRY_PAUSE_SECONDS}}"
 API_RETRY_RUNTIME_HOST="${API_RETRY_RUNTIME_HOST:-${ROOT_DIR}/src/tools/api_retry_runtime}"
 API_RETRY_RUNTIME_TARGET="${API_RETRY_RUNTIME_TARGET:-/opt/optiharness_api_retry}"
+# Reuse the host uv binary in every disposable benchmark container.  Python
+# packages are still installed into each isolated agent environment, but uv's
+# download/build cache is shared, so no trial needs to contact astral.sh and
+# repeated mini-swe-agent installs reuse already downloaded artifacts.
+SHARED_UV_BIN_HOST="${SHARED_UV_BIN_HOST:-$(command -v uv 2>/dev/null || true)}"
+SHARED_UV_BIN_TARGET="${SHARED_UV_BIN_TARGET:-/opt/optiharness_toolchain/uv}"
+SHARED_UV_CACHE_HOST="${SHARED_UV_CACHE_HOST:-${RESULTS_ROOT:-${ROOT_DIR}/results}/_runtime_cache/uv}"
+SHARED_UV_CACHE_TARGET="${SHARED_UV_CACHE_TARGET:-/opt/optiharness_toolchain/uv-cache}"
 
 # 可选：要 bind mount 到容器 workspace 根目录的辅助 bash 脚本目录。
 # 不设或为空时，沿用 Pier 默认行为（不附加任何额外挂载，使用默认的 code agent）。
@@ -126,6 +134,8 @@ agent_env_args() {
     --ae "MSWEA_COST_TRACKING=ignore_errors" \
     --ae "API_RETRY_PAUSE_SECONDS=${API_RETRY_PAUSE_SECONDS}" \
     --ae "MSWEA_MODEL_RETRY_WAIT_SECONDS=${MSWEA_MODEL_RETRY_WAIT_SECONDS}" \
+    --ae "HARBOR_SHARED_UV_BIN=${SHARED_UV_BIN_TARGET}" \
+    --ae "UV_CACHE_DIR=${SHARED_UV_CACHE_TARGET}" \
     --ae "PYTHONPATH=${agent_pythonpath}"
   # 两种 Azure 协议都需要 AZURE_*；model_class 决定 chat 还是 responses。
   if [[ "${LLM_API_TYPE:-chat}" == "azure_chat" || "${LLM_API_TYPE:-chat}" == "responses" ]]; then
@@ -184,9 +194,14 @@ PY
 
 proxy_env_args() {
   # 将代理环境变量转换成 Harbor/Pier 的 --ae 参数列表，用于容器内 apt/curl/pip 等联网步骤。
-  local no_proxy="localhost,127.0.0.1,::1"
+  # 可选参数用于 benchmark 特有的直连域名，避免将其扩散到其他 benchmark。
+  local extra_no_proxy="${1:-}"
+  local no_proxy="astral.sh,releases.astral.sh,localhost,127.0.0.1,::1"
   if [[ "${OPENAI_BASE_URL:-}" == *"bytedance.net"* ]]; then
     no_proxy=".bytedance.net,bytedance.net,${no_proxy}"
+  fi
+  if [[ -n "$extra_no_proxy" ]]; then
+    no_proxy="${extra_no_proxy},${no_proxy}"
   fi
   printf '%s\n' \
     --ae "HTTP_PROXY=${PROXY_URL}" \
@@ -247,6 +262,12 @@ evolve_scripts_mounts_json() {
   fi
   [[ -d "${API_RETRY_RUNTIME_HOST}" ]] \
     || { echo "[evolve_scripts_mounts_json] API retry runtime missing: ${API_RETRY_RUNTIME_HOST}" >&2; return 1; }
+  [[ -n "${SHARED_UV_BIN_HOST}" && -x "${SHARED_UV_BIN_HOST}" ]] \
+    || { echo "[evolve_scripts_mounts_json] shared uv binary missing or not executable: ${SHARED_UV_BIN_HOST}" >&2; return 1; }
+  mkdir -p "${SHARED_UV_CACHE_HOST}"
+  # Container agent UIDs vary across benchmark images.  This directory stores
+  # only rebuildable uv cache entries and must be writable by all of them.
+  chmod a+rwx "${SHARED_UV_CACHE_HOST}"
 
   EVOLVE_SCRIPTS_DIR_ABS="${scripts_dir:+$(cd "${scripts_dir}" && pwd)}" \
   EVOLVE_SCRIPTS_TARGET="${EVOLVE_SCRIPTS_TARGET}" \
@@ -254,6 +275,10 @@ evolve_scripts_mounts_json() {
   EVOLVE_SCRIPTS_INCLUDE_DEFAULT_LOG_MOUNTS="${EVOLVE_SCRIPTS_INCLUDE_DEFAULT_LOG_MOUNTS}" \
   API_RETRY_RUNTIME_HOST="$(cd "${API_RETRY_RUNTIME_HOST}" && pwd)" \
   API_RETRY_RUNTIME_TARGET="${API_RETRY_RUNTIME_TARGET}" \
+  SHARED_UV_BIN_HOST="$(cd "$(dirname "${SHARED_UV_BIN_HOST}")" && pwd)/$(basename "${SHARED_UV_BIN_HOST}")" \
+  SHARED_UV_BIN_TARGET="${SHARED_UV_BIN_TARGET}" \
+  SHARED_UV_CACHE_HOST="$(cd "${SHARED_UV_CACHE_HOST}" && pwd)" \
+  SHARED_UV_CACHE_TARGET="${SHARED_UV_CACHE_TARGET}" \
   python - <<'PY'
 import json
 import os
@@ -264,6 +289,12 @@ scripts_dir = Path(scripts_raw) if scripts_raw else None
 target_root = os.environ.get("EVOLVE_SCRIPTS_TARGET", "/app/.preinstalled_scripts").rstrip("/") or "/"
 retry_runtime = Path(os.environ["API_RETRY_RUNTIME_HOST"])
 retry_target = os.environ.get("API_RETRY_RUNTIME_TARGET", "/opt/optiharness_api_retry")
+shared_uv_bin = Path(os.environ["SHARED_UV_BIN_HOST"])
+shared_uv_target = os.environ.get("SHARED_UV_BIN_TARGET", "/opt/optiharness_toolchain/uv")
+shared_uv_cache = Path(os.environ["SHARED_UV_CACHE_HOST"])
+shared_uv_cache_target = os.environ.get(
+    "SHARED_UV_CACHE_TARGET", "/opt/optiharness_toolchain/uv-cache"
+)
 read_only = os.environ.get("EVOLVE_SCRIPTS_READONLY", "1") not in ("0", "", "false", "False")
 include_default_logs = os.environ.get("EVOLVE_SCRIPTS_INCLUDE_DEFAULT_LOG_MOUNTS", "1") not in ("0", "", "false", "False")
 
@@ -297,6 +328,19 @@ mounts.append({
     "target": retry_target,
     "read_only": True,
 })
+mounts.extend([
+    {
+        "type": "bind",
+        "source": str(shared_uv_bin.resolve()),
+        "target": shared_uv_target,
+        "read_only": True,
+    },
+    {
+        "type": "bind",
+        "source": str(shared_uv_cache.resolve()),
+        "target": shared_uv_cache_target,
+    },
+])
 
 if scripts_dir is not None:
     for entry in sorted(scripts_dir.iterdir()):

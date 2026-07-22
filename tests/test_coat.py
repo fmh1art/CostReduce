@@ -230,10 +230,13 @@ def test_v61_prefers_diverse_focused_dag_signals(tmp_path):
     outputs = DAGContrastiveSampleBuilderV61().build_file(path)
     samples = [json.loads(output.read_text(encoding="utf-8")) for output in outputs]
 
-    assert len(samples) == 3
+    # The diversity pass keeps one candidate per detected type, then the larger
+    # cap allows the next highest-scoring leftover candidate to fill a slot.
+    assert len(samples) == 4
     assert {sample["type"] for sample in samples} == {
         "v61_mergeable", "v61_failure_pivot", "v61_skippable"
     }
+    assert Counter(sample["type"] for sample in samples)["v61_skippable"] == 2
     assert {sample["optimization_target"] for sample in samples} >= {
         "tools", "instruction"
     }
@@ -250,18 +253,21 @@ def test_v61_prefers_diverse_focused_dag_signals(tmp_path):
 
 def test_v61_uses_bounded_phase_fallback_when_no_signal_exists(tmp_path):
     steps = []
-    for index in range(1, 26):
+    # One long dependency chain has no stronger signal. Splitting its single
+    # semantic phase produces more than eight candidates, so this also verifies
+    # the per-trajectory selection cap.
+    for index in range(1, 98):
         steps.append(_step(
             f"chain-{index}",
             dependencies=[0] if index == 1 else [0, index - 1],
-            op_type="read" if index <= 13 else "verify",
+            op_type="read",
         ))
     path = _write_trajectory(tmp_path, _trajectory(steps))
 
     outputs = DAGContrastiveSampleBuilderV61().build_file(path)
     samples = [json.loads(output.read_text(encoding="utf-8")) for output in outputs]
 
-    assert 1 <= len(samples) <= 3
+    assert len(samples) == DAGContrastiveSampleBuilderV61.MAX_SIGNALS_PER_TRAJECTORY == 8
     assert {sample["type"] for sample in samples} == {"v61_phase_fallback"}
     assert all(
         len(sample["signal"]["target_step_indices"])

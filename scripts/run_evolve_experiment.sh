@@ -686,7 +686,10 @@ fi
 # ---------- no_evolve：复用 evolve 装 scripts 评测的 case 集合，不装 scripts 重跑 ----------
 # 用途：对照 evolve 是否降本。提取 step2 装 scripts 评测实际跑的 case id（eval_cases_used.txt），
 # 在同样这些 case 上不装 scripts（EVOLVE_SCRIPTS_DIR=""）跑一遍，与 step2 结果对照成本。
-# 依赖：step2 评测产物（evolve-<version>-<bench>-<ts>）必须已存在（先跑 PHASE=all）。
+# 默认依赖 step2 评测产物（evolve-<version>-<bench>-<ts>）。但 eval-all
+# 的 case 集合天然是完整任务池，因此允许在 evolve 之前先跑 no-evolve；
+# 后续 evolve final eval 会使用同一个完整集合。非 eval-all 仍必须依赖
+# 已存在的 evolve 评测产物，避免对照 case 错位。
 if [[ "$PHASE" == "no_evolve" ]]; then
   # 只从当前 COAT 框架挑最新评测，绝不混用历史框架的 case 集。
   eval_results_root="${EVAL_RESULTS_DIR:-${EVAL_RESULTS_ROOT}}"
@@ -706,15 +709,21 @@ if candidates:
 PY
 )"
   fi
-  [[ -n "$eval_src_dir" && -d "$eval_src_dir" ]] \
-    || die "[no_evolve] 找不到 COAT 评测产物（results/${RESULTS_SUBDIR}/evolve-coat-${BENCHMARK}-*）。请先跑 PHASE=all，或用 NO_EVOLVE_EVAL_DIR=<dir> 指定。"
-
-  # 提取 case id（或复用已有 eval_cases_used.txt）
-  cases_used_file="$eval_src_dir/eval_cases_used.txt"
-  if [[ ! -f "$cases_used_file" ]]; then
-    cases_used_file="$(extract_eval_cases_used "$eval_src_dir")"
+  eval_reference_label="$eval_src_dir"
+  if [[ -n "$eval_src_dir" && -d "$eval_src_dir" ]]; then
+    # 提取 case id（或复用已有 eval_cases_used.txt）
+    cases_used_file="$eval_src_dir/eval_cases_used.txt"
+    if [[ ! -f "$cases_used_file" ]]; then
+      cases_used_file="$(extract_eval_cases_used "$eval_src_dir")"
+    else
+      log "[no_evolve] 复用已有 case 列表：$cases_used_file"
+    fi
+  elif [[ "$EVAL_ALL_CASES" == "1" ]]; then
+    cases_used_file="$FINAL_EVAL_CASES_FILE"
+    eval_reference_label="eval-all 完整任务池（evolve final eval 将使用同一集合）"
+    log "[no_evolve] 尚无 COAT 评测产物；使用 eval-all 完整任务池先跑对照"
   else
-    log "[no_evolve] 复用已有 case 列表：$cases_used_file"
+    die "[no_evolve] 找不到 COAT 评测产物（results/${RESULTS_SUBDIR}/evolve-coat-${BENCHMARK}-*）。请先跑 PHASE=all，或用 NO_EVOLVE_EVAL_DIR=<dir> 指定。"
   fi
   [[ -s "$cases_used_file" ]] || die "[no_evolve] 提取的 case 列表为空：$cases_used_file"
 
@@ -724,7 +733,7 @@ PY
   [[ "$N" -eq "$EVAL_N_TASKS" ]] \
     || die "[no_evolve] evolve final eval 不完整：需要 $EVAL_N_TASKS 个 case，实际提取 $N 个；拒绝生成不配对对照"
   printf '%s\n' "${CASE_IDS[@]}" > "$EVAL_CASES_FILE"
-  log "[no_evolve] 从 $eval_src_dir 提取 $N 个 case，不装 scripts 重跑（对照 evolve 评测）"
+  log "[no_evolve] 从 $eval_reference_label 确定 $N 个 case，不装 scripts 运行对照"
 
   # 软链这些 case 进临时目录，-p 指向它（精确控制 case 集合 = evolve 评测的那批）
   local_noevolve_taskdir="${WORK_DIR}/noevolve_taskdir"
@@ -744,7 +753,7 @@ PY
   noevolve_env+=("${PREP_TASK_ENV_NAME}=${PREP_TASK_ENV_VAL}")
 
   log "[$BENCHMARK] no_evolve：不装 scripts 跑 $N 个 case（RUN_ID=$noevolve_run_id）"
-  log "  对照 evolve 评测：$eval_src_dir"
+  log "  配对评测集：$eval_reference_label"
   log "  结果目录 -> ${noevolve_results_root}/${RESULTS_SUBDIR}/${noevolve_run_id}"
   if [[ "$DRY_RUN" == "1" ]]; then
     warn "[DRY_RUN] env ${noevolve_env[*]} bash ${SCRIPT_DIR}/${RUN_SCRIPT}"
@@ -753,7 +762,7 @@ PY
       || warn "[$BENCHMARK] no_evolve 评测退出非零（部分 case 可能失败），结果仍保留。"
   fi
   log "[$BENCHMARK] 完成（PHASE=no_evolve）。对照基线结果：${noevolve_results_root}/${RESULTS_SUBDIR}/${noevolve_run_id}/"
-  log "  evolve 评测（装 scripts）：$eval_src_dir"
+  log "  配对评测集：$eval_reference_label"
   log "  no_evolve（不装 scripts）：${noevolve_results_root}/${RESULTS_SUBDIR}/${noevolve_run_id}/"
   exit 0
 fi

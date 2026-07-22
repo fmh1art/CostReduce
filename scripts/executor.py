@@ -130,7 +130,7 @@ def _read_single_file(filepath, head, tail, lines, start_line, end_line, number)
     """Read a single file and return (output, error_message).
 
     Supports:
-    - head: int, first N lines
+    - head: int, first N lines (use -1 or 0 for all lines)
     - tail: int, last N lines
     - lines: str, 'start-end' format (1-indexed inclusive)
     - start_line/end_line: int, alternative to lines string
@@ -165,8 +165,11 @@ def _read_single_file(filepath, head, tail, lines, start_line, end_line, number)
         if e > total_lines:
             e = total_lines
         selected = all_lines[s - 1:e]
-    elif head is not None and head >= 0:
-        selected = all_lines[:head]
+    elif head is not None:
+        if head <= 0:
+            selected = all_lines[:]      # -1 or 0 means read all lines
+        else:
+            selected = all_lines[:head]
     elif tail is not None and tail >= 0:
         t = min(tail, total_lines)
         selected = all_lines[-t:] if t > 0 else []
@@ -243,6 +246,100 @@ def _resolve_single_file_spec(entry, top_level_params):
     # Fallback: treat as string
     return str(entry), dict(top_level_params)
 
+
+
+def _find_query_db_script(cwd):
+    """Search for ``query_db.py`` in *cwd* and its ancestors."""
+    path = os.path.abspath(cwd or ".")
+    for _ in range(10):
+        cand = os.path.join(path, "query_db.py")
+        if os.path.isfile(cand):
+            return cand
+        cand2 = os.path.join(path, "dab", "query_db.py")
+        if os.path.isfile(cand2):
+            return cand2
+        parent = os.path.dirname(path)
+        if parent == path:
+            break
+        path = parent
+    return None
+
+
+def _exec_query_db_action(action_type, db_name, sql, table_name, script, cwd, timeout):
+    """Execute a single query-db action. Returns (output_str, returncode_int)."""
+    if not action_type:
+        return "query-db: missing required parameter 'action' (one of: dbs, tables, schema, query)", 1
+    if action_type not in ("dbs", "tables", "schema", "query"):
+        return f"query-db: unknown action '{action_type}'. Use: dbs, tables, schema, query", 1
+    if action_type in ("tables", "schema", "query") and not db_name:
+        return f"query-db: action '{action_type}' requires 'database' parameter", 1
+    if action_type == "query" and not sql:
+        return "query-db: action 'query' requires 'query' parameter (SQL string)", 1
+    if action_type == "schema" and not table_name:
+        return "query-db: action 'schema' requires 'table' parameter", 1
+
+    if action_type == "dbs":
+        if script:
+            r = subprocess.run(["python3", script, "dbs"], cwd=cwd,
+                               capture_output=True, text=True, timeout=timeout)
+            return (r.stdout or "") + (r.stderr or ""), r.returncode
+        else:
+            return "query-db: query_db.py not found in working directory tree", 1
+
+    elif action_type == "tables":
+        if script:
+            r = subprocess.run(["python3", script, "tables", db_name], cwd=cwd,
+                               capture_output=True, text=True, timeout=timeout)
+            return (r.stdout or "") + (r.stderr or ""), r.returncode
+        else:
+            return "query-db: query_db.py not found in working directory tree", 1
+
+    elif action_type == "schema":
+        if script:
+            strategies = [
+                f"PRAGMA table_info({table_name})",
+                f"SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_name = '{table_name}' ORDER BY ordinal_position",
+                f"DESCRIBE {table_name}",
+                f"PRAGMA table_info('{table_name}')",
+            ]
+            last_err = ""
+            for strat in strategies:
+                r = subprocess.run(
+                    ["python3", script, "query", db_name, strat],
+                    cwd=cwd, capture_output=True, text=True, timeout=timeout)
+                if r.returncode == 0 and (r.stdout or "").strip():
+                    return r.stdout, 0
+                last_err = r.stderr or ""
+            return f"query-db: could not determine schema for {db_name}.{table_name}. Last error: {last_err}", 1
+        else:
+            return "query-db: query_db.py not found in working directory tree", 1
+
+    elif action_type == "query":
+        if script:
+            r = subprocess.run(
+                ["python3", script, "query", db_name, sql],
+                cwd=cwd, capture_output=True, text=True, timeout=timeout)
+            return (r.stdout or "") + (r.stderr or ""), r.returncode
+        else:
+            # Fallback: try stdlib sqlite3 for .db/.sqlite files
+            import sqlite3 as _sqlite3
+            cand_path = os.path.join(cwd or ".", db_name) if not os.path.isabs(db_name) else db_name
+            for ext in ("", ".db", ".sqlite", ".sqlite3"):
+                try_path = cand_path + ext
+                if os.path.isfile(try_path):
+                    try:
+                        conn = _sqlite3.connect(try_path)
+                        cur = conn.execute(sql)
+                        cols = [d[0] for d in cur.description] if cur.description else []
+                        rows = [dict(zip(cols, row)) for row in cur.fetchall()]
+                        conn.close()
+                        import json as _json
+                        return _json.dumps(rows, default=str), 0
+                    except Exception as e:
+                        return f"query-db: sqlite3 fallback failed for {try_path}: {e}", 1
+            return "query-db: query_db.py not found and no sqlite3 file matched the database name", 1
+
+    return f"query-db: unhandled action '{action_type}'", 1
 
 def run_tool(action, cwd=None, timeout=120):
     """Dispatch one evolved-tool call. Override / extend the branches below."""
@@ -325,6 +422,49 @@ def run_tool(action, cwd=None, timeout=120):
                     "returncode": 1, "exception_info": repr(exc)}
 
     # ------------------------------------------------------------------ #
+    # ------------------------------------------------------------------ #
+    # query-db
+    # ------------------------------------------------------------------ #
+    elif name == "query-db":
+        try:
+            batch = action.get("batch")
+            if batch and isinstance(batch, list) and len(batch) > 0:
+                script = _find_query_db_script(cwd)
+                results = []
+                overall_rc = 0
+                for i, entry in enumerate(batch):
+                    if not isinstance(entry, dict):
+                        results.append(f"[batch {i}] invalid entry (not an object)")
+                        overall_rc = 1
+                        continue
+                    sub_action = (entry.get("action") or "").strip()
+                    sub_db = (entry.get("database") or "").strip()
+                    sub_sql = (entry.get("query") or "").strip()
+                    sub_table = (entry.get("table") or "").strip()
+                    out, rc = _exec_query_db_action(sub_action, sub_db, sub_sql, sub_table, script, cwd, timeout)
+                    label = f"[{sub_action}"
+                    if sub_db:
+                        label += f" {sub_db}"
+                    if sub_table:
+                        label += f" {sub_table}"
+                    label += "]"
+                    results.append(f"{label}\n{out}")
+                    if rc != 0:
+                        overall_rc = 1
+                return {"output": "\n\n".join(results),
+                        "returncode": overall_rc, "exception_info": ""}
+            else:
+                action_type = (action.get("action") or "").strip()
+                db_name = (action.get("database") or "").strip()
+                sql = (action.get("query") or "").strip()
+                table_name = (action.get("table") or "").strip()
+                script = _find_query_db_script(cwd)
+                out, rc = _exec_query_db_action(action_type, db_name, sql, table_name, script, cwd, timeout)
+                return {"output": out, "returncode": rc, "exception_info": ""}
+        except Exception as exc:
+            return {"output": f"query-db failed: {exc}",
+                    "returncode": 1, "exception_info": repr(exc)}
+
     # read-lines
     # ------------------------------------------------------------------ #
     elif name == "read-lines":

@@ -146,7 +146,10 @@ if dab_agent_answers_exposed "$DAB_TASK_PATH"; then
 fi
 
 mapfile -t AGENT_ENV < <(agent_env_args)
-mapfile -t PROXY_ENV < <(proxy_env_args)
+# Harbor 会在每个全新的 DAB agent 容器内从 astral.sh 安装 uv。
+# 内网代理访问 Astral/Cloudflare 偶发 504，而宿主直连可用，因此仅对
+# DAB agent 的这两个下载域名绕过代理；LLM API 和其他 benchmark 不受影响。
+mapfile -t PROXY_ENV < <(proxy_env_args "astral.sh,releases.astral.sh")
 mapfile -t VERIFIER_PROXY_ENV < <(dab_verifier_proxy_args)
 mapfile -t SKIP_ARGS < <(evolve_skip_exclude_args)
 

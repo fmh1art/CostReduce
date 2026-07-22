@@ -22,8 +22,62 @@
     }
   },
   {
+    "name": "query-db",
+    "description": "Interact with databases: list all databases, list tables in a database, inspect a table's schema (column names and types), or execute a SQL query against a database. Uses the environment's query_db.py helper when available; falls back to stdlib sqlite3 for .db/.sqlite files. Use 'batch' to run multiple operations in one call.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "description": "Operation: 'dbs' to list all databases and their types, 'tables' to list tables in a named database, 'schema' to describe columns of a table, 'query' to run a SQL query."
+        },
+        "database": {
+          "type": "string",
+          "description": "Database name. Required for 'tables', 'schema', and 'query' actions."
+        },
+        "query": {
+          "type": "string",
+          "description": "SQL query string. Required for 'query' action."
+        },
+        "table": {
+          "type": "string",
+          "description": "Table name to inspect. Required for 'schema' action."
+        },
+        "batch": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "description": "Operation: 'dbs', 'tables', 'schema', or 'query'"
+              },
+              "database": {
+                "type": "string",
+                "description": "Database name. Required for 'tables', 'schema', and 'query'."
+              },
+              "query": {
+                "type": "string",
+                "description": "SQL query string. Required for 'query' action."
+              },
+              "table": {
+                "type": "string",
+                "description": "Table name to inspect. Required for 'schema' action."
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "description": "Batch multiple database operations in one call. Each entry is an independent action spec; results are concatenated in order. When batch is provided, top-level action/database/query/table are ignored. Use this to collapse multiple discovery or query steps."
+        }
+      },
+      "required": []
+    }
+  },
+  {
     "name": "read-lines",
-    "description": "Read lines from files with optional head/tail/line-range and line numbering. Use 'file' for a single file, 'files' array to batch-read multiple files, and 'sections' with 'file' to read multiple line ranges from one file in one call. Each 'files' entry can be a string or an object with 'file' key plus per-file overrides. File paths support shell-style globs (*, ?, [...]) which expand to all matching files. Defaults to first 50 lines per file.",
+    "description": "Read lines from files: replaces 'cat' for file reading. Use 'file' for a single file, 'files' array to batch-read multiple files, and 'sections' with 'file' to read multiple line ranges from one file in one call. Each 'files' entry can be a string or an object with 'file' key plus per-file overrides. File paths support shell-style globs (*, ?, [...]). Use head=-1 to read an entire file. Defaults to first 50 lines per file.",
     "parameters": {
       "type": "object",
       "properties": {
@@ -48,7 +102,7 @@
                   },
                   "head": {
                     "type": "integer",
-                    "description": "Per-file override for first N lines."
+                    "description": "Per-file override: number of lines to read from start. Set to -1 to read entire file."
                   },
                   "tail": {
                     "type": "integer",
@@ -81,7 +135,7 @@
         },
         "head": {
           "type": "integer",
-          "description": "First N lines to show per file. Defaults to 50 if no head/tail/lines/start given."
+          "description": "Number of lines to read from the start. Set to -1 or 0 to read the entire file (default 50)."
         },
         "tail": {
           "type": "integer",
@@ -116,7 +170,7 @@
   },
   {
     "name": "write-file",
-    "description": "Create a new file or completely overwrite an existing file with the given content. Use instead of 'cat > file << EOF' heredoc patterns for file creation and full rewrites. For targeted edits to existing files, use edit-file instead.",
+    "description": "Create a new file or completely overwrite an existing file with the given content. Use instead of \"cat > file << EOF\" heredoc patterns for file creation and full rewrites. For targeted edits to existing files, use edit-file instead. Returns a preview of the first few lines written so you can verify without re-reading.",
     "parameters": {
       "type": "object",
       "properties": {

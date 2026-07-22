@@ -683,11 +683,11 @@ class DAGContrastiveSampleBuilderV61:
     High-confidence DAG signals are preferred: prunable regions and mergeable
     siblings. Behavioral/cost signals expose repeated failure, repeated operator
     families, and long observations. If none exist, bounded op_type phases provide
-    coverage. At most three samples are emitted per source trajectory.
+    coverage. At most eight samples are emitted per source trajectory.
     """
 
     name = "coat_contrastive"
-    MAX_SIGNALS_PER_TRAJECTORY = 3
+    MAX_SIGNALS_PER_TRAJECTORY = 8
     MAX_CONTEXT_BEFORE = 2
     MAX_CONTEXT_AFTER = 1
     MAX_TARGET_STEPS = 5

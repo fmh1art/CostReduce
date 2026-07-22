@@ -1,10 +1,10 @@
 # Cost-saving instructions
 
 ## Batching
-- Batch independent reads, searches, and edits into one step per phase; merge adjacent reads into one range.
-- Read non-adjacent ranges from the same file in one call, not separate reads.
+- Batch independent reads, searches, and edits into one step per phase; read multiple ranges from the same file in one call.
 - You start in the repository root — skip directory discovery (cd, pwd, ls) and begin working immediately.
-- Prefer structured tools over raw bash for smaller observations; never create temp scripts just to debug.
+- When the task description already describes schemas, tables, or data layout, query directly — skip schema discovery steps.
+- Prefer registered tools over raw bash — never use `cat`/`grep`/`sed`/`find` when a structured tool exists; never shell out to a tool’s underlying script; never create temp scripts just to debug.
 - Batch git diff with your submit or preceding edit — never diff in isolation.
 - Run only relevant test subdirectories with a short explicit timeout rather than filtering the full suite.
 
@@ -16,7 +16,7 @@
 
 ## Early exit
 - Trust edits: don't re-read, syntax-check, or git-log after editing; never re-read a range you've already seen.
-- Once you have the definitive answer, write it and stop; stop exploring when the first query yields core information.
+- Once you have the definitive answer, submit it directly — do not write to a file and re-read; stop exploring once core information is found.
 
 ## Risky moves / skip validation
 - Skip separate compile checks (e.g., go build) before tests — test runners compile automatically.
