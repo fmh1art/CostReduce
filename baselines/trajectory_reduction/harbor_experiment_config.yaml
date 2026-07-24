@@ -1,0 +1,17 @@
+agent:
+  agent_class: agentdiet_harbor.agent.AgentDietHarborAgent
+  # AgentDiet's released SWE-bench runner sets max_turn=50.
+  step_limit: 50
+  reduction_mode: ours
+  reduction_threshold_tokens: 500
+  reduction_context_before: 1
+  reduction_context_after: 2
+  reduction_show_context: true
+  reduction_max_tokens: 2048
+model:
+  model_class: litellm
+  model_kwargs:
+    max_completion_tokens: 16384
+    extra_body:
+      thinking:
+        type: disabled

@@ -1,0 +1,295 @@
+{
+  "schema_version": "baseline.matrix-case-selection.v1",
+  "policy": "codebase-round-robin",
+  "selector_salt": "evolve-diverse-v1",
+  "benchmark": "deep-swe",
+  "task_root": "/data00/home/fanmeihao/projects/CostReduce/benchmark/deep-swe/tasks",
+  "sample_64": {
+    "path": "/data00/home/fanmeihao/projects/OptiHarnessForCost/baselines/experiments/matrix64_v1/deep-swe_64.txt",
+    "sha256": "8f03c2ba35979500ce3967f2b729fa24295af2f98de15bb555b775d79bffd99d",
+    "count": 64,
+    "codebases": 64,
+    "cases": [
+      {
+        "case_id": "mnamer-daemon-watch-lifecycle",
+        "codebase": "jkwill87/mnamer"
+      },
+      {
+        "case_id": "obsidian-linter-auto-table-of-contents",
+        "codebase": "platers/obsidian-linter"
+      },
+      {
+        "case_id": "returns-validated-error-accumulation",
+        "codebase": "dry-python/returns"
+      },
+      {
+        "case_id": "sql-formatter-bigquery-pipe-formatting",
+        "codebase": "sql-formatter-org/sql-formatter"
+      },
+      {
+        "case_id": "wazero-multi-module-snapshots",
+        "codebase": "wazero/wazero"
+      },
+      {
+        "case_id": "ts-pattern-match-each",
+        "codebase": "gvergnaud/ts-pattern"
+      },
+      {
+        "case_id": "ofetch-per-origin-circuit-breaker",
+        "codebase": "unjs/ofetch"
+      },
+      {
+        "case_id": "kcp-go-multiplexed-kcp-streams",
+        "codebase": "xtaci/kcp-go"
+      },
+      {
+        "case_id": "quill-shared-toolbar-focus",
+        "codebase": "slab/quill"
+      },
+      {
+        "case_id": "gql-incremental-graphql-delivery",
+        "codebase": "graphql-python/gql"
+      },
+      {
+        "case_id": "pest-character-class-coalescing",
+        "codebase": "pest-parser/pest"
+      },
+      {
+        "case_id": "clack-async-autocomplete-options",
+        "codebase": "bombshell-dev/clack"
+      },
+      {
+        "case_id": "numba-stencil-boundary-modes",
+        "codebase": "numba/numba"
+      },
+      {
+        "case_id": "meriyah-explicit-resource-declarations",
+        "codebase": "meriyah/meriyah"
+      },
+      {
+        "case_id": "mobly-grouped-test-barriers",
+        "codebase": "google/mobly"
+      },
+      {
+        "case_id": "awilix-async-container-initialization",
+        "codebase": "jeffijoe/awilix"
+      },
+      {
+        "case_id": "boa-hierarchical-evaluation-cancellation",
+        "codebase": "boa-dev/boa"
+      },
+      {
+        "case_id": "go-git-worktree-merge-conflicts",
+        "codebase": "go-git/go-git"
+      },
+      {
+        "case_id": "drizzle-orm-window-function-builders",
+        "codebase": "drizzle-team/drizzle-orm"
+      },
+      {
+        "case_id": "go-genai-streamed-function-args",
+        "codebase": "googleapis/go-genai"
+      },
+      {
+        "case_id": "arktype-json-schema-refs-dependencies",
+        "codebase": "arktypeio/arktype"
+      },
+      {
+        "case_id": "httpx-deterministic-cookie-store",
+        "codebase": "encode/httpx"
+      },
+      {
+        "case_id": "koota-composite-trait-aspects",
+        "codebase": "pmndrs/koota"
+      },
+      {
+        "case_id": "superjson-error-stack-serialization",
+        "codebase": "flightcontrolhq/superjson"
+      },
+      {
+        "case_id": "vulture-persistent-analysis-cache",
+        "codebase": "jendrikseipp/vulture"
+      },
+      {
+        "case_id": "goreleaser-retry-publish-auditing",
+        "codebase": "goreleaser/goreleaser"
+      },
+      {
+        "case_id": "oxvg-structural-selector-preservation",
+        "codebase": "noahbald/oxvg"
+      },
+      {
+        "case_id": "updo-policy-alerting",
+        "codebase": "Owloops/updo"
+      },
+      {
+        "case_id": "textual-richlog-follow-state",
+        "codebase": "Textualize/textual"
+      },
+      {
+        "case_id": "aiomonitor-task-snapshots-diff",
+        "codebase": "aio-libs/aiomonitor"
+      },
+      {
+        "case_id": "kombu-virtual-queue-dead-lettering",
+        "codebase": "celery/kombu"
+      },
+      {
+        "case_id": "csstree-shorthand-expansion-compression",
+        "codebase": "csstree/csstree"
+      },
+      {
+        "case_id": "wasmi-trap-coredumps",
+        "codebase": "wasmi-labs/wasmi"
+      },
+      {
+        "case_id": "langchain-request-coalescing",
+        "codebase": "langchain-ai/langchain"
+      },
+      {
+        "case_id": "go-critic-doc-link-checker",
+        "codebase": "go-critic/go-critic"
+      },
+      {
+        "case_id": "mashumaro-flattened-dataclass-fields",
+        "codebase": "Fatal1ty/mashumaro"
+      },
+      {
+        "case_id": "anko-typed-variable-bindings",
+        "codebase": "mattn/anko"
+      },
+      {
+        "case_id": "valibot-recursive-schema-composition",
+        "codebase": "open-circle/valibot"
+      },
+      {
+        "case_id": "dasel-html-document-format",
+        "codebase": "TomWright/dasel"
+      },
+      {
+        "case_id": "geo-shapeindex-serialization",
+        "codebase": "golang/geo"
+      },
+      {
+        "case_id": "kysely-window-grouping-helpers",
+        "codebase": "kysely-org/kysely"
+      },
+      {
+        "case_id": "eicrud-keyset-pagination-cursor",
+        "codebase": "eicrud/eicrud"
+      },
+      {
+        "case_id": "helm-unified-manifest-stream",
+        "codebase": "helm/helm"
+      },
+      {
+        "case_id": "ipython-session-bundle-replay",
+        "codebase": "ipython/ipython"
+      },
+      {
+        "case_id": "adaptix-name-mapping-aliases",
+        "codebase": "reagento/adaptix"
+      },
+      {
+        "case_id": "ink-grid-box-layout",
+        "codebase": "vadimdemedes/ink"
+      },
+      {
+        "case_id": "query-persist-restored-query-state",
+        "codebase": "TanStack/query"
+      },
+      {
+        "case_id": "tomlkit-toml-table-converters",
+        "codebase": "python-poetry/tomlkit"
+      },
+      {
+        "case_id": "vitest-duration-sharding",
+        "codebase": "vitest-dev/vitest"
+      },
+      {
+        "case_id": "fastapi-implicit-head-options",
+        "codebase": "fastapi/fastapi"
+      },
+      {
+        "case_id": "participle-grammar-conflict-analysis",
+        "codebase": "alecthomas/participle"
+      },
+      {
+        "case_id": "yjs-map-conflict-detection",
+        "codebase": "yjs/yjs"
+      },
+      {
+        "case_id": "opa-template-string-reconstruction",
+        "codebase": "open-policy-agent/opa"
+      },
+      {
+        "case_id": "dynamodb-toolbox-conditional-attribute-requirements",
+        "codebase": "dynamodb-toolbox/dynamodb-toolbox"
+      },
+      {
+        "case_id": "effect-sse-httpapi-streaming",
+        "codebase": "Effect-TS/effect"
+      },
+      {
+        "case_id": "onedump-dump-encryption-pipeline",
+        "codebase": "liweiyi88/onedump"
+      },
+      {
+        "case_id": "arcane-drift-detection-baselines",
+        "codebase": "getarcaneapp/arcane"
+      },
+      {
+        "case_id": "sqlite-utils-safe-import-checkpoints",
+        "codebase": "simonw/sqlite-utils"
+      },
+      {
+        "case_id": "testem-bail-on-test-failure",
+        "codebase": "testem/testem"
+      },
+      {
+        "case_id": "kea-atomic-signal-selectors",
+        "codebase": "keajs/kea"
+      },
+      {
+        "case_id": "sqlfmt-create-table-ddl-formatting",
+        "codebase": "tconbeer/sqlfmt"
+      },
+      {
+        "case_id": "narwhals-rolling-window-suite",
+        "codebase": "narwhals-dev/narwhals"
+      },
+      {
+        "case_id": "claude-code-by-agents-recursive-delegation",
+        "codebase": "baryhuang/claude-code-by-agents"
+      },
+      {
+        "case_id": "prometheus-typed-label-sorting",
+        "codebase": "prometheus/prometheus"
+      }
+    ]
+  },
+  "zipact_16": {
+    "path": "/data00/home/fanmeihao/projects/OptiHarnessForCost/baselines/experiments/matrix64_v1/deep-swe_16.txt",
+    "sha256": "565228595bf11298975911d4e267141a4a666d19700f845036f43a1a0435ee96",
+    "count": 16,
+    "is_prefix_of_sample_64": true,
+    "cases": [
+      "mnamer-daemon-watch-lifecycle",
+      "obsidian-linter-auto-table-of-contents",
+      "returns-validated-error-accumulation",
+      "sql-formatter-bigquery-pipe-formatting",
+      "wazero-multi-module-snapshots",
+      "ts-pattern-match-each",
+      "ofetch-per-origin-circuit-breaker",
+      "kcp-go-multiplexed-kcp-streams",
+      "quill-shared-toolbar-focus",
+      "gql-incremental-graphql-delivery",
+      "pest-character-class-coalescing",
+      "clack-async-autocomplete-options",
+      "numba-stencil-boundary-modes",
+      "meriyah-explicit-resource-declarations",
+      "mobly-grouped-test-barriers",
+      "awilix-async-container-initialization"
+    ]
+  }
+}

@@ -35,6 +35,11 @@ export ROOT_DIR
 
 # ---------- 参数（环境变量，均有默认） ----------
 BENCHMARK="${BENCHMARK:-}"
+case "$BENCHMARK" in
+  terminal-bench-2-1|terminalbench-2.1|terminalbench)
+    BENCHMARK="terminal-bench-2.1"
+    ;;
+esac
 LLM_CONFIG="${LLM_CONFIG:-${ROOT_DIR}/_config/deepseekv4_flash.yaml}"
 N_CONCURRENT="${N_CONCURRENT:-4}"
 EVOLVE_CASE_COUNT="${EVOLVE_CASE_COUNT:-16}"   # 采样多少 case 做 evolve + 回验
@@ -48,6 +53,8 @@ EVOLVE_CASES_PER_PROMPT="${EVOLVE_CASES_PER_PROMPT:-2}"
 WORK_DIR="${WORK_DIR:-}"
 SWEBENCH_TASK_PATH="${SWEBENCH_TASK_PATH:-}"  # swebench 必填
 DAB_TASK_PATH="${DAB_TASK_PATH:-}"            # dab harbor flat task 目录（可自动生成）
+TERMINAL_BENCH_TASK_PATH="${TERMINAL_BENCH_TASK_PATH:-}"
+DEVEVAL_TASK_PATH="${DEVEVAL_TASK_PATH:-}"
 SKIP_FINAL_EVAL="${SKIP_FINAL_EVAL:-0}"       # 1=只做步骤 1，跳过最终评测
 DRY_RUN="${DRY_RUN:-0}"
 CONDA_ENV="${CONDA_ENV-0622}"                 # 置空串则不激活 conda
@@ -92,6 +99,7 @@ PY
 )}"
 [[ -n "$LLM_NAME" ]] || LLM_NAME="$(basename "$LLM_CONFIG" .yaml)"
 RESULTS_ROOT="${RESULTS_ROOT:-${ROOT_DIR}/results}"
+[[ "$RESULTS_ROOT" != /* ]] && RESULTS_ROOT="${ROOT_DIR}/${RESULTS_ROOT#./}"
 EVAL_CASE_TAG="$EVAL_N_TASKS"
 [[ "$EVAL_ALL_CASES" == "1" ]] && EVAL_CASE_TAG="all"
 EXPERIMENT_RESULTS_ROOT="${RESULTS_ROOT}/${LLM_CONFIG_NAME}/evolve${EVOLVE_CASE_COUNT}_eval${EVAL_CASE_TAG}"
@@ -109,7 +117,7 @@ log()  { printf '\n\033[1;34m[evolve-exp]\033[0m %s\n' "$*" >&2; }
 warn() { printf '\n\033[1;33m[evolve-exp] WARN:\033[0m %s\n' "$*" >&2; }
 die()  { printf '\n\033[1;31m[evolve-exp] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 
-[[ -n "$BENCHMARK" ]] || die "请设置 BENCHMARK（deep-swe / swe-atlas-qa / swe-atlas-tw / swe-atlas-rf / swebench / datamind / dab）"
+[[ -n "$BENCHMARK" ]] || die "请设置 BENCHMARK（deep-swe / swe-atlas-qa / swe-atlas-tw / swe-atlas-rf / swebench / terminal-bench-2.1 / deveval / datamind / dab）"
 [[ "$EVOLVE_CASE_COUNT" =~ ^[1-9][0-9]*$ ]] \
   || die "EVOLVE_CASE_COUNT 必须是正整数（当前=$EVOLVE_CASE_COUNT）"
 [[ "$EVAL_ALL_CASES" == "0" || "$EVAL_ALL_CASES" == "1" ]] \
@@ -294,6 +302,65 @@ prepare_dab_tasks() {
   printf '%s\n' "$target"
 }
 
+# ---------- Harbor Hub：导出 registry dataset 为可采样的本地 flat tasks ----------
+_harbor_hub_count() {
+  find -L "$1" -maxdepth 2 -name task.toml 2>/dev/null | wc -l
+}
+
+prepare_harbor_hub_tasks() {
+  local benchmark_label="$1" registry_dataset="$2" expected_count="$3"
+  local given="$4" default_target="$5"
+  [[ -n "$given" && "$given" != /* ]] && given="${ROOT_DIR}/${given#./}"
+  [[ "$default_target" != /* ]] && default_target="${ROOT_DIR}/${default_target#./}"
+
+  local required
+  if [[ "$EVAL_ALL_CASES" == "1" ]]; then
+    # A caller-supplied flat directory defines its own complete evaluation
+    # pool; this is useful for deterministic one-case integration tests.
+    required="$EVOLVE_CASE_COUNT"
+  else
+    required=$((EVOLVE_CASE_COUNT + EVAL_N_TASKS))
+  fi
+
+  local target="$default_target"
+  if [[ -n "$given" && -d "$given" && "$(_harbor_hub_count "$given")" -ge "$required" ]]; then
+    target="$given"
+  fi
+
+  local have
+  have="$(_harbor_hub_count "$target")"
+  if [[ "$target" != "$default_target" || "$have" -ge "$expected_count" ]]; then
+    log "[$benchmark_label] 使用已有 flat task 目录：$target（$have 个实例）"
+    printf '%s\n' "$target"
+    return 0
+  fi
+
+  if [[ "$DRY_RUN" == "1" ]]; then
+    warn "[DRY_RUN] [$benchmark_label] 跳过 Harbor Hub 下载；假设任务目录已在 $target"
+    printf '%s\n' "$target"
+    return 0
+  fi
+
+  local proxy="${PROXY_URL:-http://sys-proxy-rd-relay.byted.org:8118}"
+  local export_root
+  export_root="$(dirname "$default_target")"
+  mkdir -p "$export_root"
+  log "[$benchmark_label] flat tasks 不完整（$have/$expected_count），从 Harbor Hub 导出 $registry_dataset -> $export_root"
+  (
+    cd "$ROOT_DIR"
+    HTTP_PROXY="$proxy" HTTPS_PROXY="$proxy" \
+    http_proxy="$proxy" https_proxy="$proxy" \
+      uv run --directory "$ROOT_DIR/tmp/harbor" harbor download \
+        "$registry_dataset" --output-dir "$export_root" --export
+  ) >&2 || die "[$benchmark_label] Harbor Hub 数据集下载失败：$registry_dataset"
+
+  have="$(_harbor_hub_count "$default_target")"
+  [[ "$have" -ge "$expected_count" ]] \
+    || die "[$benchmark_label] 下载后任务数不足：$have < $expected_count（$default_target）"
+  log "[$benchmark_label] flat tasks 就绪：$default_target（$have 个实例）"
+  printf '%s\n' "$default_target"
+}
+
 # ---------- benchmark 元信息（与 v6.1 BENCHMARKS 保持一致） ----------
 case "$BENCHMARK" in
   deep-swe)
@@ -314,6 +381,29 @@ case "$BENCHMARK" in
     SWEBENCH_TASK_PATH="${SWEBENCH_TASK_PATH:-${ROOT_DIR}/tmp/harbor/datasets/swebench-verified}"
     SOURCE_TASK_DIR="$(prepare_swebench_tasks "${SWEBENCH_TASK_PATH}")"
     ;;
+  terminal-bench-2.1)
+    TERMINAL_BENCH_TASK_PATH="$(
+      prepare_harbor_hub_tasks \
+        "$BENCHMARK" "terminal-bench/terminal-bench-2-1" 89 \
+        "$TERMINAL_BENCH_TASK_PATH" \
+        "${ROOT_DIR}/tmp/harbor/datasets/terminal-bench-2-1"
+    )"
+    RUN_SCRIPT="run_terminal_bench.sh"; RESULTS_SUBDIR="terminal-bench-2-1"; SPLIT=""
+    SOURCE_TASK_DIR="$TERMINAL_BENCH_TASK_PATH"
+    ;;
+  deveval)
+    DEVEVAL_TASK_PATH="$(
+      prepare_harbor_hub_tasks \
+        "$BENCHMARK" "deveval/deveval" 63 \
+        "$DEVEVAL_TASK_PATH" \
+        "${ROOT_DIR}/tmp/harbor/datasets/deveval"
+    )"
+    if [[ "$DRY_RUN" != "1" ]]; then
+      bash "${SCRIPT_DIR}/normalize_deveval_tasks.sh" "$DEVEVAL_TASK_PATH"
+    fi
+    RUN_SCRIPT="run_deveval.sh"; RESULTS_SUBDIR="deveval"; SPLIT=""
+    SOURCE_TASK_DIR="$DEVEVAL_TASK_PATH"
+    ;;
   datamind)
     # DataMind/longds：走 harbor（与 swebench 同构），用 longds_adapter 生成 multi-step
     # flat task 目录，mini-swe-agent 跑，verifier 用 LLM judge。产物是 ATIF trajectory，
@@ -331,7 +421,7 @@ case "$BENCHMARK" in
     SOURCE_TASK_DIR="$(prepare_dab_tasks)"
     DAB_TASK_PATH="$SOURCE_TASK_DIR"
     ;;
-  *) die "未知 BENCHMARK=$BENCHMARK（支持：deep-swe / swe-atlas-qa / swe-atlas-tw / swe-atlas-rf / swebench / datamind / dab）";;
+  *) die "未知 BENCHMARK=$BENCHMARK（支持：deep-swe / swe-atlas-qa / swe-atlas-tw / swe-atlas-rf / swebench / terminal-bench-2.1 / deveval / datamind / dab）";;
 esac
 
 # DRY_RUN 时 prepare_*_tasks 会跳过实际生成、假设目录已就绪，故跳过存在性校验。
@@ -491,6 +581,8 @@ _prep_task_meta() {
     deep-swe)    PREP_TASK_ENV_NAME="DEEP_SWE_TASKS_PATH"; PREP_TASK_LAYOUT="flat" ;;
     swe-atlas-*) PREP_TASK_ENV_NAME="SWE_ATLAS_DATA_DIR";   PREP_TASK_LAYOUT="split" ;;
     swebench)    PREP_TASK_ENV_NAME="SWEBENCH_TASK_PATH";    PREP_TASK_LAYOUT="flat" ;;
+    terminal-bench-2.1) PREP_TASK_ENV_NAME="TERMINAL_BENCH_TASK_PATH"; PREP_TASK_LAYOUT="flat" ;;
+    deveval)     PREP_TASK_ENV_NAME="DEVEVAL_TASK_PATH";      PREP_TASK_LAYOUT="flat" ;;
     datamind)    PREP_TASK_ENV_NAME="DATAMIND_TASK_PATH";    PREP_TASK_LAYOUT="flat" ;;
     dab)         PREP_TASK_ENV_NAME="DAB_TASK_PATH";          PREP_TASK_LAYOUT="flat" ;;
     *) die "prep 不支持 benchmark=$BENCHMARK" ;;
@@ -718,6 +810,16 @@ PY
     else
       log "[no_evolve] 复用已有 case 列表：$cases_used_file"
     fi
+  elif [[ "$DRY_RUN" == "1" ]]; then
+    # DRY_RUN 不会真正创建 Harbor final-eval 目录，但主流程已经把精确配对集
+    # 写入 evolve work dir。复用该文件，确保入口的 paired no-evolve 也能完整验参。
+    cases_used_file="$(find "${EVOLVE_RESULTS_ROOT}/${VERSION_TAG}/${BENCHMARK}" \
+      -mindepth 2 -maxdepth 2 -type f -name final_eval_cases.txt \
+      2>/dev/null | sort | tail -1 || true)"
+    [[ -n "$cases_used_file" ]] \
+      || die "[no_evolve/DRY_RUN] 找不到主流程生成的 final_eval_cases.txt"
+    eval_reference_label="DRY_RUN 主流程预选集合：$cases_used_file"
+    log "[no_evolve/DRY_RUN] 复用主流程预选 case 列表：$cases_used_file"
   elif [[ "$EVAL_ALL_CASES" == "1" ]]; then
     cases_used_file="$FINAL_EVAL_CASES_FILE"
     eval_reference_label="eval-all 完整任务池（evolve final eval 将使用同一集合）"
@@ -814,6 +916,8 @@ if [[ "$EVOLVE_FRAMEWORK" == "coat" ]]; then
     --n-cycles "$COAT_N_CYCLES")
   [[ "$V61_ANNOTATE_CHECKPOINT_ENABLED" == "0" ]] && COAT_CMD+=(--no-annotation-checkpoint)
   [[ "$BENCHMARK" == "swebench" ]] && export SWEBENCH_TASK_PATH="$SOURCE_TASK_DIR"
+  [[ "$BENCHMARK" == "terminal-bench-2.1" ]] && export TERMINAL_BENCH_TASK_PATH="$SOURCE_TASK_DIR"
+  [[ "$BENCHMARK" == "deveval" ]] && export DEVEVAL_TASK_PATH="$SOURCE_TASK_DIR"
   [[ "$BENCHMARK" == "datamind" ]] && export DATAMIND_TASK_PATH="$SOURCE_TASK_DIR"
   [[ "$BENCHMARK" == "dab" ]] && export DAB_TASK_PATH="$SOURCE_TASK_DIR"
   [[ "$DRY_RUN" == "1" ]] && COAT_CMD+=(--dry-run)

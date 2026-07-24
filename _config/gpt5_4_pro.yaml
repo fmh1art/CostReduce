@@ -1,0 +1,11 @@
+api_type: azure_chat
+api_version: 2024-03-01-preview
+azure_endpoint: https://aidp.bytedance.net/api/modelhub/online/v2/crawl
+openai_base_url: https://aidp.bytedance.net/api/modelhub/online/v2/crawl
+key: K8Iwh3LaSiScQQX5HQMBFnbH2zXZtQV7
+llm_name: gpt-5.4-pro-2026-03-05
+
+price_yuan_per_million_token:
+  input_token: 203.10
+  output_token: 1218.60
+  cached_token: 203.10

@@ -1,0 +1,9 @@
+.cache/
+envs/
+runtime_tasks/
+eet/
+zipact/
+experiments/**/.prepare.lock
+**/__pycache__/
+**/results/
+*.egg-info/

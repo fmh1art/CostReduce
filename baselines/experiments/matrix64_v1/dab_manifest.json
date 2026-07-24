@@ -1,0 +1,295 @@
+{
+  "schema_version": "baseline.matrix-case-selection.v1",
+  "policy": "codebase-round-robin",
+  "selector_salt": "evolve-diverse-v1",
+  "benchmark": "dab",
+  "task_root": "/data00/home/fanmeihao/projects/OptiHarnessForCost/benchmark/DBA-bench/harbor/datasets/dab",
+  "sample_64": {
+    "path": "/data00/home/fanmeihao/projects/OptiHarnessForCost/baselines/experiments/matrix64_v1/dab_64.txt",
+    "sha256": "28be384c13459aa364f0a115e35ca636ed5a485c0463a3247a1af5f4add0d1ce",
+    "count": 64,
+    "codebases": 17,
+    "cases": [
+      {
+        "case_id": "dab__deps_dev_v1__query1",
+        "codebase": "dataset:deps_dev_v1"
+      },
+      {
+        "case_id": "dab__github_repos__query2",
+        "codebase": "dataset:github_repos"
+      },
+      {
+        "case_id": "dab__googlelocal__query1",
+        "codebase": "dataset:googlelocal"
+      },
+      {
+        "case_id": "dab__usaspending__query3",
+        "codebase": "dataset:usaspending"
+      },
+      {
+        "case_id": "dab__bookreview__query2",
+        "codebase": "dataset:bookreview"
+      },
+      {
+        "case_id": "dab__music_brainz_20k__query3",
+        "codebase": "dataset:music_brainz_20k"
+      },
+      {
+        "case_id": "dab__yelp__query3",
+        "codebase": "dataset:yelp"
+      },
+      {
+        "case_id": "dab__pancancer_atlas__query3",
+        "codebase": "dataset:pancancer_atlas"
+      },
+      {
+        "case_id": "dab__agnews__query2",
+        "codebase": "dataset:agnews"
+      },
+      {
+        "case_id": "dab__krama__query6",
+        "codebase": "dataset:krama"
+      },
+      {
+        "case_id": "dab__cve__query9",
+        "codebase": "dataset:cve"
+      },
+      {
+        "case_id": "dab__civic_unstructured__query7",
+        "codebase": "dataset:civic_unstructured"
+      },
+      {
+        "case_id": "dab__stockindex__query2",
+        "codebase": "dataset:stockindex"
+      },
+      {
+        "case_id": "dab__patents__query3",
+        "codebase": "dataset:patents"
+      },
+      {
+        "case_id": "dab__crmarenapro__query11",
+        "codebase": "dataset:crmarenapro"
+      },
+      {
+        "case_id": "dab__stockmarket__query3",
+        "codebase": "dataset:stockmarket"
+      },
+      {
+        "case_id": "dab__imdb__query10",
+        "codebase": "dataset:imdb"
+      },
+      {
+        "case_id": "dab__deps_dev_v1__query2",
+        "codebase": "dataset:deps_dev_v1"
+      },
+      {
+        "case_id": "dab__github_repos__query4",
+        "codebase": "dataset:github_repos"
+      },
+      {
+        "case_id": "dab__googlelocal__query3",
+        "codebase": "dataset:googlelocal"
+      },
+      {
+        "case_id": "dab__usaspending__query10",
+        "codebase": "dataset:usaspending"
+      },
+      {
+        "case_id": "dab__bookreview__query3",
+        "codebase": "dataset:bookreview"
+      },
+      {
+        "case_id": "dab__music_brainz_20k__query1",
+        "codebase": "dataset:music_brainz_20k"
+      },
+      {
+        "case_id": "dab__yelp__query4",
+        "codebase": "dataset:yelp"
+      },
+      {
+        "case_id": "dab__pancancer_atlas__query1",
+        "codebase": "dataset:pancancer_atlas"
+      },
+      {
+        "case_id": "dab__agnews__query1",
+        "codebase": "dataset:agnews"
+      },
+      {
+        "case_id": "dab__krama__query8",
+        "codebase": "dataset:krama"
+      },
+      {
+        "case_id": "dab__cve__query5",
+        "codebase": "dataset:cve"
+      },
+      {
+        "case_id": "dab__civic_unstructured__query4",
+        "codebase": "dataset:civic_unstructured"
+      },
+      {
+        "case_id": "dab__stockindex__query3",
+        "codebase": "dataset:stockindex"
+      },
+      {
+        "case_id": "dab__patents__query2",
+        "codebase": "dataset:patents"
+      },
+      {
+        "case_id": "dab__crmarenapro__query9",
+        "codebase": "dataset:crmarenapro"
+      },
+      {
+        "case_id": "dab__stockmarket__query2",
+        "codebase": "dataset:stockmarket"
+      },
+      {
+        "case_id": "dab__imdb__query5",
+        "codebase": "dataset:imdb"
+      },
+      {
+        "case_id": "dab__github_repos__query3",
+        "codebase": "dataset:github_repos"
+      },
+      {
+        "case_id": "dab__googlelocal__query2",
+        "codebase": "dataset:googlelocal"
+      },
+      {
+        "case_id": "dab__usaspending__query2",
+        "codebase": "dataset:usaspending"
+      },
+      {
+        "case_id": "dab__bookreview__query1",
+        "codebase": "dataset:bookreview"
+      },
+      {
+        "case_id": "dab__music_brainz_20k__query2",
+        "codebase": "dataset:music_brainz_20k"
+      },
+      {
+        "case_id": "dab__yelp__query6",
+        "codebase": "dataset:yelp"
+      },
+      {
+        "case_id": "dab__pancancer_atlas__query2",
+        "codebase": "dataset:pancancer_atlas"
+      },
+      {
+        "case_id": "dab__agnews__query3",
+        "codebase": "dataset:agnews"
+      },
+      {
+        "case_id": "dab__krama__query2",
+        "codebase": "dataset:krama"
+      },
+      {
+        "case_id": "dab__cve__query10",
+        "codebase": "dataset:cve"
+      },
+      {
+        "case_id": "dab__civic_unstructured__query1",
+        "codebase": "dataset:civic_unstructured"
+      },
+      {
+        "case_id": "dab__stockindex__query1",
+        "codebase": "dataset:stockindex"
+      },
+      {
+        "case_id": "dab__patents__query1",
+        "codebase": "dataset:patents"
+      },
+      {
+        "case_id": "dab__crmarenapro__query7",
+        "codebase": "dataset:crmarenapro"
+      },
+      {
+        "case_id": "dab__stockmarket__query4",
+        "codebase": "dataset:stockmarket"
+      },
+      {
+        "case_id": "dab__imdb__query7",
+        "codebase": "dataset:imdb"
+      },
+      {
+        "case_id": "dab__github_repos__query1",
+        "codebase": "dataset:github_repos"
+      },
+      {
+        "case_id": "dab__googlelocal__query4",
+        "codebase": "dataset:googlelocal"
+      },
+      {
+        "case_id": "dab__usaspending__query7",
+        "codebase": "dataset:usaspending"
+      },
+      {
+        "case_id": "dab__yelp__query5",
+        "codebase": "dataset:yelp"
+      },
+      {
+        "case_id": "dab__agnews__query4",
+        "codebase": "dataset:agnews"
+      },
+      {
+        "case_id": "dab__krama__query1",
+        "codebase": "dataset:krama"
+      },
+      {
+        "case_id": "dab__cve__query4",
+        "codebase": "dataset:cve"
+      },
+      {
+        "case_id": "dab__civic_unstructured__query8",
+        "codebase": "dataset:civic_unstructured"
+      },
+      {
+        "case_id": "dab__crmarenapro__query3",
+        "codebase": "dataset:crmarenapro"
+      },
+      {
+        "case_id": "dab__stockmarket__query5",
+        "codebase": "dataset:stockmarket"
+      },
+      {
+        "case_id": "dab__imdb__query1",
+        "codebase": "dataset:imdb"
+      },
+      {
+        "case_id": "dab__usaspending__query9",
+        "codebase": "dataset:usaspending"
+      },
+      {
+        "case_id": "dab__yelp__query1",
+        "codebase": "dataset:yelp"
+      },
+      {
+        "case_id": "dab__krama__query7",
+        "codebase": "dataset:krama"
+      }
+    ]
+  },
+  "zipact_16": {
+    "path": "/data00/home/fanmeihao/projects/OptiHarnessForCost/baselines/experiments/matrix64_v1/dab_16.txt",
+    "sha256": "bb4d7b5621d0875b0ce3f73c36826c89b20e6f784f0e17611547f1eb0f6e4c94",
+    "count": 16,
+    "is_prefix_of_sample_64": true,
+    "cases": [
+      "dab__deps_dev_v1__query1",
+      "dab__github_repos__query2",
+      "dab__googlelocal__query1",
+      "dab__usaspending__query3",
+      "dab__bookreview__query2",
+      "dab__music_brainz_20k__query3",
+      "dab__yelp__query3",
+      "dab__pancancer_atlas__query3",
+      "dab__agnews__query2",
+      "dab__krama__query6",
+      "dab__cve__query9",
+      "dab__civic_unstructured__query7",
+      "dab__stockindex__query2",
+      "dab__patents__query3",
+      "dab__crmarenapro__query11",
+      "dab__stockmarket__query3"
+    ]
+  }
+}

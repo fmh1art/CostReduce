@@ -1,0 +1,17 @@
+# Fixed 16-case subset used by the existing doubao_seed2_lite/evolve16 runs.
+astropy__astropy-13236
+django__django-12143
+django__django-15037
+matplotlib__matplotlib-23476
+mwaskom__seaborn-3187
+pallets__flask-5014
+psf__requests-2931
+pydata__xarray-4966
+pylint-dev__pylint-4661
+pylint-dev__pylint-7277
+pytest-dev__pytest-7490
+scikit-learn__scikit-learn-14141
+scikit-learn__scikit-learn-14894
+sphinx-doc__sphinx-7910
+sphinx-doc__sphinx-9591
+sympy__sympy-13551

@@ -1,0 +1,291 @@
+{
+  "schema_version": "baseline.matrix-case-selection.v1",
+  "policy": "codebase-round-robin",
+  "selector_salt": "evolve-diverse-v1",
+  "benchmark": "deveval",
+  "task_root": "/data00/home/fanmeihao/projects/CostReduce/tmp/harbor/datasets/deveval",
+  "sample_full": {
+    "path": "/data00/home/fanmeihao/projects/OptiHarnessForCost/baselines/experiments/matrix64_v1/deveval_63.txt",
+    "sha256": "1c8efea87c87b615b302b80d917cd67ca9dc3b563e31f98443348f941a9d46d4",
+    "count": 63,
+    "codebases": 63,
+    "cases": [
+      {
+        "case_id": "python-lice-acceptance-testing",
+        "codebase": "task:python-lice-acceptance-testing"
+      },
+      {
+        "case_id": "cpp-logistic-system-acceptance-testing",
+        "codebase": "task:cpp-logistic-system-acceptance-testing"
+      },
+      {
+        "case_id": "cpp-people-management-acceptance-testing",
+        "codebase": "task:cpp-people-management-acceptance-testing"
+      },
+      {
+        "case_id": "cpp-xlsx2csv-unit-testing",
+        "codebase": "task:cpp-xlsx2csv-unit-testing"
+      },
+      {
+        "case_id": "cpp-logistic-system-implementation",
+        "codebase": "task:cpp-logistic-system-implementation"
+      },
+      {
+        "case_id": "python-readtime-unit-testing",
+        "codebase": "task:python-readtime-unit-testing"
+      },
+      {
+        "case_id": "java-redis-cache-acceptance-testing",
+        "codebase": "task:java-redis-cache-acceptance-testing"
+      },
+      {
+        "case_id": "java-image-similarity-unit-testing",
+        "codebase": "task:java-image-similarity-unit-testing"
+      },
+      {
+        "case_id": "cpp-graph-cpp-implementation",
+        "codebase": "task:cpp-graph-cpp-implementation"
+      },
+      {
+        "case_id": "python-particle-swarm-optimization-implementation",
+        "codebase": "task:python-particle-swarm-optimization-implementation"
+      },
+      {
+        "case_id": "python-arxiv-digest-implementation",
+        "codebase": "task:python-arxiv-digest-implementation"
+      },
+      {
+        "case_id": "cpp-graph-cpp-unit-testing",
+        "codebase": "task:cpp-graph-cpp-unit-testing"
+      },
+      {
+        "case_id": "java-actor-relationship-game-implementation",
+        "codebase": "task:java-actor-relationship-game-implementation"
+      },
+      {
+        "case_id": "python-chakin-unit-testing",
+        "codebase": "task:python-chakin-unit-testing"
+      },
+      {
+        "case_id": "cpp-logistic-system-unit-testing",
+        "codebase": "task:cpp-logistic-system-unit-testing"
+      },
+      {
+        "case_id": "python-lice-implementation",
+        "codebase": "task:python-lice-implementation"
+      },
+      {
+        "case_id": "javascript-listen-now-frontend-implementation",
+        "codebase": "task:javascript-listen-now-frontend-implementation"
+      },
+      {
+        "case_id": "python-chakin-acceptance-testing",
+        "codebase": "task:python-chakin-acceptance-testing"
+      },
+      {
+        "case_id": "java-image-similarity-acceptance-testing",
+        "codebase": "task:java-image-similarity-acceptance-testing"
+      },
+      {
+        "case_id": "cpp-xlsx2csv-implementation",
+        "codebase": "task:cpp-xlsx2csv-implementation"
+      },
+      {
+        "case_id": "java-actor-relationship-game-unit-testing",
+        "codebase": "task:java-actor-relationship-game-unit-testing"
+      },
+      {
+        "case_id": "python-geotext-unit-testing",
+        "codebase": "task:python-geotext-unit-testing"
+      },
+      {
+        "case_id": "javascript-login-registration-implementation",
+        "codebase": "task:javascript-login-registration-implementation"
+      },
+      {
+        "case_id": "python-readtime-implementation",
+        "codebase": "task:python-readtime-implementation"
+      },
+      {
+        "case_id": "python-hone-implementation",
+        "codebase": "task:python-hone-implementation"
+      },
+      {
+        "case_id": "python-chakin-implementation",
+        "codebase": "task:python-chakin-implementation"
+      },
+      {
+        "case_id": "python-stocktrends-implementation",
+        "codebase": "task:python-stocktrends-implementation"
+      },
+      {
+        "case_id": "java-idcenter-implementation",
+        "codebase": "task:java-idcenter-implementation"
+      },
+      {
+        "case_id": "javascript-listen-now-frontend-unit-testing",
+        "codebase": "task:javascript-listen-now-frontend-unit-testing"
+      },
+      {
+        "case_id": "java-java-heap-implementation",
+        "codebase": "task:java-java-heap-implementation"
+      },
+      {
+        "case_id": "java-redis-cache-unit-testing",
+        "codebase": "task:java-redis-cache-unit-testing"
+      },
+      {
+        "case_id": "java-idcenter-unit-testing",
+        "codebase": "task:java-idcenter-unit-testing"
+      },
+      {
+        "case_id": "python-stocktrends-unit-testing",
+        "codebase": "task:python-stocktrends-unit-testing"
+      },
+      {
+        "case_id": "cpp-xlsx2csv-acceptance-testing",
+        "codebase": "task:cpp-xlsx2csv-acceptance-testing"
+      },
+      {
+        "case_id": "python-particle-swarm-optimization-unit-testing",
+        "codebase": "task:python-particle-swarm-optimization-unit-testing"
+      },
+      {
+        "case_id": "cpp-graph-cpp-acceptance-testing",
+        "codebase": "task:cpp-graph-cpp-acceptance-testing"
+      },
+      {
+        "case_id": "python-arxiv-digest-acceptance-testing",
+        "codebase": "task:python-arxiv-digest-acceptance-testing"
+      },
+      {
+        "case_id": "java-image-similarity-implementation",
+        "codebase": "task:java-image-similarity-implementation"
+      },
+      {
+        "case_id": "python-hone-acceptance-testing",
+        "codebase": "task:python-hone-acceptance-testing"
+      },
+      {
+        "case_id": "python-readtime-acceptance-testing",
+        "codebase": "task:python-readtime-acceptance-testing"
+      },
+      {
+        "case_id": "cpp-area-calculation-unit-testing",
+        "codebase": "task:cpp-area-calculation-unit-testing"
+      },
+      {
+        "case_id": "javascript-login-registration-unit-testing",
+        "codebase": "task:javascript-login-registration-unit-testing"
+      },
+      {
+        "case_id": "java-java-heap-acceptance-testing",
+        "codebase": "task:java-java-heap-acceptance-testing"
+      },
+      {
+        "case_id": "java-java-heap-unit-testing",
+        "codebase": "task:java-java-heap-unit-testing"
+      },
+      {
+        "case_id": "python-lice-unit-testing",
+        "codebase": "task:python-lice-unit-testing"
+      },
+      {
+        "case_id": "python-geotext-acceptance-testing",
+        "codebase": "task:python-geotext-acceptance-testing"
+      },
+      {
+        "case_id": "cpp-people-management-implementation",
+        "codebase": "task:cpp-people-management-implementation"
+      },
+      {
+        "case_id": "javascript-login-registration-acceptance-testing",
+        "codebase": "task:javascript-login-registration-acceptance-testing"
+      },
+      {
+        "case_id": "python-hybrid-images-acceptance-testing",
+        "codebase": "task:python-hybrid-images-acceptance-testing"
+      },
+      {
+        "case_id": "python-particle-swarm-optimization-acceptance-testing",
+        "codebase": "task:python-particle-swarm-optimization-acceptance-testing"
+      },
+      {
+        "case_id": "python-stocktrends-acceptance-testing",
+        "codebase": "task:python-stocktrends-acceptance-testing"
+      },
+      {
+        "case_id": "cpp-area-calculation-implementation",
+        "codebase": "task:cpp-area-calculation-implementation"
+      },
+      {
+        "case_id": "java-actor-relationship-game-acceptance-testing",
+        "codebase": "task:java-actor-relationship-game-acceptance-testing"
+      },
+      {
+        "case_id": "cpp-area-calculation-acceptance-testing",
+        "codebase": "task:cpp-area-calculation-acceptance-testing"
+      },
+      {
+        "case_id": "java-idcenter-acceptance-testing",
+        "codebase": "task:java-idcenter-acceptance-testing"
+      },
+      {
+        "case_id": "javascript-listen-now-frontend-acceptance-testing",
+        "codebase": "task:javascript-listen-now-frontend-acceptance-testing"
+      },
+      {
+        "case_id": "java-redis-cache-implementation",
+        "codebase": "task:java-redis-cache-implementation"
+      },
+      {
+        "case_id": "python-hone-unit-testing",
+        "codebase": "task:python-hone-unit-testing"
+      },
+      {
+        "case_id": "python-arxiv-digest-unit-testing",
+        "codebase": "task:python-arxiv-digest-unit-testing"
+      },
+      {
+        "case_id": "python-hybrid-images-implementation",
+        "codebase": "task:python-hybrid-images-implementation"
+      },
+      {
+        "case_id": "cpp-people-management-unit-testing",
+        "codebase": "task:cpp-people-management-unit-testing"
+      },
+      {
+        "case_id": "python-geotext-implementation",
+        "codebase": "task:python-geotext-implementation"
+      },
+      {
+        "case_id": "python-hybrid-images-unit-testing",
+        "codebase": "task:python-hybrid-images-unit-testing"
+      }
+    ]
+  },
+  "zipact_16": {
+    "path": "/data00/home/fanmeihao/projects/OptiHarnessForCost/baselines/experiments/matrix64_v1/deveval_16.txt",
+    "sha256": "c9984ff0354e4d19c1f00f190441fdf71d1918984bcfa9fc56228672c1bc91f7",
+    "count": 16,
+    "is_prefix_of_sample_full": true,
+    "cases": [
+      "python-lice-acceptance-testing",
+      "cpp-logistic-system-acceptance-testing",
+      "cpp-people-management-acceptance-testing",
+      "cpp-xlsx2csv-unit-testing",
+      "cpp-logistic-system-implementation",
+      "python-readtime-unit-testing",
+      "java-redis-cache-acceptance-testing",
+      "java-image-similarity-unit-testing",
+      "cpp-graph-cpp-implementation",
+      "python-particle-swarm-optimization-implementation",
+      "python-arxiv-digest-implementation",
+      "cpp-graph-cpp-unit-testing",
+      "java-actor-relationship-game-implementation",
+      "python-chakin-unit-testing",
+      "cpp-logistic-system-unit-testing",
+      "python-lice-implementation"
+    ]
+  }
+}

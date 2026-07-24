@@ -864,6 +864,57 @@ def test_run_exp_honors_custom_datamind_task_path(tmp_path):
     assert 'export DATAMIND_TASK_PATH="$SOURCE_TASK_DIR"' in entry
 
 
+@pytest.mark.parametrize(
+    ("benchmark", "path_env"),
+    [
+        ("terminal-bench-2.1", "TERMINAL_BENCH_TASK_PATH"),
+        ("deveval", "DEVEVAL_TASK_PATH"),
+    ],
+)
+def test_run_exp_honors_custom_harbor_codebench_paths(
+    tmp_path, benchmark, path_env
+):
+    root = Path(__file__).resolve().parents[1]
+    flat = tmp_path / benchmark
+    for case_id in ("case-one", "case-two"):
+        case = flat / case_id
+        case.mkdir(parents=True)
+        (case / "task.toml").write_text(
+            "[task]\nname='test'\n", encoding="utf-8"
+        )
+    work_dir = tmp_path / "work"
+    env = os.environ.copy()
+    env.update({
+        "BENCHMARKS": benchmark,
+        "LLM_CONFIG": str(root / "_config" / "deepseekv4_flash.yaml"),
+        path_env: str(flat),
+        "EVOLVE_CASE_COUNT": "1",
+        "EVAL_N_TASKS": "1",
+        "COAT_N_CYCLES": "1",
+        "N_CONCURRENT": "1",
+        "EVOLVE_WORKERS": "1",
+        "DRY_RUN": "1",
+        "CONDA_ENV": "",
+        "WORK_DIR": str(work_dir),
+        "RESULTS_ROOT": str(tmp_path / "results"),
+    })
+    completed = subprocess.run(
+        ["bash", str(root / "scripts" / "run_exp.sh")],
+        cwd=root,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    prep_links = list((work_dir / "prep_taskdir").iterdir())
+    final_links = list((work_dir / "final_eval_taskdir").iterdir())
+    assert len(prep_links) == 1
+    assert len(final_links) == 1
+    assert prep_links[0].resolve().parent == flat.resolve()
+    assert final_links[0].resolve().parent == flat.resolve()
+
+
 def test_single_llm_config_controls_all_llm_stages_except_atlas_evaluate():
     root = Path(__file__).resolve().parents[1]
     entry = (root / "scripts" / "run_evolve_experiment.sh").read_text(encoding="utf-8")

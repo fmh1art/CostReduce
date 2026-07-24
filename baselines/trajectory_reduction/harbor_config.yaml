@@ -1,0 +1,15 @@
+agent:
+  agent_class: agentdiet_harbor.agent.AgentDietHarborAgent
+  step_limit: 12
+  reduction_mode: ours
+  reduction_threshold_tokens: 500
+  reduction_context_before: 1
+  reduction_context_after: 2
+  reduction_show_context: true
+model:
+  model_class: litellm
+  model_kwargs:
+    max_completion_tokens: 16384
+    extra_body:
+      thinking:
+        type: disabled

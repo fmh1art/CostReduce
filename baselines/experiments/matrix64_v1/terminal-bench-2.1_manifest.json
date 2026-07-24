@@ -1,0 +1,295 @@
+{
+  "schema_version": "baseline.matrix-case-selection.v1",
+  "policy": "codebase-round-robin",
+  "selector_salt": "evolve-diverse-v1",
+  "benchmark": "terminal-bench-2.1",
+  "task_root": "/data00/home/fanmeihao/projects/CostReduce/tmp/harbor/datasets/terminal-bench-2-1",
+  "sample_64": {
+    "path": "/data00/home/fanmeihao/projects/OptiHarnessForCost/baselines/experiments/matrix64_v1/terminal-bench-2.1_64.txt",
+    "sha256": "1fe6d7710704f63719f66f791e4d471e9f3efd708b3e2a35f4558e7c2379d8e1",
+    "count": 64,
+    "codebases": 64,
+    "cases": [
+      {
+        "case_id": "video-processing",
+        "codebase": "task:video-processing"
+      },
+      {
+        "case_id": "modernize-scientific-stack",
+        "codebase": "task:modernize-scientific-stack"
+      },
+      {
+        "case_id": "regex-log",
+        "codebase": "task:regex-log"
+      },
+      {
+        "case_id": "path-tracing",
+        "codebase": "task:path-tracing"
+      },
+      {
+        "case_id": "sqlite-db-truncate",
+        "codebase": "task:sqlite-db-truncate"
+      },
+      {
+        "case_id": "llm-inference-batching-scheduler",
+        "codebase": "task:llm-inference-batching-scheduler"
+      },
+      {
+        "case_id": "chess-best-move",
+        "codebase": "task:chess-best-move"
+      },
+      {
+        "case_id": "make-mips-interpreter",
+        "codebase": "task:make-mips-interpreter"
+      },
+      {
+        "case_id": "sanitize-git-repo",
+        "codebase": "task:sanitize-git-repo"
+      },
+      {
+        "case_id": "dna-insert",
+        "codebase": "task:dna-insert"
+      },
+      {
+        "case_id": "torch-tensor-parallelism",
+        "codebase": "task:torch-tensor-parallelism"
+      },
+      {
+        "case_id": "distribution-search",
+        "codebase": "task:distribution-search"
+      },
+      {
+        "case_id": "dna-assembly",
+        "codebase": "task:dna-assembly"
+      },
+      {
+        "case_id": "db-wal-recovery",
+        "codebase": "task:db-wal-recovery"
+      },
+      {
+        "case_id": "count-dataset-tokens",
+        "codebase": "task:count-dataset-tokens"
+      },
+      {
+        "case_id": "mcmc-sampling-stan",
+        "codebase": "task:mcmc-sampling-stan"
+      },
+      {
+        "case_id": "fix-code-vulnerability",
+        "codebase": "task:fix-code-vulnerability"
+      },
+      {
+        "case_id": "raman-fitting",
+        "codebase": "task:raman-fitting"
+      },
+      {
+        "case_id": "circuit-fibsqrt",
+        "codebase": "task:circuit-fibsqrt"
+      },
+      {
+        "case_id": "filter-js-from-html",
+        "codebase": "task:filter-js-from-html"
+      },
+      {
+        "case_id": "financial-document-processor",
+        "codebase": "task:financial-document-processor"
+      },
+      {
+        "case_id": "large-scale-text-editing",
+        "codebase": "task:large-scale-text-editing"
+      },
+      {
+        "case_id": "break-filter-js-from-html",
+        "codebase": "task:break-filter-js-from-html"
+      },
+      {
+        "case_id": "mteb-leaderboard",
+        "codebase": "task:mteb-leaderboard"
+      },
+      {
+        "case_id": "configure-git-webserver",
+        "codebase": "task:configure-git-webserver"
+      },
+      {
+        "case_id": "largest-eigenval",
+        "codebase": "task:largest-eigenval"
+      },
+      {
+        "case_id": "extract-elf",
+        "codebase": "task:extract-elf"
+      },
+      {
+        "case_id": "winning-avg-corewars",
+        "codebase": "task:winning-avg-corewars"
+      },
+      {
+        "case_id": "tune-mjcf",
+        "codebase": "task:tune-mjcf"
+      },
+      {
+        "case_id": "pytorch-model-recovery",
+        "codebase": "task:pytorch-model-recovery"
+      },
+      {
+        "case_id": "cobol-modernization",
+        "codebase": "task:cobol-modernization"
+      },
+      {
+        "case_id": "prove-plus-comm",
+        "codebase": "task:prove-plus-comm"
+      },
+      {
+        "case_id": "caffe-cifar-10",
+        "codebase": "task:caffe-cifar-10"
+      },
+      {
+        "case_id": "adaptive-rejection-sampler",
+        "codebase": "task:adaptive-rejection-sampler"
+      },
+      {
+        "case_id": "fix-ocaml-gc",
+        "codebase": "task:fix-ocaml-gc"
+      },
+      {
+        "case_id": "kv-store-grpc",
+        "codebase": "task:kv-store-grpc"
+      },
+      {
+        "case_id": "mailman",
+        "codebase": "task:mailman"
+      },
+      {
+        "case_id": "git-multibranch",
+        "codebase": "task:git-multibranch"
+      },
+      {
+        "case_id": "polyglot-c-py",
+        "codebase": "task:polyglot-c-py"
+      },
+      {
+        "case_id": "install-windows-3.11",
+        "codebase": "task:install-windows-3.11"
+      },
+      {
+        "case_id": "mteb-retrieve",
+        "codebase": "task:mteb-retrieve"
+      },
+      {
+        "case_id": "overfull-hbox",
+        "codebase": "task:overfull-hbox"
+      },
+      {
+        "case_id": "hf-model-inference",
+        "codebase": "task:hf-model-inference"
+      },
+      {
+        "case_id": "constraints-scheduling",
+        "codebase": "task:constraints-scheduling"
+      },
+      {
+        "case_id": "extract-moves-from-video",
+        "codebase": "task:extract-moves-from-video"
+      },
+      {
+        "case_id": "compile-compcert",
+        "codebase": "task:compile-compcert"
+      },
+      {
+        "case_id": "nginx-request-logging",
+        "codebase": "task:nginx-request-logging"
+      },
+      {
+        "case_id": "model-extraction-relu-logits",
+        "codebase": "task:model-extraction-relu-logits"
+      },
+      {
+        "case_id": "openssl-selfsigned-cert",
+        "codebase": "task:openssl-selfsigned-cert"
+      },
+      {
+        "case_id": "qemu-startup",
+        "codebase": "task:qemu-startup"
+      },
+      {
+        "case_id": "crack-7z-hash",
+        "codebase": "task:crack-7z-hash"
+      },
+      {
+        "case_id": "log-summary-date-ranges",
+        "codebase": "task:log-summary-date-ranges"
+      },
+      {
+        "case_id": "gcode-to-text",
+        "codebase": "task:gcode-to-text"
+      },
+      {
+        "case_id": "sparql-university",
+        "codebase": "task:sparql-university"
+      },
+      {
+        "case_id": "multi-source-data-merger",
+        "codebase": "task:multi-source-data-merger"
+      },
+      {
+        "case_id": "sqlite-with-gcov",
+        "codebase": "task:sqlite-with-gcov"
+      },
+      {
+        "case_id": "bn-fit-modify",
+        "codebase": "task:bn-fit-modify"
+      },
+      {
+        "case_id": "make-doom-for-mips",
+        "codebase": "task:make-doom-for-mips"
+      },
+      {
+        "case_id": "password-recovery",
+        "codebase": "task:password-recovery"
+      },
+      {
+        "case_id": "pytorch-model-cli",
+        "codebase": "task:pytorch-model-cli"
+      },
+      {
+        "case_id": "fix-git",
+        "codebase": "task:fix-git"
+      },
+      {
+        "case_id": "sam-cell-seg",
+        "codebase": "task:sam-cell-seg"
+      },
+      {
+        "case_id": "polyglot-rust-c",
+        "codebase": "task:polyglot-rust-c"
+      },
+      {
+        "case_id": "regex-chess",
+        "codebase": "task:regex-chess"
+      }
+    ]
+  },
+  "zipact_16": {
+    "path": "/data00/home/fanmeihao/projects/OptiHarnessForCost/baselines/experiments/matrix64_v1/terminal-bench-2.1_16.txt",
+    "sha256": "c636e5142075913b99ae8d6a47b73542439eea670543812512c8950da203a899",
+    "count": 16,
+    "is_prefix_of_sample_64": true,
+    "cases": [
+      "video-processing",
+      "modernize-scientific-stack",
+      "regex-log",
+      "path-tracing",
+      "sqlite-db-truncate",
+      "llm-inference-batching-scheduler",
+      "chess-best-move",
+      "make-mips-interpreter",
+      "sanitize-git-repo",
+      "dna-insert",
+      "torch-tensor-parallelism",
+      "distribution-search",
+      "dna-assembly",
+      "db-wal-recovery",
+      "count-dataset-tokens",
+      "mcmc-sampling-stan"
+    ]
+  }
+}

@@ -1575,6 +1575,12 @@ BENCHMARKS: dict[str, dict] = {
                          task_path_env="SWE_ATLAS_DATA_DIR", temp_layout="split"),
     "swebench": dict(run_script="run_swe_bench.sh", results_subdir="swebench-verified", split="",
                      task_path_env="SWEBENCH_TASK_PATH", temp_layout="flat"),
+    "terminal-bench-2.1": dict(
+        run_script="run_terminal_bench.sh", results_subdir="terminal-bench-2-1", split="",
+        task_path_env="TERMINAL_BENCH_TASK_PATH", temp_layout="flat"
+    ),
+    "deveval": dict(run_script="run_deveval.sh", results_subdir="deveval", split="",
+                    task_path_env="DEVEVAL_TASK_PATH", temp_layout="flat"),
     "datamind": dict(run_script="run_datamind_harbor.sh", results_subdir="datamind-longds", split="",
                      task_path_env="DATAMIND_TASK_PATH", temp_layout="flat"),
     "dab": dict(run_script="run_dab_harbor.sh", results_subdir="dab", split="",
@@ -1589,6 +1595,16 @@ def _bench_source_task_dir(benchmark: str) -> Optional[Path]:
         return ROOT / "benchmark" / "SWE-Atlas" / "data" / benchmark.split("-", 2)[-1]
     if benchmark == "swebench":
         return Path(os.environ.get("SWEBENCH_TASK_PATH") or ROOT / "tmp" / "harbor" / "datasets" / "swebench-verified")
+    if benchmark == "terminal-bench-2.1":
+        return Path(
+            os.environ.get("TERMINAL_BENCH_TASK_PATH")
+            or ROOT / "tmp" / "harbor" / "datasets" / "terminal-bench-2-1"
+        )
+    if benchmark == "deveval":
+        return Path(
+            os.environ.get("DEVEVAL_TASK_PATH")
+            or ROOT / "tmp" / "harbor" / "datasets" / "deveval"
+        )
     if benchmark == "datamind":
         return Path(os.environ.get("DATAMIND_TASK_PATH") or ROOT / "tmp" / "harbor" / "datasets" / "longds")
     if benchmark == "dab":
